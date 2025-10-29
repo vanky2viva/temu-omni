@@ -76,7 +76,7 @@ function MainLayout() {
   }
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
       <Sider 
         collapsible 
         collapsed={collapsed} 
@@ -92,19 +92,22 @@ function MainLayout() {
       >
         <div
           style={{
-            height: 32,
+            height: 48,
             margin: 16,
-            background: 'rgba(255, 255, 255, 0.2)',
-            borderRadius: '6px',
+            background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.8), rgba(118, 75, 162, 0.8))',
+            borderRadius: '12px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: '#fff',
-            fontSize: collapsed ? '14px' : '16px',
+            fontSize: collapsed ? '14px' : '18px',
             fontWeight: 'bold',
+            boxShadow: '0 4px 12px rgba(102, 126, 234, 0.5)',
+            backdropFilter: 'blur(10px)',
+            letterSpacing: '1px',
           }}
         >
-          {collapsed ? 'LSO' : 'Luffy store Omni'}
+          {collapsed ? '🚀' : '🚀 Luffy Store'}
         </div>
         <Menu
           theme="dark"
@@ -114,21 +117,22 @@ function MainLayout() {
           onClick={handleMenuClick}
         />
       </Sider>
-      <Layout style={{ marginLeft: collapsed ? 80 : 200, transition: 'all 0.2s' }}>
-        <Header style={{ padding: '0 24px', background: colorBgContainer }}>
-          <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
-            多店铺管理系统
+      <Layout style={{ marginLeft: collapsed ? 80 : 200, transition: 'all 0.2s', background: 'transparent' }}>
+        <Header className="site-header" style={{ padding: '0 32px' }}>
+          <div style={{ 
+            fontSize: '24px', 
+            fontWeight: 'bold',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            letterSpacing: '1px',
+          }}>
+            ✨ 多店铺管理系统
           </div>
         </Header>
-        <Content style={{ margin: '24px 16px 0' }}>
-          <div
-            style={{
-              padding: 24,
-              minHeight: 360,
-              background: colorBgContainer,
-              borderRadius: borderRadiusLG,
-            }}
-          >
+        <Content style={{ margin: '24px 16px 16px' }}>
+          <div className="site-content" style={{ padding: 24, minHeight: 360 }}>
             <Outlet />
           </div>
         </Content>
