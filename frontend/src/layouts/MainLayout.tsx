@@ -138,7 +138,7 @@ function MainLayout() {
             letterSpacing: '1px',
             fontFamily: 'JetBrains Mono, monospace',
           }}>
-            > 多店铺管理系统_
+            {'> 多店铺管理系统_'}
           </div>
         </Header>
         <Content style={{ margin: '24px 16px 16px' }}>
