@@ -33,8 +33,8 @@ def generate_shops(db, count=3):
     """生成演示店铺"""
     print(f"\n生成 {count} 个演示店铺...")
     
-    regions = ["US", "UK", "DE", "FR", "AU"]
-    entities = ["公司A", "公司B", "公司C"]
+    regions = ["US", "UK", "DE", "FR", "AU", "CA", "IT", "ES", "JP", "KR"]
+    entities = ["公司A", "公司B", "公司C", "公司D", "公司E", "公司F"]
     
     shops = []
     for i in range(count):
@@ -66,13 +66,20 @@ def generate_products(db, shops, products_per_shop=10):
         "无线蓝牙耳机", "智能手表", "手机壳", "充电宝", "数据线",
         "蓝牙音箱", "自拍杆", "手机支架", "屏幕保护膜", "车载充电器",
         "USB转换器", "键盘", "鼠标", "鼠标垫", "笔记本支架",
-        "户外背包", "运动水壶", "瑜伽垫", "跳绳", "哑铃"
+        "户外背包", "运动水壶", "瑜伽垫", "跳绳", "哑铃",
+        "智能手环", "VR眼镜", "无人机", "平板电脑", "游戏手柄",
+        "相机三脚架", "自行车灯", "登山杖", "帐篷", "睡袋",
+        "LED台灯", "空气净化器", "加湿器", "电动牙刷", "剃须刀",
+        "咖啡机", "榨汁机", "电饭煲", "微波炉", "烤箱",
+        "扫地机器人", "吸尘器", "电风扇", "暖风机", "电热毯"
     ]
     
-    # 负责人列表
+    # 负责人列表 - 增加更多负责人
     managers = [
         "张三", "李四", "王五", "赵六", "钱七",
-        "孙八", "周九", "吴十", "郑十一", "陈十二"
+        "孙八", "周九", "吴十", "郑十一", "陈十二",
+        "刘明", "陈静", "杨涛", "黄丽", "林峰",
+        "吴娜", "徐强", "朱敏", "马超", "胡军"
     ]
     
     all_products = []
@@ -92,7 +99,7 @@ def generate_products(db, shops, products_per_shop=10):
                 currency="USD",
                 stock_quantity=random.randint(0, 500),
                 is_active=random.choice([True, True, True, False]),  # 75%在售
-                category=random.choice(["电子产品", "配件", "运动用品", "生活用品"]),
+                category=random.choice(["电子产品", "手机配件", "运动户外", "生活用品", "智能家居", "厨房电器", "个护健康"]),
                 manager=random.choice(managers),  # 随机分配负责人
                 created_at=datetime.now() - timedelta(days=random.randint(10, 100))
             )
@@ -195,7 +202,9 @@ def generate_activities(db, shops, activities_per_shop=5):
     
     activity_names = [
         "新年大促", "春季特惠", "夏日狂欢", "秋季清仓", "双11促销",
-        "黑五特卖", "会员专享", "限时抢购", "满减活动", "买一送一"
+        "黑五特卖", "会员专享", "限时抢购", "满减活动", "买一送一",
+        "618年中大促", "开学季特惠", "圣诞狂欢", "周年庆典", "超级品牌日",
+        "秒杀活动", "新品首发", "清仓大甩卖", "折扣专场", "爆款推荐"
     ]
     
     all_activities = []
@@ -266,11 +275,107 @@ def print_summary(shops, products, orders):
     print("\n")
 
 
+def get_user_input():
+    """获取用户输入的数据量配置"""
+    print("\n请输入要生成的数据量：")
+    print("（直接回车使用默认值）")
+    print("-" * 60)
+    
+    # 店铺数量
+    while True:
+        shop_count = input("店铺数量 [默认: 10]: ").strip()
+        if shop_count == "":
+            shop_count = 10
+            break
+        try:
+            shop_count = int(shop_count)
+            if shop_count > 0:
+                break
+            else:
+                print("❌ 请输入大于0的数字")
+        except ValueError:
+            print("❌ 请输入有效的数字")
+    
+    # 每店铺商品数
+    while True:
+        products_per_shop = input(f"每个店铺的商品数 (SKU) [默认: 30]: ").strip()
+        if products_per_shop == "":
+            products_per_shop = 30
+            break
+        try:
+            products_per_shop = int(products_per_shop)
+            if products_per_shop > 0:
+                break
+            else:
+                print("❌ 请输入大于0的数字")
+        except ValueError:
+            print("❌ 请输入有效的数字")
+    
+    # 每店铺订单数
+    while True:
+        orders_per_shop = input(f"每个店铺的订单数 [默认: 500]: ").strip()
+        if orders_per_shop == "":
+            orders_per_shop = 500
+            break
+        try:
+            orders_per_shop = int(orders_per_shop)
+            if orders_per_shop > 0:
+                break
+            else:
+                print("❌ 请输入大于0的数字")
+        except ValueError:
+            print("❌ 请输入有效的数字")
+    
+    # 每店铺活动数
+    while True:
+        activities_per_shop = input(f"每个店铺的活动数 [默认: 8]: ").strip()
+        if activities_per_shop == "":
+            activities_per_shop = 8
+            break
+        try:
+            activities_per_shop = int(activities_per_shop)
+            if activities_per_shop > 0:
+                break
+            else:
+                print("❌ 请输入大于0的数字")
+        except ValueError:
+            print("❌ 请输入有效的数字")
+    
+    # 确认信息
+    print("\n" + "="*60)
+    print("📊 将生成以下数据：")
+    print("="*60)
+    print(f"  • 店铺数量: {shop_count} 个")
+    print(f"  • 商品总数: {shop_count * products_per_shop} 个 (每店铺 {products_per_shop} 个)")
+    print(f"  • 订单总数: {shop_count * orders_per_shop} 个 (每店铺 {orders_per_shop} 个)")
+    print(f"  • 活动总数: {shop_count * activities_per_shop} 个 (每店铺 {activities_per_shop} 个)")
+    print(f"  • 预计GMV: 约 ${shop_count * orders_per_shop * 25:,.2f} - ${shop_count * orders_per_shop * 35:,.2f}")
+    print("="*60)
+    
+    # 确认是否继续
+    confirm = input("\n确认生成以上数据？(y/n) [y]: ").strip().lower()
+    if confirm != "" and confirm != "y" and confirm != "yes":
+        print("\n❌ 已取消生成")
+        return None
+    
+    return {
+        'shop_count': shop_count,
+        'products_per_shop': products_per_shop,
+        'orders_per_shop': orders_per_shop,
+        'activities_per_shop': activities_per_shop
+    }
+
+
 def main():
     """主函数"""
     print("="*60)
-    print("Temu-Omni 演示数据生成器")
+    print("🚀 Temu-Omni 演示数据生成器")
     print("="*60)
+    
+    # 获取用户输入
+    config = get_user_input()
+    if config is None:
+        return
     
     db = SessionLocal()
     
@@ -278,11 +383,14 @@ def main():
         # 清除旧数据
         clear_demo_data(db)
         
+        print("\n⏳ 开始生成数据，请稍候...")
+        print("="*60)
+        
         # 生成数据
-        shops = generate_shops(db, count=3)
-        products = generate_products(db, shops, products_per_shop=15)
-        orders = generate_orders(db, shops, products, orders_per_shop=150)
-        activities = generate_activities(db, shops, activities_per_shop=5)
+        shops = generate_shops(db, count=config['shop_count'])
+        products = generate_products(db, shops, products_per_shop=config['products_per_shop'])
+        orders = generate_orders(db, shops, products, orders_per_shop=config['orders_per_shop'])
+        activities = generate_activities(db, shops, activities_per_shop=config['activities_per_shop'])
         
         # 打印摘要
         print_summary(shops, products, orders)
