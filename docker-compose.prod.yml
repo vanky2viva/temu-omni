@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:13-alpine
+    container_name: temu-omni-postgres-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-temu_omni}
+      POSTGRES_USER: ${POSTGRES_USER:-temu_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-temu_user} -d ${POSTGRES_DB:-temu_omni}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - temu-network
+    restart: always
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    container_name: temu-omni-redis-prod
+    volumes:
+      - redis_data_prod:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - temu-network
+    restart: always
+
+  # 后端服务（生产环境）
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: temu-omni-backend-prod
+    environment:
+      - APP_NAME=Temu-Omni
+      - APP_VERSION=1.0.0
+      - DEBUG=False
+      - SECRET_KEY=${SECRET_KEY}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-temu_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-temu_omni}
+      - REDIS_URL=redis://redis:6379/0
+      - TEMU_APP_KEY=${TEMU_APP_KEY}
+      - TEMU_APP_SECRET=${TEMU_APP_SECRET}
+      - TEMU_API_BASE_URL=https://agentpartner.temu.com/api
+      - CORS_ORIGINS=["https://yourdomain.com"]
+      - AUTO_SYNC_ENABLED=True
+      - SYNC_INTERVAL_MINUTES=30
+      - TIMEZONE=Asia/Shanghai
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - temu-network
+    restart: always
+
+  # 前端服务（生产环境）
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: temu-omni-frontend-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+    networks:
+      - temu-network
+    restart: always
+
+volumes:
+  postgres_data_prod:
+    driver: local
+  redis_data_prod:
+    driver: local
+
+networks:
+  temu-network:
+    driver: bridge
+
