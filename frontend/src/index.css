@@ -60,7 +60,7 @@ body {
   font-weight: 600 !important;
   border-bottom: 1px solid #30363d !important;
   padding: 8px 12px !important;
-  font-size: 12px !important;
+  font-size: 13px !important;
 }
 
 .ant-table-tbody > tr {
@@ -74,8 +74,9 @@ body {
 .ant-table-tbody > tr > td {
   border-bottom: 1px solid #21262d !important;
   padding: 8px 12px !important;
-  color: #c9d1d9 !important;
-  font-size: 12px !important;
+  color: #f0f6fc !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
 }
 
 .ant-table-cell {
@@ -84,7 +85,7 @@ body {
 
 /* 分页样式 */
 .ant-pagination {
-  color: #8b949e !important;
+  color: #f0f6fc !important;
 }
 
 .ant-pagination-item {
@@ -93,11 +94,17 @@ body {
 }
 
 .ant-pagination-item a {
-  color: #c9d1d9 !important;
+  color: #f0f6fc !important;
+  font-weight: 500 !important;
 }
 
 .ant-pagination-item:hover {
   border-color: #58a6ff !important;
+  background: #1c2128 !important;
+}
+
+.ant-pagination-item:hover a {
+  color: #58a6ff !important;
 }
 
 .ant-pagination-item-active {
@@ -107,6 +114,15 @@ body {
 
 .ant-pagination-item-active a {
   color: #58a6ff !important;
+  font-weight: 600 !important;
+}
+
+.ant-pagination-options {
+  color: #f0f6fc !important;
+}
+
+.ant-pagination-options .ant-select-selector {
+  color: #f0f6fc !important;
 }
 
 /* 图表卡片 */
@@ -136,7 +152,8 @@ body {
 .ant-btn {
   background: #21262d !important;
   border: 1px solid #30363d !important;
-  color: #c9d1d9 !important;
+  color: #f0f6fc !important;
+  font-weight: 500 !important;
 }
 
 .ant-btn:hover {
@@ -145,15 +162,36 @@ body {
   color: #58a6ff !important;
 }
 
+.ant-btn-link {
+  color: #58a6ff !important;
+  font-weight: 500 !important;
+}
+
+.ant-btn-link:hover {
+  color: #79c0ff !important;
+}
+
 /* 标签极客风格 */
 .ant-tag {
   border-radius: 4px !important;
-  padding: 2px 8px !important;
-  font-weight: 500 !important;
-  font-size: 11px !important;
+  padding: 3px 10px !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
   border: 1px solid #30363d !important;
   background: #161b22 !important;
-  color: #c9d1d9 !important;
+  color: #f0f6fc !important;
+}
+
+.ant-tag-success {
+  background: #238636 !important;
+  border-color: #2ea043 !important;
+  color: #ffffff !important;
+}
+
+.ant-tag-default {
+  background: #6e7681 !important;
+  border-color: #8b949e !important;
+  color: #ffffff !important;
 }
 
 /* 输入框极客风格 */
@@ -216,8 +254,20 @@ body {
 }
 
 .ant-statistic-title {
-  color: #8b949e !important;
-  font-size: 12px !important;
+  color: #f0f6fc !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+/* 页面标题样式 */
+h1, h2, h3, h4, h5, h6 {
+  color: #f0f6fc !important;
+  font-weight: 600 !important;
+}
+
+h2 {
+  font-size: 20px !important;
+  margin-bottom: 16px !important;
 }
 
 /* 侧边栏极客风格 */
@@ -240,10 +290,21 @@ body {
   margin: 4px 8px !important;
   border-radius: 8px !important;
   transition: all 0.3s ease !important;
+  color: #c9d1d9 !important;
+  font-weight: 500 !important;
 }
 
 .ant-menu-dark .ant-menu-item:hover {
-  background: rgba(102, 126, 234, 0.2) !important;
+  background: #1c2128 !important;
+  color: #f0f6fc !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
 }
 
 /* 头部极客风格 */
