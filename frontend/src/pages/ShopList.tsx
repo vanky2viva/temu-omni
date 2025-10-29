@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Table, Button, Space, Modal, Form, Input, Switch, message } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Table, Button, Space, Modal, Form, Input, Switch, message, Tag, Tooltip } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ApiOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-design/icons'
 import { shopApi } from '@/services/api'
 
 function ShopList() {
@@ -95,6 +95,7 @@ function ShopList() {
     })
   }
 
+
   const columns = [
     {
       title: '店铺ID',
@@ -121,18 +122,39 @@ function ShopList() {
       dataIndex: 'is_active',
       key: 'is_active',
       render: (isActive: boolean) => (
-        <span style={{ color: isActive ? '#52c41a' : '#ff4d4f' }}>
+        <Tag color={isActive ? 'success' : 'default'}>
           {isActive ? '启用' : '禁用'}
-        </span>
+        </Tag>
+      ),
+    },
+    {
+      title: 'Token状态',
+      dataIndex: 'has_api_config',
+      key: 'has_api_config',
+      render: (hasApiConfig: boolean) => (
+        <Tooltip title={hasApiConfig ? '已配置Access Token' : '未配置Token'}>
+          {hasApiConfig ? (
+            <Tag icon={<CheckCircleOutlined />} color="success">
+              已授权
+            </Tag>
+          ) : (
+            <Tag icon={<WarningOutlined />} color="warning">
+              未授权
+            </Tag>
+          )}
+        </Tooltip>
       ),
     },
     {
       title: '操作',
       key: 'action',
+      fixed: 'right',
+      width: 250,
       render: (_: any, record: any) => (
-        <Space size="middle">
+        <Space size="small">
           <Button
             type="link"
+            size="small"
             icon={<EditOutlined />}
             onClick={() => handleOpenModal(record)}
           >
@@ -140,6 +162,7 @@ function ShopList() {
           </Button>
           <Button
             type="link"
+            size="small"
             danger
             icon={<DeleteOutlined />}
             onClick={() => handleDelete(record.id)}
@@ -169,6 +192,7 @@ function ShopList() {
         dataSource={shops}
         rowKey="id"
         loading={isLoading}
+        scroll={{ x: 1200 }}
       />
 
       <Modal
@@ -203,22 +227,73 @@ function ShopList() {
           <Form.Item label="经营主体" name="entity">
             <Input />
           </Form.Item>
-          <Form.Item label="Access Token" name="access_token">
-            <Input.TextArea rows={3} />
-          </Form.Item>
           <Form.Item label="备注" name="description">
             <Input.TextArea rows={3} />
           </Form.Item>
-          {editingShop && (
+          
+          {!editingShop && (
             <Form.Item
-              label="启用状态"
-              name="is_active"
-              valuePropName="checked"
+              label="Access Token"
+              name="access_token"
+              rules={[{ required: true, message: '请输入Access Token' }]}
+              extra="店铺授权后获得的访问令牌，用于数据同步"
             >
-              <Switch />
+              <Input.TextArea 
+                rows={3} 
+                placeholder="粘贴店铺的Access Token"
+              />
             </Form.Item>
           )}
+          
+          {editingShop && (
+            <>
+              <Form.Item
+                label="Access Token"
+                name="access_token"
+                extra="如需更新Token，请重新输入；留空表示不修改"
+              >
+                <Input.TextArea 
+                  rows={3} 
+                  placeholder="粘贴新的Access Token（可选）"
+                />
+              </Form.Item>
+              <Form.Item
+                label="启用状态"
+                name="is_active"
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+            </>
+          )}
         </Form>
+        
+        <div style={{ 
+          marginTop: 16, 
+          padding: 12, 
+          background: '#f0f2f5', 
+          borderRadius: 4 
+        }}>
+          <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
+            💡 提示：App Key和App Secret已在系统设置中全局配置。
+            <br />
+            添加店铺时只需要填写该店铺的Access Token。
+            {!editingShop && (
+              <>
+                <br />
+                如果还没有获取Token，请访问{' '}
+                <a 
+                  href="https://agentpartner.temu.com/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                >
+                  Temu开放平台
+                </a>
+                {' '}进行店铺授权。
+              </>
+            )}
+          </p>
+        </div>
       </Modal>
     </div>
   )

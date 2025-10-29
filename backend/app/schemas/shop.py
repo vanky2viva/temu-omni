@@ -15,8 +15,7 @@ class ShopBase(BaseModel):
 
 class ShopCreate(ShopBase):
     """创建店铺模式"""
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
+    access_token: str  # 必填，创建时需要验证
 
 
 class ShopUpdate(BaseModel):
@@ -34,10 +33,19 @@ class ShopResponse(ShopBase):
     """店铺响应模式"""
     id: int
     is_active: bool
+    has_api_config: bool = False  # 是否已配置API
     last_sync_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     
     class Config:
         from_attributes = True
+    
+    @classmethod
+    def from_orm(cls, obj):
+        """从ORM对象创建响应"""
+        data = super().from_orm(obj)
+        # 判断是否已配置Token
+        data.has_api_config = bool(obj.access_token)
+        return data
 

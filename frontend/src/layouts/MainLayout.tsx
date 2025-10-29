@@ -7,6 +7,10 @@ import {
   ShoppingOutlined,
   ProductOutlined,
   BarChartOutlined,
+  TableOutlined,
+  FundOutlined,
+  CrownOutlined,
+  SettingOutlined,
 } from '@ant-design/icons'
 
 const { Header, Content, Sider } = Layout
@@ -36,6 +40,26 @@ const menuItems = [
     key: '/statistics',
     icon: <BarChartOutlined />,
     label: '数据统计',
+  },
+  {
+    key: '/gmv-table',
+    icon: <TableOutlined />,
+    label: 'GMV表格',
+  },
+  {
+    key: '/sku-analysis',
+    icon: <FundOutlined />,
+    label: 'SKU分析',
+  },
+  {
+    key: '/hot-seller',
+    icon: <CrownOutlined />,
+    label: '爆单榜',
+  },
+  {
+    key: '/settings',
+    icon: <SettingOutlined />,
+    label: '系统设置',
   },
 ]
 
@@ -80,7 +104,7 @@ function MainLayout() {
             fontWeight: 'bold',
           }}
         >
-          {collapsed ? 'TO' : 'Temu-Omni'}
+          {collapsed ? 'LSO' : 'Luffy store Omni'}
         </div>
         <Menu
           theme="dark"
@@ -93,7 +117,7 @@ function MainLayout() {
       <Layout style={{ marginLeft: collapsed ? 80 : 200, transition: 'all 0.2s' }}>
         <Header style={{ padding: '0 24px', background: colorBgContainer }}>
           <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
-            Temu 多店铺管理系统
+            多店铺管理系统
           </div>
         </Header>
         <Content style={{ margin: '24px 16px 0' }}>

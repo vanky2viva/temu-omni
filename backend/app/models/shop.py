@@ -18,6 +18,8 @@ class Shop(Base):
     entity = Column(String(200), comment="经营主体")
     
     # API认证信息
+    app_key = Column(String(200), comment="Temu App Key")
+    app_secret = Column(Text, comment="Temu App Secret")
     access_token = Column(Text, comment="访问令牌")
     refresh_token = Column(Text, comment="刷新令牌")
     token_expires_at = Column(DateTime, comment="令牌过期时间")

@@ -5,6 +5,10 @@ import ShopList from './pages/ShopList'
 import OrderList from './pages/OrderList'
 import ProductList from './pages/ProductList'
 import Statistics from './pages/Statistics'
+import GmvTable from './pages/GmvTable'
+import SkuAnalysis from './pages/SkuAnalysis'
+import HotSellerPage from './pages/HotSellerPage'
+import SystemSettings from './pages/SystemSettings'
 
 function App() {
   return (
@@ -17,6 +21,10 @@ function App() {
           <Route path="orders" element={<OrderList />} />
           <Route path="products" element={<ProductList />} />
           <Route path="statistics" element={<Statistics />} />
+          <Route path="gmv-table" element={<GmvTable />} />
+          <Route path="sku-analysis" element={<SkuAnalysis />} />
+          <Route path="hot-seller" element={<HotSellerPage />} />
+          <Route path="settings" element={<SystemSettings />} />
         </Route>
       </Routes>
     </BrowserRouter>

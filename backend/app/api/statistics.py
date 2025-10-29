@@ -11,7 +11,7 @@ from app.models.order import OrderStatus
 router = APIRouter(prefix="/statistics", tags=["statistics"])
 
 
-@router.get("/overview")
+@router.get("/overview/")
 def get_overview_statistics(
     shop_ids: Optional[List[int]] = Query(None),
     start_date: Optional[datetime] = None,
@@ -33,7 +33,7 @@ def get_overview_statistics(
     )
 
 
-@router.get("/daily")
+@router.get("/daily/")
 def get_daily_statistics(
     shop_ids: Optional[List[int]] = Query(None),
     start_date: Optional[datetime] = None,
@@ -55,7 +55,7 @@ def get_daily_statistics(
     )
 
 
-@router.get("/weekly")
+@router.get("/weekly/")
 def get_weekly_statistics(
     shop_ids: Optional[List[int]] = Query(None),
     weeks: int = 12,
@@ -73,7 +73,7 @@ def get_weekly_statistics(
     )
 
 
-@router.get("/monthly")
+@router.get("/monthly/")
 def get_monthly_statistics(
     shop_ids: Optional[List[int]] = Query(None),
     months: int = 12,
@@ -91,7 +91,7 @@ def get_monthly_statistics(
     )
 
 
-@router.get("/shops/comparison")
+@router.get("/shops/comparison/")
 def get_shop_comparison(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
@@ -109,7 +109,7 @@ def get_shop_comparison(
     )
 
 
-@router.get("/trend")
+@router.get("/trend/")
 def get_sales_trend(
     shop_ids: Optional[List[int]] = Query(None),
     days: int = 30,

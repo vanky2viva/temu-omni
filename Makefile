@@ -1,7 +1,7 @@
 # Temu-Omni Makefile
 # 快速命令集合
 
-.PHONY: help dev dev-up dev-down dev-logs dev-restart prod-build prod-up prod-down clean db-init db-backup
+.PHONY: help dev dev-up dev-down dev-logs dev-restart prod-build prod-up prod-down clean db-init db-backup demo-data
 
 # 默认目标
 help:
@@ -22,6 +22,7 @@ help:
 	@echo "数据库："
 	@echo "  make db-init      - 初始化数据库"
 	@echo "  make db-backup    - 备份数据库"
+	@echo "  make demo-data    - 生成演示数据"
 	@echo ""
 	@echo "其他："
 	@echo "  make clean        - 清理所有容器和数据卷"
@@ -60,6 +61,11 @@ db-init:
 db-backup:
 	docker-compose exec postgres pg_dump -U temu_user temu_omni > backup_$(shell date +%Y%m%d_%H%M%S).sql
 	@echo "数据库备份完成！"
+
+# 生成演示数据
+demo-data:
+	docker-compose exec backend python scripts/generate_demo_data.py
+	@echo "演示数据生成完成！"
 
 # 清理
 clean:
