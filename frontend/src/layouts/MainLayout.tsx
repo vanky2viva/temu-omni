@@ -11,6 +11,8 @@ import {
   FundOutlined,
   CrownOutlined,
   SettingOutlined,
+  CarOutlined,
+  WalletOutlined,
 } from '@ant-design/icons'
 
 const { Header, Content, Sider } = Layout
@@ -35,6 +37,16 @@ const menuItems = [
     key: '/products',
     icon: <ProductOutlined />,
     label: '商品管理',
+  },
+  {
+    key: '/logistics',
+    icon: <CarOutlined />,
+    label: '物流管理',
+  },
+  {
+    key: '/finance',
+    icon: <WalletOutlined />,
+    label: '财务管理',
   },
   {
     key: '/statistics',
@@ -94,20 +106,20 @@ function MainLayout() {
           style={{
             height: 48,
             margin: 16,
-            background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.8), rgba(118, 75, 162, 0.8))',
-            borderRadius: '12px',
+            background: '#161b22',
+            border: '1px solid #30363d',
+            borderRadius: '6px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#fff',
-            fontSize: collapsed ? '14px' : '18px',
+            color: '#58a6ff',
+            fontSize: collapsed ? '12px' : '14px',
             fontWeight: 'bold',
-            boxShadow: '0 4px 12px rgba(102, 126, 234, 0.5)',
-            backdropFilter: 'blur(10px)',
-            letterSpacing: '1px',
+            letterSpacing: '0.5px',
+            fontFamily: 'JetBrains Mono, monospace',
           }}
         >
-          {collapsed ? '🚀' : '🚀 Luffy Store'}
+          {collapsed ? 'LSO' : 'Luffy Store Omni'}
         </div>
         <Menu
           theme="dark"
@@ -120,15 +132,13 @@ function MainLayout() {
       <Layout style={{ marginLeft: collapsed ? 80 : 200, transition: 'all 0.2s', background: 'transparent' }}>
         <Header className="site-header" style={{ padding: '0 32px' }}>
           <div style={{ 
-            fontSize: '24px', 
+            fontSize: '16px', 
             fontWeight: 'bold',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
+            color: '#c9d1d9',
             letterSpacing: '1px',
+            fontFamily: 'JetBrains Mono, monospace',
           }}>
-            ✨ 多店铺管理系统
+            > 多店铺管理系统_
           </div>
         </Header>
         <Content style={{ margin: '24px 16px 16px' }}>

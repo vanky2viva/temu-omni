@@ -4,6 +4,8 @@ import Dashboard from './pages/Dashboard'
 import ShopList from './pages/ShopList'
 import OrderList from './pages/OrderList'
 import ProductList from './pages/ProductList'
+import Logistics from './pages/Logistics'
+import Finance from './pages/Finance'
 import Statistics from './pages/Statistics'
 import GmvTable from './pages/GmvTable'
 import SkuAnalysis from './pages/SkuAnalysis'
@@ -20,6 +22,8 @@ function App() {
           <Route path="shops" element={<ShopList />} />
           <Route path="orders" element={<OrderList />} />
           <Route path="products" element={<ProductList />} />
+          <Route path="logistics" element={<Logistics />} />
+          <Route path="finance" element={<Finance />} />
           <Route path="statistics" element={<Statistics />} />
           <Route path="gmv-table" element={<GmvTable />} />
           <Route path="sku-analysis" element={<SkuAnalysis />} />

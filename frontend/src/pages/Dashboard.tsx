@@ -31,13 +31,14 @@ function Dashboard() {
 
   // 趋势图配置
   const trendChartOption = {
+    backgroundColor: 'transparent',
     title: {
       text: '近30天销售趋势',
       left: 'center',
       textStyle: {
-        fontSize: 18,
+        fontSize: 14,
         fontWeight: 'bold',
-        color: '#667eea',
+        color: '#c9d1d9',
       },
     },
     tooltip: {
@@ -45,22 +46,23 @@ function Dashboard() {
       axisPointer: {
         type: 'cross',
         lineStyle: {
-          color: '#667eea',
+          color: '#58a6ff',
         },
       },
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-      borderColor: '#667eea',
-      borderWidth: 2,
+      backgroundColor: '#161b22',
+      borderColor: '#30363d',
+      borderWidth: 1,
       textStyle: {
-        color: '#333',
+        color: '#c9d1d9',
+        fontSize: 12,
       },
     },
     legend: {
       data: ['GMV', '利润', '订单量'],
       bottom: 0,
       textStyle: {
-        fontSize: 13,
-        fontWeight: 'bold',
+        fontSize: 12,
+        color: '#8b949e',
       },
     },
     grid: {
@@ -75,8 +77,12 @@ function Dashboard() {
       data: dailyData?.map((item: any) => dayjs(item.date).format('MM-DD')) || [],
       axisLine: {
         lineStyle: {
-          color: '#667eea',
+          color: '#30363d',
         },
+      },
+      axisLabel: {
+        color: '#8b949e',
+        fontSize: 11,
       },
     },
     yAxis: [
@@ -86,7 +92,20 @@ function Dashboard() {
         position: 'left',
         axisLine: {
           lineStyle: {
-            color: '#667eea',
+            color: '#30363d',
+          },
+        },
+        axisLabel: {
+          color: '#8b949e',
+          fontSize: 11,
+        },
+        nameTextStyle: {
+          color: '#8b949e',
+          fontSize: 11,
+        },
+        splitLine: {
+          lineStyle: {
+            color: '#21262d',
           },
         },
       },
@@ -96,8 +115,19 @@ function Dashboard() {
         position: 'right',
         axisLine: {
           lineStyle: {
-            color: '#f093fb',
+            color: '#30363d',
           },
+        },
+        axisLabel: {
+          color: '#8b949e',
+          fontSize: 11,
+        },
+        nameTextStyle: {
+          color: '#8b949e',
+          fontSize: 11,
+        },
+        splitLine: {
+          show: false,
         },
       },
     ],
@@ -108,12 +138,10 @@ function Dashboard() {
         smooth: true,
         data: dailyData?.map((item: any) => item.gmv) || [],
         itemStyle: { 
-          color: '#667eea',
+          color: '#58a6ff',
         },
         lineStyle: {
-          width: 3,
-          shadowColor: 'rgba(102, 126, 234, 0.5)',
-          shadowBlur: 10,
+          width: 2,
         },
         areaStyle: {
           color: {
@@ -123,8 +151,8 @@ function Dashboard() {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(102, 126, 234, 0.3)' },
-              { offset: 1, color: 'rgba(102, 126, 234, 0.05)' },
+              { offset: 0, color: 'rgba(88, 166, 255, 0.2)' },
+              { offset: 1, color: 'rgba(88, 166, 255, 0.0)' },
             ],
           },
         },
@@ -135,12 +163,10 @@ function Dashboard() {
         smooth: true,
         data: dailyData?.map((item: any) => item.profit) || [],
         itemStyle: { 
-          color: '#52c41a',
+          color: '#3fb950',
         },
         lineStyle: {
-          width: 3,
-          shadowColor: 'rgba(82, 196, 26, 0.5)',
-          shadowBlur: 10,
+          width: 2,
         },
         areaStyle: {
           color: {
@@ -150,8 +176,8 @@ function Dashboard() {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(82, 196, 26, 0.3)' },
-              { offset: 1, color: 'rgba(82, 196, 26, 0.05)' },
+              { offset: 0, color: 'rgba(63, 185, 80, 0.2)' },
+              { offset: 1, color: 'rgba(63, 185, 80, 0.0)' },
             ],
           },
         },
@@ -162,20 +188,7 @@ function Dashboard() {
         yAxisIndex: 1,
         data: dailyData?.map((item: any) => item.orders) || [],
         itemStyle: { 
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: '#f093fb' },
-              { offset: 1, color: '#f5d0fe' },
-            ],
-          },
-          borderRadius: [4, 4, 0, 0],
-          shadowColor: 'rgba(240, 147, 251, 0.5)',
-          shadowBlur: 10,
+          color: '#8b949e',
         },
       },
     ],
@@ -183,13 +196,14 @@ function Dashboard() {
 
   // 店铺对比图配置
   const shopChartOption = {
+    backgroundColor: 'transparent',
     title: {
       text: '店铺业绩对比',
       left: 'center',
       textStyle: {
-        fontSize: 18,
+        fontSize: 14,
         fontWeight: 'bold',
-        color: '#667eea',
+        color: '#c9d1d9',
       },
     },
     tooltip: {
@@ -197,22 +211,23 @@ function Dashboard() {
       axisPointer: {
         type: 'shadow',
         shadowStyle: {
-          color: 'rgba(102, 126, 234, 0.1)',
+          color: 'rgba(88, 166, 255, 0.1)',
         },
       },
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-      borderColor: '#667eea',
-      borderWidth: 2,
+      backgroundColor: '#161b22',
+      borderColor: '#30363d',
+      borderWidth: 1,
       textStyle: {
-        color: '#333',
+        color: '#c9d1d9',
+        fontSize: 12,
       },
     },
     legend: {
       data: ['GMV', '利润'],
       bottom: 0,
       textStyle: {
-        fontSize: 13,
-        fontWeight: 'bold',
+        fontSize: 12,
+        color: '#8b949e',
       },
     },
     grid: {
@@ -227,12 +242,12 @@ function Dashboard() {
       axisLabel: {
         interval: 0,
         rotate: 30,
-        color: '#667eea',
-        fontWeight: 'bold',
+        color: '#8b949e',
+        fontSize: 11,
       },
       axisLine: {
         lineStyle: {
-          color: '#667eea',
+          color: '#30363d',
         },
       },
     },
@@ -240,7 +255,16 @@ function Dashboard() {
       type: 'value',
       axisLine: {
         lineStyle: {
-          color: '#667eea',
+          color: '#30363d',
+        },
+      },
+      axisLabel: {
+        color: '#8b949e',
+        fontSize: 11,
+      },
+      splitLine: {
+        lineStyle: {
+          color: '#21262d',
         },
       },
     },
@@ -250,20 +274,7 @@ function Dashboard() {
         type: 'bar',
         data: shopComparison?.map((item: any) => item.gmv) || [],
         itemStyle: { 
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: '#667eea' },
-              { offset: 1, color: '#764ba2' },
-            ],
-          },
-          borderRadius: [8, 8, 0, 0],
-          shadowColor: 'rgba(102, 126, 234, 0.5)',
-          shadowBlur: 10,
+          color: '#58a6ff',
         },
         barWidth: '30%',
       },
@@ -272,20 +283,7 @@ function Dashboard() {
         type: 'bar',
         data: shopComparison?.map((item: any) => item.profit) || [],
         itemStyle: { 
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: '#f093fb' },
-              { offset: 1, color: '#f5d0fe' },
-            ],
-          },
-          borderRadius: [8, 8, 0, 0],
-          shadowColor: 'rgba(240, 147, 251, 0.5)',
-          shadowBlur: 10,
+          color: '#3fb950',
         },
         barWidth: '30%',
       },
@@ -299,13 +297,11 @@ function Dashboard() {
   return (
     <div>
       <h2 style={{ 
-        marginBottom: 32, 
-        fontSize: '28px',
+        marginBottom: 24, 
+        fontSize: '18px',
         fontWeight: 'bold',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        WebkitBackgroundClip: 'text',
-        WebkitTextFillColor: 'transparent',
-        backgroundClip: 'text',
+        color: '#c9d1d9',
+        fontFamily: 'JetBrains Mono, monospace',
       }}>
         📊 数据总览
       </h2>
