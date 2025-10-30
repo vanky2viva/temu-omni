@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Layout, Menu, theme } from 'antd'
+import { ConfigProvider, Layout, Menu, Switch, theme } from 'antd'
 import {
   DashboardOutlined,
   ShopOutlined,
@@ -77,18 +77,32 @@ const menuItems = [
 
 function MainLayout() {
   const [collapsed, setCollapsed] = useState(false)
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    const saved = localStorage.getItem('theme')
+    if (saved === 'light') return false
+    if (saved === 'dark') return true
+    return true
+  })
   const navigate = useNavigate()
   const location = useLocation()
   const {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken()
 
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.remove('theme-dark', 'theme-light')
+    root.classList.add(isDark ? 'theme-dark' : 'theme-light')
+    localStorage.setItem('theme', isDark ? 'dark' : 'light')
+  }, [isDark])
+
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(key)
   }
 
   return (
-    <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
+    <ConfigProvider theme={{ algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm }}>
+      <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
       <Sider 
         collapsible 
         collapsed={collapsed} 
@@ -106,13 +120,13 @@ function MainLayout() {
           style={{
             height: 48,
             margin: 16,
-            background: '#161b22',
-            border: '1px solid #30363d',
+            background: isDark ? '#161b22' : '#ffffff',
+            border: isDark ? '1px solid #30363d' : '1px solid #f0f0f0',
             borderRadius: '6px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#58a6ff',
+            color: isDark ? '#58a6ff' : '#1677ff',
             fontSize: collapsed ? '12px' : '14px',
             fontWeight: 'bold',
             letterSpacing: '0.5px',
@@ -122,7 +136,7 @@ function MainLayout() {
           {collapsed ? 'LSO' : 'Luffy Store Omni'}
         </div>
         <Menu
-          theme="dark"
+          theme={isDark ? 'dark' : 'light'}
           mode="inline"
           selectedKeys={[location.pathname]}
           items={menuItems}
@@ -130,15 +144,24 @@ function MainLayout() {
         />
       </Sider>
       <Layout style={{ marginLeft: collapsed ? 80 : 200, transition: 'all 0.2s', background: 'transparent' }}>
-        <Header className="site-header" style={{ padding: '0 32px' }}>
+        <Header className="site-header" style={{ padding: '0 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ 
             fontSize: '16px', 
             fontWeight: 'bold',
-            color: '#c9d1d9',
+            color: isDark ? '#c9d1d9' : '#1f2328',
             letterSpacing: '1px',
             fontFamily: 'JetBrains Mono, monospace',
           }}>
             {'> 多店铺管理系统_'}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ color: isDark ? '#9aa0a6' : '#6b7280', fontSize: 12 }}>主题</span>
+            <Switch
+              checkedChildren="暗"
+              unCheckedChildren="亮"
+              checked={isDark}
+              onChange={setIsDark}
+            />
           </div>
         </Header>
         <Content style={{ margin: '24px 16px 16px' }}>
@@ -148,6 +171,7 @@ function MainLayout() {
         </Content>
       </Layout>
     </Layout>
+    </ConfigProvider>
   )
 }
 
