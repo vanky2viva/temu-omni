@@ -1,4 +1,21 @@
-"""生成演示数据脚本"""
+"""
+生成演示数据脚本
+
+⚠️ 注意：此脚本已被真实API集成替代
+==========================================
+现在使用 init_sandbox_shop.py 创建沙盒店铺，
+然后通过API同步真实的Temu测试数据。
+
+此脚本仅用于：
+1. 在没有网络连接时生成本地演示数据
+2. 开发测试时快速填充数据库
+3. 前端UI开发的数据模拟
+
+推荐使用：
+  python scripts/init_sandbox_shop.py  # 初始化沙盒店铺
+  POST /api/sync/shops/{shop_id}/all   # 同步真实数据
+==========================================
+"""
 import sys
 import os
 from pathlib import Path

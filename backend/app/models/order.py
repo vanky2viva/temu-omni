@@ -8,13 +8,14 @@ import enum
 
 class OrderStatus(str, enum.Enum):
     """订单状态枚举"""
-    PENDING = "pending"  # 待支付
-    PAID = "paid"  # 已支付
-    SHIPPED = "shipped"  # 已发货
-    DELIVERED = "delivered"  # 已送达
-    COMPLETED = "completed"  # 已完成
-    CANCELLED = "cancelled"  # 已取消
-    REFUNDED = "refunded"  # 已退款
+    PENDING = "PENDING"  # 待支付
+    PAID = "PAID"  # 已支付
+    PROCESSING = "PROCESSING"  # 处理中
+    SHIPPED = "SHIPPED"  # 已发货
+    DELIVERED = "DELIVERED"  # 已送达
+    COMPLETED = "COMPLETED"  # 已完成
+    CANCELLED = "CANCELLED"  # 已取消
+    REFUNDED = "REFUNDED"  # 已退款
 
 
 class Order(Base):

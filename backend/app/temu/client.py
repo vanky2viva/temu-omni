@@ -1,6 +1,5 @@
 """Temu API客户端"""
 import hashlib
-import hmac
 import json
 import time
 from typing import Dict, Any, Optional, List
@@ -27,84 +26,100 @@ class TemuAPIClient:
     
     def _generate_sign(self, params: Dict[str, Any]) -> str:
         """
-        生成API签名
+        生成API签名（MD5算法）
         
-        根据Temu API文档的签名规则生成签名
+        签名规则（基于Temu官方文档）：
+        1. 将所有参数（除sign外）按key字母顺序排序
+        2. 拼接成 key1value1key2value2... 格式
+        3. 在前后各加上 app_secret
+        4. 对整个字符串进行MD5加密并转大写
         """
+        temp = []
         # 按键排序参数
         sorted_params = sorted(params.items())
         
         # 拼接参数字符串
-        param_str = ""
         for key, value in sorted_params:
             if value is not None:
+                # 如果值是字典或列表，转换为JSON字符串
                 if isinstance(value, (dict, list)):
-                    value = json.dumps(value, separators=(',', ':'))
-                param_str += f"{key}{value}"
+                    value = json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+                # 去除字符串两端的引号
+                temp.append(str(key) + str(value).strip('\"'))
         
-        # 加上app_secret进行HMAC-SHA256签名
-        sign_str = self.app_secret + param_str + self.app_secret
-        sign = hmac.new(
-            self.app_secret.encode('utf-8'),
-            sign_str.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest().upper()
+        un_sign = ''.join(temp)
+        # app_secret + 参数字符串 + app_secret
+        un_sign = str(self.app_secret) + un_sign + str(self.app_secret)
+        # MD5加密并转大写
+        sign = hashlib.md5(un_sign.encode('utf-8')).hexdigest().upper()
         
         return sign
     
     async def _request(
         self,
-        method: str,
-        endpoint: str,
-        data: Optional[Dict[str, Any]] = None,
+        api_type: str,
+        request_data: Optional[Dict[str, Any]] = None,
         access_token: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        发送API请求
+        发送API请求（Temu统一路由格式）
         
         Args:
-            method: 请求方法
-            endpoint: API端点
-            data: 请求数据
+            api_type: API接口类型（如 bg.order.list.v2.get）
+            request_data: 业务请求数据
             access_token: 访问令牌
             
         Returns:
             API响应数据
         """
-        url = f"{self.base_url}/{endpoint}"
+        url = self.base_url
         
-        # 构建请求参数
-        params = {
+        # 构建通用参数
+        timestamp = int(time.time())
+        common_params = {
             "app_key": self.app_key,
-            "timestamp": int(time.time()),
+            "data_type": "JSON",
+            "timestamp": timestamp,
+            "type": api_type,
+            "version": "V1"
         }
         
+        # 添加access_token（如果提供）
         if access_token:
-            params["access_token"] = access_token
+            common_params["access_token"] = access_token
         
-        if data:
-            params.update(data)
+        # 合并所有参数
+        all_params = {**common_params}
+        if request_data:
+            # 业务参数放在 request 字段中
+            all_params["request"] = request_data
         
         # 生成签名
-        params["sign"] = self._generate_sign(params)
+        sign = self._generate_sign(all_params)
+        
+        # 最终请求体
+        request_payload = {**all_params, "sign": sign}
         
         try:
-            # 发送请求
-            if method.upper() == "GET":
-                response = await self.client.get(url, params=params)
-            else:
-                response = await self.client.post(url, json=params)
+            # 发送POST请求
+            headers = {"Content-Type": "application/json"}
+            response = await self.client.post(
+                url, 
+                headers=headers,
+                content=json.dumps(request_payload)
+            )
             
             response.raise_for_status()
             result = response.json()
             
             # 检查业务错误
-            if result.get("error_code") != 0:
-                error_msg = result.get("error_msg", "Unknown error")
-                logger.error(f"Temu API error: {error_msg}")
-                raise Exception(f"Temu API error: {error_msg}")
+            if not result.get("success", False):
+                error_code = result.get("errorCode", "未知")
+                error_msg = result.get("errorMsg", "未知错误")
+                logger.error(f"Temu API error: [{error_code}] {error_msg}")
+                raise Exception(f"Temu API error: [{error_code}] {error_msg}")
             
-            return result.get("data", {})
+            return result.get("result", {})
             
         except httpx.HTTPError as e:
             logger.error(f"HTTP error calling Temu API: {e}")
@@ -116,37 +131,37 @@ class TemuAPIClient:
     async def get_orders(
         self,
         access_token: str,
-        start_time: int,
+        begin_time: int,
         end_time: int,
-        page: int = 1,
+        page_number: int = 1,
         page_size: int = 100,
-        status: Optional[str] = None
+        order_status: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        获取订单列表
+        获取订单列表（V2版本）
         
         Args:
             access_token: 访问令牌
-            start_time: 开始时间（Unix时间戳）
+            begin_time: 开始时间（Unix时间戳）
             end_time: 结束时间（Unix时间戳）
-            page: 页码
+            page_number: 页码
             page_size: 每页数量
-            status: 订单状态筛选
+            order_status: 订单状态筛选
             
         Returns:
             订单列表数据
         """
         data = {
-            "start_time": start_time,
-            "end_time": end_time,
-            "page": page,
-            "page_size": page_size,
+            "beginTime": begin_time,
+            "endTime": end_time,
+            "pageNumber": page_number,
+            "pageSize": page_size,
         }
         
-        if status:
-            data["status"] = status
+        if order_status is not None:
+            data["orderStatus"] = order_status
         
-        return await self._request("POST", "order/list", data, access_token)
+        return await self._request("bg.order.list.v2.get", data, access_token)
     
     async def get_order_detail(
         self,
@@ -154,7 +169,7 @@ class TemuAPIClient:
         order_sn: str
     ) -> Dict[str, Any]:
         """
-        获取订单详情
+        获取订单详情（V2版本）
         
         Args:
             access_token: 访问令牌
@@ -163,85 +178,105 @@ class TemuAPIClient:
         Returns:
             订单详情数据
         """
-        data = {"order_sn": order_sn}
-        return await self._request("POST", "order/detail", data, access_token)
+        data = {"orderSn": order_sn}
+        return await self._request("bg.order.detail.v2.get", data, access_token)
     
     async def get_products(
         self,
         access_token: str,
-        page: int = 1,
+        page_number: int = 1,
         page_size: int = 100,
-        status: Optional[str] = None
+        goods_status: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         获取商品列表
         
         Args:
             access_token: 访问令牌
-            page: 页码
+            page_number: 页码
             page_size: 每页数量
-            status: 商品状态筛选
+            goods_status: 商品状态筛选
             
         Returns:
             商品列表数据
         """
         data = {
-            "page": page,
-            "page_size": page_size,
+            "pageNumber": page_number,
+            "pageSize": page_size,
         }
         
-        if status:
-            data["status"] = status
+        if goods_status is not None:
+            data["goodsStatus"] = goods_status
         
-        return await self._request("POST", "product/list", data, access_token)
+        return await self._request("bg.local.goods.list.query", data, access_token)
     
     async def get_product_detail(
         self,
         access_token: str,
-        product_id: str
+        goods_id: int
     ) -> Dict[str, Any]:
         """
         获取商品详情
         
         Args:
             access_token: 访问令牌
-            product_id: 商品ID
+            goods_id: 商品ID
             
         Returns:
             商品详情数据
         """
-        data = {"product_id": product_id}
-        return await self._request("POST", "product/detail", data, access_token)
+        data = {"goodsId": goods_id}
+        return await self._request("bg.local.goods.detail.query", data, access_token)
     
-    async def get_activities(
+    async def get_product_categories(
         self,
         access_token: str,
-        start_time: int,
-        end_time: int,
-        page: int = 1,
-        page_size: int = 100
+        parent_cat_id: int = 0
     ) -> Dict[str, Any]:
         """
-        获取活动列表
+        获取商品分类
         
         Args:
             access_token: 访问令牌
-            start_time: 开始时间（Unix时间戳）
-            end_time: 结束时间（Unix时间戳）
-            page: 页码
-            page_size: 每页数量
+            parent_cat_id: 父分类ID，0表示查询根分类
             
         Returns:
-            活动列表数据
+            商品分类数据
         """
-        data = {
-            "start_time": start_time,
-            "end_time": end_time,
-            "page": page,
-            "page_size": page_size,
-        }
+        data = {"parentCatId": parent_cat_id}
+        return await self._request("bg.local.goods.cats.get", data, access_token)
+    
+    async def get_warehouses(
+        self,
+        access_token: str
+    ) -> Dict[str, Any]:
+        """
+        获取仓库列表
         
-        return await self._request("POST", "activity/list", data, access_token)
+        Args:
+            access_token: 访问令牌
+            
+        Returns:
+            仓库列表数据
+        """
+        data = {}
+        return await self._request("bg.logistics.warehouse.list.get", data, access_token)
+    
+    async def get_token_info(
+        self,
+        access_token: str
+    ) -> Dict[str, Any]:
+        """
+        查询Token信息
+        
+        Args:
+            access_token: 访问令牌
+            
+        Returns:
+            Token信息
+        """
+        data = {}
+        return await self._request("bg.open.accesstoken.info.get", data, access_token)
     
     async def close(self):
         """关闭HTTP客户端"""
