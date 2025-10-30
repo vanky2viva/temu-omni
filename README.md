@@ -8,9 +8,11 @@
 - [技术栈](#技术栈)
 - [快速开始](#快速开始)
 - [API配置说明](#api配置说明)
+- [数据导入](#数据导入)
 - [功能模块](#功能模块)
 - [项目结构](#项目结构)
 - [常见问题](#常见问题)
+- [完整文档](#完整文档)
 
 ## ✨ 功能特性
 
@@ -22,6 +24,12 @@
 - ✅ **GMV分析** - 按日/周/月查看GMV、利润等财务数据
 - ✅ **SKU分析** - SKU销量对比和排行榜
 - ✅ **爆单榜** - 负责人业绩排行，SKU与人员绑定管理
+
+### 数据获取方式
+- ✅ **API同步** - 从Temu OpenAPI自动同步订单、商品、活动数据
+- ✅ **Excel导入** - 支持本地Excel文件批量导入
+- ✅ **在线表格导入** - 支持飞书在线表格实时同步（支持密码保护）
+- ✅ **智能字段映射** - 自动识别多种列名格式
 
 ### 系统特性
 - ✅ **应用级API配置** - App Key和App Secret全局配置
@@ -136,6 +144,41 @@ docker compose exec backend python scripts/generate_demo_data.py
 访问 [Temu开放平台](https://agentpartner.temu.com/) 进行：
 1. 应用注册 - 获取App Key和App Secret
 2. 店铺授权 - 获取Access Token
+
+## 📥 数据导入
+
+除了API同步外，系统还支持通过Excel文件和在线表格导入数据。
+
+### 支持的数据类型
+
+1. **订单列表** - 订单编号、商品名称、数量、金额等
+2. **活动列表** - 活动名称、折扣信息、时间周期等  
+3. **商品基础信息** - 商品名称、价格、成本、SKU等
+
+### 导入方式
+
+#### 方式一：Excel文件上传
+```
+店铺管理 → 选择店铺 → 导入数据 → 选择Excel文件 → 上传
+```
+
+#### 方式二：在线表格导入（推荐）
+```
+店铺管理 → 选择店铺 → 导入数据 → 在线表格 → 粘贴飞书表格链接
+```
+
+**在线表格优势**：
+- ✅ 实时同步 - 数据更新后无需重新上传
+- ✅ 团队协作 - 多人可以共同维护数据
+- ✅ 密码保护 - 支持密码保护敏感数据
+- ✅ 操作简单 - 只需粘贴分享链接
+
+### 详细文档
+
+- [三种表格字段映射说明](docs/import/三种表格字段映射说明.md) ⭐⭐⭐
+- [Excel导入功能使用指南](docs/import/Excel导入功能使用指南.md)
+- [在线表格导入功能说明](docs/import/在线表格导入功能说明.md)
+- [密码保护功能说明](docs/import/密码保护功能说明.md)
 
 ## 📊 功能模块
 
@@ -422,6 +465,58 @@ DOCKER_ENV: true
 
 MIT License
 
+## 📖 完整文档
+
+本项目包含完整的文档体系，涵盖系统架构、API集成、数据导入、部署运维等各个方面。
+
+### 📑 文档索引
+
+**[完整文档索引 → docs/INDEX.md](docs/INDEX.md)** ⭐
+
+### 快速导航
+
+#### 📖 核心文档
+- [系统架构设计](docs/ARCHITECTURE.md)
+- [数据库表结构](docs/DATABASE_SCHEMA.md)
+- [项目当前状态](docs/PROJECT_STATUS.md)
+- [功能特性列表](docs/FEATURES.md)
+
+#### 🚀 部署与运维
+- [快速部署指南](docs/deployment/DEPLOY_QUICKSTART.md)
+- [详细部署说明](docs/deployment/DEPLOYMENT_GUIDE.md)
+- [Docker使用指南](docs/DOCKER_GUIDE.md)
+
+#### 🔌 API集成
+- [API快速接入](docs/api/QUICKSTART_API.md)
+- [Temu API完整指南](docs/TEMU_API_GUIDE.md)
+- [API接口文档](docs/API.md)
+- [API数据映射关系](docs/API_DATA_MAPPING.md)
+
+#### 📥 数据导入
+- [三种表格字段映射说明](docs/import/三种表格字段映射说明.md) ⭐⭐⭐
+- [Excel导入功能使用指南](docs/import/Excel导入功能使用指南.md)
+- [在线表格导入功能说明](docs/import/在线表格导入功能说明.md)
+- [密码保护功能说明](docs/import/密码保护功能说明.md)
+
+#### 🎯 开发指南
+- [快速入门教程](docs/guides/QUICKSTART.md)
+- [前端集成指南](docs/guides/FRONTEND_INTEGRATION.md)
+- [集成开发指南](docs/guides/INTEGRATION_GUIDE.md)
+
+### 文档结构
+
+```
+docs/
+├── INDEX.md                # 📑 文档索引（推荐起点）
+├── api/                    # 🔌 API相关文档
+├── import/                 # 📥 数据导入文档
+├── deployment/             # 🚀 部署相关文档
+├── guides/                 # 🎯 开发指南
+├── ARCHITECTURE.md         # 系统架构
+├── DATABASE_SCHEMA.md      # 数据库结构
+└── ...                     # 更多文档
+```
+
 ## 📞 联系方式
 
 如有问题，请通过以下方式联系：
@@ -430,6 +525,6 @@ MIT License
 
 ---
 
-**最后更新**: 2025-10-29  
-**当前版本**: v1.0.0  
+**最后更新**: 2025-10-30  
+**当前版本**: v2.0.0  
 **系统状态**: ✅ 生产就绪

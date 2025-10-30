@@ -6,16 +6,17 @@ from typing import Optional
 
 class ShopBase(BaseModel):
     """店铺基础模式"""
-    shop_id: str
+    shop_id: Optional[str] = None
     shop_name: str
     region: str
     entity: Optional[str] = None
+    default_manager: Optional[str] = None
     description: Optional[str] = None
 
 
 class ShopCreate(ShopBase):
     """创建店铺模式"""
-    access_token: str  # 必填，创建时需要验证
+    access_token: Optional[str] = None  # 可选，改为非必填
 
 
 class ShopUpdate(BaseModel):
@@ -23,6 +24,7 @@ class ShopUpdate(BaseModel):
     shop_name: Optional[str] = None
     region: Optional[str] = None
     entity: Optional[str] = None
+    default_manager: Optional[str] = None
     is_active: Optional[bool] = None
     access_token: Optional[str] = None
     refresh_token: Optional[str] = None

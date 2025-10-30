@@ -34,7 +34,7 @@ GET /api/shops
 ]
 ```
 
-### 创建店铺
+### 创建店铺（Access Token 可选）
 
 ```http
 POST /api/shops
@@ -47,8 +47,8 @@ POST /api/shops
   "shop_name": "美国店铺",
   "region": "US",
   "entity": "公司A",
-  "access_token": "your_access_token",
   "description": "备注信息"
+  // access_token 可选
 }
 ```
 
@@ -63,6 +63,26 @@ PUT /api/shops/{shop_id}
 ```http
 DELETE /api/shops/{shop_id}
 ```
+
+### 授权/更新店铺 Access Token
+为已有店铺设置或更新 Access Token，并进行基本校验（非空、店铺存在）。
+
+```http
+POST /api/shops/{shop_id}/authorize
+```
+
+**请求体**：
+```json
+{
+  "access_token": "<TOKEN>"
+}
+```
+
+成功时返回更新后的 `ShopResponse`，其中 `has_api_config = true`。
+
+失败情况：
+- 404 店铺不存在
+- 400 access_token 不能为空
 
 ## 订单管理 API
 

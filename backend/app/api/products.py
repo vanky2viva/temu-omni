@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.product import Product, ProductCost
+from app.models.shop import Shop
 from app.schemas.product import (
     ProductCreate, ProductUpdate, ProductResponse,
     ProductCostCreate, ProductCostResponse
@@ -50,7 +51,13 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 def create_product(product: ProductCreate, db: Session = Depends(get_db)):
     """创建商品"""
-    db_product = Product(**product.model_dump())
+    data = product.model_dump()
+    # 若未指定负责人，则使用店铺默认负责人
+    if not data.get('manager'):
+        shop = db.query(Shop).filter(Shop.id == data['shop_id']).first()
+        if shop and getattr(shop, 'default_manager', None):
+            data['manager'] = shop.default_manager
+    db_product = Product(**data)
     db.add(db_product)
     db.commit()
     db.refresh(db_product)

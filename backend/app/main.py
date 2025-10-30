@@ -5,7 +5,7 @@ from loguru import logger
 
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api import shops, orders, products, statistics, sync, analytics, system
+from app.api import shops, orders, products, statistics, sync, analytics, system, import_data
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -35,6 +35,7 @@ app.include_router(statistics.router, prefix="/api")
 app.include_router(sync.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
+app.include_router(import_data.router, prefix="/api")
 
 
 @app.get("/")

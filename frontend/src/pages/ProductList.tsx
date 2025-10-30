@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Table,
@@ -12,7 +12,7 @@ import {
   message,
   Tag,
 } from 'antd'
-import { PlusOutlined, DollarOutlined } from '@ant-design/icons'
+import { PlusOutlined, DollarOutlined, SearchOutlined } from '@ant-design/icons'
 import { productApi, shopApi } from '@/services/api'
 import dayjs from 'dayjs'
 
@@ -28,10 +28,26 @@ function ProductList() {
     queryFn: shopApi.getShops,
   })
 
-  // 获取商品列表
+  // 筛选条件
+  const [shopId, setShopId] = useState<number | undefined>()
+  // 状态筛选：published | unpublished | all（默认已发布）
+  const [statusFilter, setStatusFilter] = useState<'published' | 'unpublished' | 'all'>('published')
+  const [manager, setManager] = useState<string | undefined>()
+  const [category, setCategory] = useState<string | undefined>()
+  const [keyword, setKeyword] = useState<string>('')
+
+  // 获取商品列表（携带筛选参数）
   const { data: products, isLoading } = useQuery({
-    queryKey: ['products'],
-    queryFn: productApi.getProducts,
+    queryKey: ['products', { shopId, statusFilter, manager, category, keyword }],
+    queryFn: () =>
+      productApi.getProducts({
+        shop_id: shopId,
+        is_active:
+          statusFilter === 'published' ? true : statusFilter === 'unpublished' ? false : undefined,
+        manager,
+        category,
+        q: keyword?.trim() || undefined,
+      }),
   })
 
   // 创建成本记录
@@ -75,6 +91,19 @@ function ProductList() {
     }
   }
 
+  // 供筛选使用的负责人/类目选项（基于当前数据集）
+  const managerOptions = useMemo(() => {
+    const set = new Set<string>()
+    products?.forEach((p: any) => p?.manager && set.add(p.manager))
+    return Array.from(set)
+  }, [products])
+
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>()
+    products?.forEach((p: any) => p?.category && set.add(p.category))
+    return Array.from(set)
+  }, [products])
+
   const columns = [
     {
       title: '商品名称',
@@ -83,23 +112,55 @@ function ProductList() {
       ellipsis: true,
     },
     {
-      title: 'SKU',
+      title: '负责人',
+      dataIndex: 'manager',
+      key: 'manager',
+      width: 140,
+    },
+    {
+      title: '类目',
+      dataIndex: 'category',
+      key: 'category',
+      width: 140,
+    },
+    {
+      title: '经营站点',
+      dataIndex: 'shop_id',
+      key: 'site',
+      width: 120,
+      render: (shopId: number) => {
+        const shop = shops?.find((s: any) => s.id === shopId)
+        return shop?.region?.toUpperCase?.() || '-'
+      },
+    },
+    {
+      title: 'SPU ID',
+      dataIndex: 'spu_id',
+      key: 'spu_id',
+      width: 140,
+      render: () => '-',
+    },
+    {
+      title: 'SKC ID',
+      dataIndex: 'skc_id',
+      key: 'skc_id',
+      width: 140,
+      render: () => '-',
+    },
+    {
+      title: 'SKU ID',
+      dataIndex: 'product_id',
+      key: 'product_id',
+      width: 150,
+    },
+    {
+      title: 'SKU货号',
       dataIndex: 'sku',
       key: 'sku',
       width: 150,
     },
     {
-      title: '所属店铺',
-      dataIndex: 'shop_id',
-      key: 'shop_id',
-      width: 150,
-      render: (shopId: number) => {
-        const shop = shops?.find((s: any) => s.id === shopId)
-        return shop?.shop_name || '-'
-      },
-    },
-    {
-      title: '当前售价',
+      title: '申报价格',
       dataIndex: 'current_price',
       key: 'current_price',
       width: 120,
@@ -107,10 +168,11 @@ function ProductList() {
         price ? `${price} ${record.currency}` : '-',
     },
     {
-      title: '库存',
-      dataIndex: 'stock_quantity',
-      key: 'stock_quantity',
-      width: 100,
+      title: '申报价格状态',
+      dataIndex: 'price_status',
+      key: 'price_status',
+      width: 140,
+      render: () => '-',
     },
     {
       title: '状态',
@@ -119,7 +181,7 @@ function ProductList() {
       width: 100,
       render: (isActive: boolean) => (
         <Tag color={isActive ? 'success' : 'default'}>
-          {isActive ? '在售' : '下架'}
+          {isActive ? '已发布' : '未发布'}
         </Tag>
       ),
     },
@@ -143,8 +205,61 @@ function ProductList() {
 
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-        <h2>商品管理</h2>
+      <div style={{ marginBottom: 16 }}>
+        <Space size="middle" wrap>
+          <span>店铺：</span>
+          <Select
+            allowClear
+            placeholder="全部店铺"
+            style={{ width: 200 }}
+            value={shopId}
+            onChange={setShopId as any}
+            options={shops?.map((s: any) => ({ label: s.shop_name, value: s.id }))}
+          />
+
+          <span>负责人：</span>
+          <Select
+            allowClear
+            placeholder="全部负责人"
+            style={{ width: 160 }}
+            value={manager}
+            onChange={setManager}
+            options={managerOptions.map(m => ({ label: m, value: m }))}
+          />
+
+          <span>类目：</span>
+          <Select
+            allowClear
+            placeholder="全部类目"
+            style={{ width: 160 }}
+            value={category}
+            onChange={setCategory}
+            options={categoryOptions.map(c => ({ label: c, value: c }))}
+          />
+
+          <span>关键词：</span>
+          <Input
+            allowClear
+            style={{ width: 220 }}
+            prefix={<SearchOutlined />}
+            placeholder="商品名/SKU"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            onPressEnter={() => queryClient.invalidateQueries({ queryKey: ['products'] })}
+          />
+
+          <span>状态：</span>
+          <Select
+            style={{ width: 160 }}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { label: '已发布', value: 'published' },
+              { label: '未发布', value: 'unpublished' },
+              { label: '全部', value: 'all' },
+            ]}
+          />
+        </Space>
       </div>
 
       <Table
@@ -152,6 +267,7 @@ function ProductList() {
         dataSource={products}
         rowKey="id"
         loading={isLoading}
+        scroll={{ x: 1200 }}
       />
 
       <Modal

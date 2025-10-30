@@ -30,6 +30,7 @@ class Shop(Base):
     shop_name = Column(String(200), nullable=False, comment="店铺名称")
     region = Column(Enum(ShopRegion), nullable=False, default=ShopRegion.US, comment="店铺地区")
     entity = Column(String(200), comment="经营主体")
+    default_manager = Column(String(100), comment="默认负责人")
     
     # 环境标识
     environment = Column(
@@ -64,6 +65,7 @@ class Shop(Base):
     orders = relationship("Order", back_populates="shop", cascade="all, delete-orphan")
     products = relationship("Product", back_populates="shop", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="shop", cascade="all, delete-orphan")
+    import_history = relationship("ImportHistory", back_populates="shop", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Shop {self.shop_name} ({self.region})>"

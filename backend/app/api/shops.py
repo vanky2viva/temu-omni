@@ -1,10 +1,12 @@
 """店铺管理API"""
-from typing import List
+from typing import List, Optional
+import time
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.shop import Shop
+from app.models.shop import Shop, ShopRegion
 from app.schemas.shop import ShopCreate, ShopUpdate, ShopResponse
 
 router = APIRouter(prefix="/shops", tags=["shops"])
@@ -40,35 +42,77 @@ def get_shop(shop_id: int, db: Session = Depends(get_db)):
 @router.post("/", response_model=ShopResponse, status_code=status.HTTP_201_CREATED)
 def create_shop(shop: ShopCreate, db: Session = Depends(get_db)):
     """创建店铺"""
-    from app.api.system import get_app_credentials
+    # 允许未配置应用凭证也可创建店铺；仅在授权/同步时需要
+    # 如果提交了shop_id则校验唯一；否则生成占位ID
+    if shop.shop_id:
+        existing_shop = db.query(Shop).filter(Shop.shop_id == shop.shop_id).first()
+        if existing_shop:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="店铺ID已存在"
+            )
+        shop_id_value = shop.shop_id
+    else:
+        shop_id_value = f"PENDING_{int(time.time())}"
     
-    # 检查shop_id是否已存在
-    existing_shop = db.query(Shop).filter(Shop.shop_id == shop.shop_id).first()
-    if existing_shop:
+    # 规范化并校验 region
+    region_value = (shop.region or '').strip().lower()
+    if region_value not in [r.value for r in ShopRegion]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="店铺ID已存在"
+            detail="地区(region)无效，可选值: us / eu / global"
         )
     
-    # 获取应用凭证
-    try:
-        credentials = get_app_credentials(db)
-    except HTTPException as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="请先在系统设置中配置Temu应用的App Key和App Secret"
-        )
-    
-    # TODO: 验证access_token（需要调用Temu API）
-    # 这里可以添加真实的token验证逻辑
-    # 例如：尝试使用token获取店铺信息来验证token是否有效
-    
-    db_shop = Shop(**shop.model_dump())
+    data = shop.model_dump()
+    data['region'] = ShopRegion(region_value)
+    data['shop_id'] = shop_id_value
+
+    db_shop = Shop(**data)
     db.add(db_shop)
     db.commit()
     db.refresh(db_shop)
     db_shop.has_api_config = bool(db_shop.access_token)
     return db_shop
+
+
+class AuthorizeRequest(BaseModel):
+    """授权请求体"""
+    access_token: str
+    shop_id: Optional[str] = None
+
+
+@router.post("/{shop_id}/authorize", response_model=ShopResponse)
+def authorize_shop(
+    shop_id: int,
+    body: AuthorizeRequest,
+    db: Session = Depends(get_db)
+):
+    """为店铺配置/更新 Access Token 并进行基本校验"""
+    shop = db.query(Shop).filter(Shop.id == shop_id).first()
+    if not shop:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="店铺不存在")
+
+    token = (body.access_token or "").strip()
+    if not token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Access Token 不能为空")
+
+    # 保存 Token（如需可在此加入实际的Temu API验证）
+    shop.access_token = token
+    # 如传入shop_id则同时更新（并校验唯一）
+    if body.shop_id:
+        new_shop_id = body.shop_id.strip()
+        if not new_shop_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="店铺ID不能为空")
+        exists = db.query(Shop).filter(Shop.shop_id == new_shop_id, Shop.id != shop.id).first()
+        if exists:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="店铺ID已存在")
+        shop.shop_id = new_shop_id
+
+    db.commit()
+    db.refresh(shop)
+
+    shop.has_api_config = True
+    return shop
 
 
 @router.put("/{shop_id}", response_model=ShopResponse)

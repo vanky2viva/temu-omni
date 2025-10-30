@@ -3,9 +3,6 @@ import axios from 'axios'
 const api = axios.create({
   baseURL: '/api',
   timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 })
 
 // 请求拦截器
@@ -36,10 +33,26 @@ api.interceptors.response.use(
 // 店铺API
 export const shopApi = {
   getShops: () => api.get('/shops/'),
-  getShop: (id: number) => api.get(`/shops/${id}/`),
+  getShop: (id: number) => api.get(`/shops/${id}`),
   createShop: (data: any) => api.post('/shops/', data),
-  updateShop: (id: number, data: any) => api.put(`/shops/${id}/`, data),
-  deleteShop: (id: number) => api.delete(`/shops/${id}/`),
+  updateShop: (id: number, data: any) => api.put(`/shops/${id}`, data),
+  deleteShop: (id: number) => api.delete(`/shops/${id}`),
+  authorizeShop: (id: number, accessToken: string, shopId?: string) =>
+    api.post(`/shops/${id}/authorize`, { access_token: accessToken, shop_id: shopId }),
+}
+
+// 数据同步API（增加超时时间到5分钟）
+export const syncApi = {
+  syncShopAll: (shopId: number, fullSync: boolean = true) => 
+    api.post(`/sync/shops/${shopId}/all?full_sync=${fullSync}`, {}, { timeout: 300000 }),
+  syncShopOrders: (shopId: number, fullSync: boolean = true) => 
+    api.post(`/sync/shops/${shopId}/orders?full_sync=${fullSync}`, {}, { timeout: 300000 }),
+  syncShopProducts: (shopId: number, fullSync: boolean = true) => 
+    api.post(`/sync/shops/${shopId}/products?full_sync=${fullSync}`, {}, { timeout: 180000 }),
+  getSyncStatus: (shopId: number) => 
+    api.get(`/sync/shops/${shopId}/status`),
+  verifyToken: (shopId: number) => 
+    api.post(`/sync/shops/${shopId}/verify-token`),
 }
 
 // 订单API
@@ -70,6 +83,43 @@ export const statisticsApi = {
   getMonthly: (params?: any) => api.get('/statistics/monthly/', { params }),
   getShopComparison: (params?: any) => api.get('/statistics/shops/comparison/', { params }),
   getTrend: (params?: any) => api.get('/statistics/trend/', { params }),
+}
+
+// 数据导入API
+export const importApi = {
+  // 导入订单数据（Excel文件）
+  importOrders: (shopId: number, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/import/shops/${shopId}/orders`, formData, { timeout: 120000 })
+  },
+  // 导入活动数据（Excel文件）
+  importActivities: (shopId: number, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/import/shops/${shopId}/activities`, formData, { timeout: 120000 })
+  },
+  // 导入商品数据（Excel文件）
+  importProducts: (shopId: number, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/import/shops/${shopId}/products`, formData, { timeout: 120000 })
+  },
+  // 从在线表格导入订单数据
+  importOrdersFromUrl: (shopId: number, url: string, password?: string) => 
+    api.post(`/import/shops/${shopId}/orders/from-url`, { url, password }, { timeout: 120000 }),
+  // 从在线表格导入活动数据
+  importActivitiesFromUrl: (shopId: number, url: string, password?: string) => 
+    api.post(`/import/shops/${shopId}/activities/from-url`, { url, password }, { timeout: 120000 }),
+  // 从在线表格导入商品数据
+  importProductsFromUrl: (shopId: number, url: string, password?: string) => 
+    api.post(`/import/shops/${shopId}/products/from-url`, { url, password }, { timeout: 120000 }),
+  // 获取导入历史
+  getImportHistory: (shopId: number, params?: { skip?: number; limit?: number; import_type?: string }) =>
+    api.get(`/import/shops/${shopId}/history`, { params }),
+  // 获取导入详情
+  getImportDetail: (shopId: number, importId: number) =>
+    api.get(`/import/shops/${shopId}/history/${importId}`),
 }
 
 export default api
