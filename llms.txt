@@ -1,0 +1,399 @@
+# Temu-Omni 项目说明文档
+
+> 用于 LLM 上下文的项目概览文档
+> 最后更新: 2025-10-31
+
+## 项目概述
+
+Temu-Omni 是一个 Temu 店铺管理系统，用于管理商品、订单、数据分析等。
+
+### 技术栈
+
+**后端 (Python)**
+- FastAPI - Web 框架
+- SQLAlchemy - ORM
+- Alembic - 数据库迁移
+- Pandas - 数据处理
+- PostgreSQL - 生产数据库
+- SQLite - 开发数据库
+
+**前端 (React + TypeScript)**
+- React 18
+- TypeScript
+- Ant Design - UI 组件库
+- React Query - 数据获取
+- ECharts - 数据可视化
+- Vite - 构建工具
+
+**部署**
+- Docker + Docker Compose
+- Nginx (反向代理)
+
+## 目录结构
+
+```
+temu-Omni/
+├── backend/               # 后端服务
+│   ├── app/
+│   │   ├── api/          # API 路由
+│   │   │   ├── products.py      # 商品管理
+│   │   │   ├── shops.py         # 店铺管理
+│   │   │   ├── orders.py        # 订单管理
+│   │   │   ├── analytics.py     # 数据分析
+│   │   │   ├── sync.py          # 数据同步
+│   │   │   └── import_export.py # 导入导出
+│   │   ├── models/       # 数据模型
+│   │   │   ├── shop.py          # 店铺模型
+│   │   │   ├── product.py       # 商品模型
+│   │   │   ├── order.py         # 订单模型
+│   │   │   ├── activity.py      # 活动模型
+│   │   │   └── import_history.py # 导入历史
+│   │   ├── schemas/      # Pydantic 模式
+│   │   ├── services/     # 业务逻辑
+│   │   │   ├── excel_import_service.py  # Excel导入
+│   │   │   ├── feishu_service.py        # 飞书接口
+│   │   │   └── sync_service.py          # 同步服务
+│   │   └── core/         # 核心配置
+│   ├── alembic/          # 数据库迁移
+│   └── scripts/          # 工具脚本
+├── frontend/             # 前端应用
+│   └── src/
+│       ├── pages/        # 页面组件
+│       ├── components/   # 公共组件
+│       └── services/     # API 服务
+├── docs/                 # 文档
+└── docker-compose.yml    # Docker 配置
+
+```
+
+## 核心功能模块
+
+### 1. 店铺管理
+- 店铺 CRUD
+- 店铺默认负责人设置
+- API 配置管理
+- 数据同步设置
+
+### 2. 商品管理
+- 商品列表展示
+- Excel/飞书表格导入
+- 商品负责人管理（可单独编辑）
+- 成本录入
+- 筛选：店铺、状态、负责人、类目、关键词
+
+### 3. 订单管理
+- 订单列表
+- 订单统计
+- 利润计算
+
+### 4. 数据分析
+- GMV 表格
+- SKU 销量排行
+- 爆单榜
+- 负责人业绩
+
+### 5. 导入导出
+- Excel 导入商品/订单
+- 飞书表格导入
+- 导入历史记录
+
+## 数据库模型
+
+### Shop (店铺)
+```python
+- id: int (主键)
+- shop_id: str (Temu店铺ID)
+- shop_name: str (店铺名称)
+- region: Enum (us/eu/global)
+- entity: str (经营主体)
+- default_manager: str (默认负责人) ⭐
+- environment: Enum (sandbox/production)
+- app_key, app_secret, access_token (API凭证)
+- is_active: bool
+```
+
+### Product (商品)
+```python
+- id: int (主键)
+- shop_id: int (外键 -> Shop)
+- product_id: str (Temu商品ID/SKU ID)
+- product_name: str (商品名称)
+- sku: str (SKU货号)
+- current_price: Decimal (申报价格)
+- currency: str (货币，默认CNY)
+- category: str (类目)
+- manager: str (负责人) ⭐
+- skc_id: str (SKC ID)
+- price_status: str (申报价格状态)
+- is_active: bool (状态：已发布/未发布)
+- description: Text (描述，存储SPU ID)
+```
+
+### Order (订单)
+```python
+- id: int
+- shop_id: int (外键)
+- product_id: int (外键)
+- order_sn: str (订单编号)
+- product_name, product_sku
+- unit_price, total_price, currency
+- unit_cost, total_cost, profit
+- status: Enum (PENDING/PAID/SHIPPED/DELIVERED/CANCELLED/REFUNDED)
+- order_time, payment_time, shipping_time
+```
+
+### ImportHistory (导入历史)
+```python
+- id: int
+- shop_id: int
+- import_type: Enum (PRODUCT/ORDER/ACTIVITY)
+- source_type: Enum (EXCEL/FEISHU/API)
+- status: Enum (PROCESSING/SUCCESS/FAILED/PARTIAL)
+- total_rows, success_rows, failed_rows
+- file_name, file_url
+```
+
+## 关键业务逻辑
+
+### 商品负责人逻辑 ⭐⭐⭐
+**重要规则：**
+1. 商品导入时，如果Excel中没有"负责人"列或为空，自动使用店铺的 `default_manager`
+2. 前端显示时，如果商品没有负责人，显示店铺的 `default_manager`
+3. 支持在商品列表页面单独修改某个商品的负责人
+4. 修改店铺负责人不会自动更新已存在商品的负责人
+
+**实现位置：**
+- 导入逻辑: `backend/app/services/excel_import_service.py` (行424-426, 499-501)
+- API逻辑: `backend/app/api/products.py` (行54-57)
+- 前端编辑: `frontend/src/pages/ProductList.tsx` (行116-156)
+
+### 商品状态映射
+```python
+# Excel "状态" 列 -> Product.is_active
+"已发布" | "已发布到站点" | 包含"已发布" -> True
+"未发布" | "价格申报中" | "已下架" -> False
+```
+
+### 申报价格逻辑
+- 申报价格单位固定为 **RMB (CNY)**
+- 前端显示时统一显示 "RMB"
+- 申报价格状态直接从Excel导入，不自动转换
+
+### 类目显示
+- 只显示最后一级类目（如：`玩具与游戏 > 毛绒布艺 > 毛绒公仔` 只显示 `毛绒公仔`）
+- 鼠标悬停显示完整类目路径
+
+## API 端点
+
+### 店铺相关
+```
+GET    /api/shops/                      # 获取店铺列表
+GET    /api/shops/{id}                  # 获取店铺详情
+POST   /api/shops/                      # 创建店铺
+PUT    /api/shops/{id}                  # 更新店铺
+DELETE /api/shops/{id}                  # 删除店铺
+POST   /api/shops/{id}/sync-manager     # 同步负责人到商品 ⭐
+```
+
+### 商品相关
+```
+GET    /api/products/                   # 获取商品列表（支持筛选）
+GET    /api/products/{id}               # 获取商品详情
+POST   /api/products/                   # 创建商品
+PUT    /api/products/{id}               # 更新商品（包括负责人）⭐
+DELETE /api/products/{id}               # 删除商品
+POST   /api/products/costs/             # 录入成本
+```
+
+### 导入相关
+```
+POST   /api/import/shops/{id}/products/excel    # Excel导入商品
+POST   /api/import/shops/{id}/products/feishu   # 飞书导入商品
+POST   /api/import/shops/{id}/orders/excel      # Excel导入订单
+GET    /api/import/history                      # 导入历史
+```
+
+### 分析相关
+```
+GET    /api/analytics/gmv-table                 # GMV表格
+GET    /api/analytics/sku-sales                 # SKU销量
+GET    /api/analytics/hot-seller-ranking        # 爆单榜
+GET    /api/analytics/manager-sku-details       # 负责人SKU详情
+```
+
+## 开发环境
+
+### 启动后端（Docker）
+```bash
+cd /Users/vanky/code/temu-Omni
+docker compose up -d
+docker compose logs -f backend
+docker compose restart backend
+```
+
+### 启动前端
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### 数据库操作
+```bash
+# 进入容器
+docker exec -it temu-omni-backend bash
+
+# 运行迁移
+alembic upgrade head
+
+# 创建迁移
+alembic revision --autogenerate -m "description"
+
+# 修复缺失字段
+python3 scripts/fix_missing_product_fields.py
+```
+
+### 环境变量
+```
+DATABASE_URL=postgresql://user:password@db:5432/temu_omni
+# 或本地开发
+DATABASE_URL=sqlite:///./temu_omni.db
+```
+
+## 最近重要修改 (2025-10-31)
+
+### 1. 商品负责人逻辑优化 ⭐⭐⭐
+**问题：** 导入商品时负责人为空，修改店铺负责人后商品不更新
+
+**解决方案：**
+1. 导入时自动使用店铺默认负责人
+2. API返回时自动填充负责人
+3. 前端支持单独编辑
+4. 提供批量同步API
+
+**修改文件：**
+- `backend/app/services/excel_import_service.py`
+- `backend/app/api/products.py`
+- `backend/app/api/shops.py`
+- `frontend/src/pages/ProductList.tsx`
+
+### 2. 商品状态和申报价格状态修复
+**修改：**
+- 支持多种状态值：`已发布到站点`、`价格申报中` 等
+- 申报价格状态直接从Excel导入，不自动设置
+- 申报价格单位统一为 RMB
+
+**修改文件：**
+- `backend/app/services/excel_import_service.py`
+- `frontend/src/pages/ProductList.tsx`
+
+### 3. 类目显示优化
+**修改：**
+- 只显示最后一级类目
+- 悬停显示完整路径
+- 字体缩小到 12px，列宽 120px
+
+**修改文件：**
+- `frontend/src/pages/ProductList.tsx`
+
+### 4. 新增字段
+- `Product.skc_id`: SKC ID
+- `Product.price_status`: 申报价格状态
+
+**迁移文件：**
+- `backend/alembic/versions/add_skc_id_and_price_status_to_products.py`
+
+## 常见问题
+
+### Q1: 导入失败，提示缺少字段
+**A:** 运行数据库修复脚本
+```bash
+docker exec -it temu-omni-backend python3 scripts/fix_missing_product_fields.py
+```
+
+### Q2: 修改店铺负责人后商品没变化
+**A:** 这是预期行为。需要：
+1. 重新导入商品（会自动使用新负责人）
+2. 或调用批量同步API：
+```bash
+curl -X POST "http://localhost:8000/api/shops/{id}/sync-manager?update_all=false"
+```
+
+### Q3: 前端修改负责人不生效
+**A:** 检查：
+1. 后端API是否正常
+2. 浏览器控制台是否有错误
+3. 刷新页面查看是否保存
+
+### Q4: Docker 容器无法启动
+**A:** 检查日志：
+```bash
+docker compose logs backend
+docker compose logs db
+```
+
+## 调试技巧
+
+### 后端日志
+```bash
+docker compose logs -f backend
+```
+
+### 数据库查询
+```bash
+docker exec -it temu-omni-db psql -U temu_user -d temu_omni
+\dt  # 查看表
+SELECT * FROM products LIMIT 10;
+```
+
+### 清除数据重新导入
+```bash
+# 进入数据库
+docker exec -it temu-omni-db psql -U temu_user -d temu_omni
+# 删除商品数据
+DELETE FROM products;
+# 重新导入
+```
+
+## 飞书集成
+
+### 飞书表格导入
+支持通过飞书表格URL导入商品数据
+
+**使用方式：**
+1. 前端：导入数据 -> 选择"飞书表格"
+2. 输入飞书表格分享链接
+3. 系统自动读取数据并导入
+
+**实现：**
+- `backend/app/services/feishu_service.py`
+- 使用 `FEISHU_APP_ID` 和 `FEISHU_APP_SECRET` 环境变量
+
+## 代码规范
+
+### Python
+- 使用 Black 格式化
+- 类型注解
+- 文档字符串
+
+### TypeScript/React
+- 函数式组件 + Hooks
+- React Query 管理服务端状态
+- Ant Design 组件
+
+## 待办事项
+
+- [ ] 完善单元测试
+- [ ] 添加商品批量编辑功能
+- [ ] 优化大数据量查询性能
+- [ ] 添加数据导出功能
+- [ ] 完善错误处理和日志
+
+## 联系方式
+
+项目路径: `/Users/vanky/code/temu-Omni`
+
+---
+
+**注意：** 本文档是为 LLM 提供项目上下文使用，应保持及时更新。
+

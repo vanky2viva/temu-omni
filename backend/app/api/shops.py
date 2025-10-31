@@ -119,9 +119,17 @@ def authorize_shop(
 def update_shop(
     shop_id: int,
     shop_update: ShopUpdate,
+    sync_to_products: bool = False,
     db: Session = Depends(get_db)
 ):
-    """更新店铺信息"""
+    """
+    更新店铺信息
+    
+    Args:
+        shop_id: 店铺ID
+        shop_update: 更新数据
+        sync_to_products: 是否同步默认负责人到该店铺的所有商品
+    """
     shop = db.query(Shop).filter(Shop.id == shop_id).first()
     if not shop:
         raise HTTPException(
@@ -130,12 +138,78 @@ def update_shop(
         )
     
     update_data = shop_update.model_dump(exclude_unset=True)
+    
+    # 检查是否更新了 default_manager
+    default_manager_changed = 'default_manager' in update_data
+    new_manager = update_data.get('default_manager') if default_manager_changed else None
+    
     for field, value in update_data.items():
         setattr(shop, field, value)
     
     db.commit()
+    
+    # 如果需要同步负责人到商品
+    if sync_to_products and default_manager_changed and new_manager:
+        from app.models.product import Product
+        # 更新该店铺下所有没有负责人的商品
+        db.query(Product).filter(
+            Product.shop_id == shop_id,
+            (Product.manager == None) | (Product.manager == '')
+        ).update({Product.manager: new_manager})
+        db.commit()
+    
     db.refresh(shop)
     return shop
+
+
+@router.post("/{shop_id}/sync-manager")
+def sync_manager_to_products(
+    shop_id: int,
+    update_all: bool = False,
+    db: Session = Depends(get_db)
+):
+    """
+    同步店铺负责人到商品
+    
+    Args:
+        shop_id: 店铺ID
+        update_all: True=更新所有商品，False=只更新没有负责人的商品
+    """
+    shop = db.query(Shop).filter(Shop.id == shop_id).first()
+    if not shop:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="店铺不存在"
+        )
+    
+    if not shop.default_manager:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="店铺未设置默认负责人"
+        )
+    
+    from app.models.product import Product
+    
+    if update_all:
+        # 更新该店铺下的所有商品
+        result = db.query(Product).filter(
+            Product.shop_id == shop_id
+        ).update({Product.manager: shop.default_manager})
+    else:
+        # 只更新没有负责人的商品
+        result = db.query(Product).filter(
+            Product.shop_id == shop_id,
+            (Product.manager == None) | (Product.manager == '')
+        ).update({Product.manager: shop.default_manager})
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"已更新 {result} 个商品的负责人",
+        "updated_count": result,
+        "manager": shop.default_manager
+    }
 
 
 @router.delete("/{shop_id}", status_code=status.HTTP_204_NO_CONTENT)

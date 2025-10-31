@@ -34,6 +34,8 @@ class Product(Base):
     image_url = Column(String(500), comment="商品图片URL")
     category = Column(String(200), comment="商品分类")
     manager = Column(String(100), comment="负责人")
+    skc_id = Column(String(100), comment="SKC ID")
+    price_status = Column(String(50), comment="申报价格状态")
     
     # 时间戳
     created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")

@@ -11,6 +11,7 @@ import {
   Select,
   message,
   Tag,
+  Tooltip,
 } from 'antd'
 import { PlusOutlined, DollarOutlined, SearchOutlined } from '@ant-design/icons'
 import { productApi, shopApi } from '@/services/api'
@@ -63,6 +64,24 @@ function ProductList() {
     },
   })
 
+  // 更新商品负责人
+  const updateManagerMutation = useMutation({
+    mutationFn: ({ id, manager }: { id: number; manager: string }) =>
+      productApi.updateProduct(id, { manager }),
+    onSuccess: () => {
+      message.success('负责人更新成功')
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+    onError: () => {
+      message.error('负责人更新失败')
+    },
+  })
+
+  const handleUpdateManager = (productId: number, newManager: string) => {
+    if (newManager === '-' || newManager === '__custom__') return
+    updateManagerMutation.mutate({ id: productId, manager: newManager })
+  }
+
   const handleOpenCostModal = (product: any) => {
     setSelectedProduct(product)
     costForm.setFieldsValue({
@@ -109,19 +128,78 @@ function ProductList() {
       title: '商品名称',
       dataIndex: 'product_name',
       key: 'product_name',
+      width: 200,
       ellipsis: true,
     },
     {
       title: '负责人',
       dataIndex: 'manager',
       key: 'manager',
-      width: 140,
+      width: 120,
+      render: (manager: string, record: any) => (
+        <Select
+          value={manager || '-'}
+          style={{ width: '100%' }}
+          size="small"
+          bordered={false}
+          dropdownMatchSelectWidth={false}
+          onChange={(value) => handleUpdateManager(record.id, value)}
+          options={[
+            ...managerOptions.map(m => ({ label: m, value: m })),
+            { label: '+ 自定义', value: '__custom__' }
+          ]}
+          onSelect={(value) => {
+            if (value === '__custom__') {
+              Modal.confirm({
+                title: '输入新的负责人',
+                content: (
+                  <Input 
+                    id="custom-manager-input" 
+                    placeholder="请输入负责人姓名"
+                    autoFocus
+                  />
+                ),
+                onOk: () => {
+                  const input = document.getElementById('custom-manager-input') as HTMLInputElement
+                  const newManager = input?.value?.trim()
+                  if (newManager) {
+                    handleUpdateManager(record.id, newManager)
+                  }
+                }
+              })
+            }
+          }}
+        />
+      ),
     },
     {
       title: '类目',
       dataIndex: 'category',
       key: 'category',
-      width: 140,
+      width: 120,
+      render: (category: string) => {
+        if (!category || category === '-') return '-'
+        
+        // 提取最后一级类目（用 > 分隔）
+        const parts = category.split('>').map(p => p.trim())
+        const lastLevel = parts[parts.length - 1] || category
+        
+        // 如果有多个级别，使用 Tooltip 显示完整信息
+        if (parts.length > 1) {
+          return (
+            <Tooltip title={category}>
+              <span style={{ fontSize: '12px', lineHeight: '1.4', cursor: 'help' }}>
+                {lastLevel}
+              </span>
+            </Tooltip>
+          )
+        }
+        
+        // 如果只有一个级别，直接显示
+        return (
+          <span style={{ fontSize: '12px', lineHeight: '1.4' }}>{category}</span>
+        )
+      },
     },
     {
       title: '经营站点',
@@ -138,14 +216,24 @@ function ProductList() {
       dataIndex: 'spu_id',
       key: 'spu_id',
       width: 140,
-      render: () => '-',
+      render: (_: any, record: any) => {
+        // 从description中提取SPU ID
+        if (record.description) {
+          // 支持多种格式：SPU: xxx 或 SPU:xxx
+          const match = record.description.match(/SPU:\s*([^\s\n]+)/i)
+          if (match && match[1]) return match[1]
+        }
+        // 如果直接有spu_id字段，也支持
+        if (record.spu_id) return record.spu_id
+        return '-'
+      },
     },
     {
       title: 'SKC ID',
       dataIndex: 'skc_id',
       key: 'skc_id',
       width: 140,
-      render: () => '-',
+      render: (skc_id: string) => skc_id || '-',
     },
     {
       title: 'SKU ID',
@@ -158,21 +246,27 @@ function ProductList() {
       dataIndex: 'sku',
       key: 'sku',
       width: 150,
+      render: (sku: string) => sku || '-',
     },
     {
       title: '申报价格',
       dataIndex: 'current_price',
       key: 'current_price',
       width: 120,
-      render: (price: number, record: any) =>
-        price ? `${price} ${record.currency}` : '-',
+      render: (price: number, record: any) => {
+        if (!price) return '-'
+        // 申报价格单位是人民币，统一显示为RMB
+        // 如果是CNY或RMB，显示为人民币，否则默认显示为RMB（因为申报价格都是人民币）
+        const currency = (record.currency === 'CNY' || record.currency === 'RMB') ? 'RMB' : 'RMB'
+        return `${price} ${currency}`
+      },
     },
     {
       title: '申报价格状态',
       dataIndex: 'price_status',
       key: 'price_status',
       width: 140,
-      render: () => '-',
+      render: (price_status: string) => price_status || '-',
     },
     {
       title: '状态',
@@ -267,7 +361,7 @@ function ProductList() {
         dataSource={products}
         rowKey="id"
         loading={isLoading}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1400 }}
       />
 
       <Modal

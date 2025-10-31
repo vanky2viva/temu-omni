@@ -366,6 +366,39 @@ class ExcelImportService:
         
         logger.info(f"开始导入商品数据 - 店铺: {self.shop.shop_name}, 总行数: {len(df)}")
         
+        # 打印所有列名以便调试
+        logger.info(f"Excel列名: {list(df.columns)}")
+        
+        # 辅助函数：尝试多个可能的列名获取值
+        def get_column_value(row, possible_names, default=''):
+            """尝试多个可能的列名获取值"""
+            for name in possible_names:
+                if name in row and pd.notna(row.get(name)) and str(row.get(name)).strip():
+                    return str(row.get(name)).strip()
+            return default
+        
+        # 检查必要的字段是否存在（提前检测，避免事务失败）
+        try:
+            # 尝试查询一个产品来检测表结构
+            test_query = self.db.query(Product).limit(1).first()
+            # 如果查询成功但表结构缺少字段，尝试访问字段来触发错误
+            if test_query:
+                _ = getattr(test_query, 'skc_id', None)
+                _ = getattr(test_query, 'price_status', None)
+        except Exception as struct_error:
+            error_msg = str(struct_error)
+            if 'skc_id' in error_msg or 'price_status' in error_msg or 'no such column' in error_msg.lower():
+                self.db.rollback()
+                logger.error("数据库表缺少必要的字段，请先运行迁移或修复脚本")
+                logger.error("运行: python3 backend/scripts/fix_missing_product_fields.py")
+                logger.error("或运行: alembic upgrade head")
+                raise Exception(
+                    "数据库表缺少字段 skc_id 或 price_status。"
+                    "请先运行数据库迁移：alembic upgrade head"
+                    "或运行修复脚本：python3 backend/scripts/fix_missing_product_fields.py"
+                ) from struct_error
+            raise
+        
         # 处理每一行
         for index, row in df.iterrows():
             try:
@@ -384,28 +417,148 @@ class ExcelImportService:
                 ).first()
                 
                 if existing:
-                    # 更新价格信息
+                    # 更新商品信息
+                    sku_number = str(row.get('SKU货号', '')).strip()
+                    category = str(row.get('类目', '')).strip()
+                    # 负责人：Excel中没有该列或为空时，使用店铺默认负责人
+                    manager = str(row.get('负责人', '')).strip()
+                    if not manager or manager.lower() in ['nan', 'none', '']:
+                        manager = self.shop.default_manager or ''
+                    skc_id = str(row.get('SKC ID', '')).strip()
+                    # 尝试多个可能的列名来获取申报价格状态
+                    price_status_candidates = [
+                        '申报价格状态', '申报价格状态 ', ' 申报价格状态', 
+                        '价格状态', '申报状态', '价格状态 ', '申报状态 ',
+                        '申报价格 状态', '申报 价格状态'
+                    ]
+                    price_status = get_column_value(row, price_status_candidates, '')
+                    
+                    # 如果为空，尝试从所有包含"状态"的列获取
+                    if not price_status:
+                        status_cols = [col for col in df.columns if '状态' in str(col) and '申报' in str(col)]
+                        for status_col in status_cols:
+                            if status_col in row and pd.notna(row[status_col]):
+                                val = str(row[status_col]).strip()
+                                if val and val.lower() not in ['nan', 'none', '']:
+                                    price_status = val
+                                    logger.debug(f"行 {index + 1}: 从列 '{status_col}' 获取申报价格状态 = {price_status}")
+                                    break
+                    
+                    # 处理空值和'nan'字符串
+                    if sku_number and sku_number.lower() not in ['nan', 'none', '']:
+                        existing.sku = sku_number
+                    if category and category.lower() not in ['nan', 'none', '']:
+                        existing.category = category
+                    if manager and manager.lower() not in ['nan', 'none', '']:
+                        existing.manager = manager
+                    elif not existing.manager:
+                        # 如果没有负责人且店铺有默认负责人，使用默认负责人
+                        default_manager = getattr(self.shop, 'default_manager', None)
+                        if default_manager:
+                            existing.manager = default_manager
+                    
+                    # 更新SKC ID
+                    if skc_id and skc_id.lower() not in ['nan', 'none', '']:
+                        existing.skc_id = skc_id
+                    
+                    # 更新申报价格状态（直接从表格导入，不自动设置）
+                    if price_status and price_status.lower() not in ['nan', 'none', '']:
+                        existing.price_status = price_status
+                    
+                    # 更新状态（支持多种状态值）
+                    status_str = str(row.get('状态', '')).strip()
+                    is_published = (
+                        status_str == '已发布' or 
+                        status_str == '已发布到站点' or
+                        '已发布' in status_str
+                    )
+                    existing.is_active = is_published
+                    
+                    # 更新价格和货币单位（申报价格单位是人民币）
                     if price > 0:
                         existing.current_price = price
-                        import_record.success_rows += 1
-                        success_items.append({
-                            'row': index + 1,
-                            'name': product_name,
-                            'action': 'updated'
-                        })
-                    else:
-                        import_record.skipped_rows += 1
+                    existing.currency = 'CNY'  # 申报价格单位是人民币，无论价格是否大于0
+                    
+                    # 更新SPU ID（如果存在）
+                    if spu_id and spu_id.lower() not in ['nan', 'none', '']:
+                        # 更新description中的SPU信息
+                        if spu_id:
+                            existing.description = f"SPU: {spu_id}"
+                    
+                    import_record.success_rows += 1
+                    success_items.append({
+                        'row': index + 1,
+                        'name': product_name,
+                        'action': 'updated'
+                    })
                 else:
                     # 创建新商品
+                    sku_number = str(row.get('SKU货号', '')).strip()
+                    category = str(row.get('类目', '')).strip()
+                    # 负责人：Excel中没有该列或为空时，使用店铺默认负责人
+                    manager = str(row.get('负责人', '')).strip()
+                    if not manager or manager.lower() in ['nan', 'none', '']:
+                        manager = self.shop.default_manager or ''
+                    skc_id = str(row.get('SKC ID', '')).strip()
+                    # 尝试多个可能的列名来获取申报价格状态
+                    price_status_candidates = [
+                        '申报价格状态', '申报价格状态 ', ' 申报价格状态', 
+                        '价格状态', '申报状态', '价格状态 ', '申报状态 ',
+                        '申报价格 状态', '申报 价格状态'
+                    ]
+                    price_status = get_column_value(row, price_status_candidates, '')
+                    
+                    # 如果为空，尝试从所有包含"状态"的列获取
+                    if not price_status:
+                        status_cols = [col for col in df.columns if '状态' in str(col) and '申报' in str(col)]
+                        for status_col in status_cols:
+                            if status_col in row and pd.notna(row[status_col]):
+                                val = str(row[status_col]).strip()
+                                if val and val.lower() not in ['nan', 'none', '']:
+                                    price_status = val
+                                    logger.debug(f"行 {index + 1}: 从列 '{status_col}' 获取申报价格状态 = {price_status}")
+                                    break
+                    
+                    # 处理空值和'nan'字符串
+                    if sku_number.lower() in ['nan', 'none', '']:
+                        sku_number = None
+                    if category.lower() in ['nan', 'none', '']:
+                        category = None
+                    if manager.lower() in ['nan', 'none', '']:
+                        manager = getattr(self.shop, 'default_manager', None)
+                    if skc_id.lower() in ['nan', 'none', '']:
+                        skc_id = None
+                    if price_status.lower() in ['nan', 'none', '']:
+                        price_status = None
+                    
+                    # 处理SPU ID
+                    description = None
+                    if spu_id and spu_id.lower() not in ['nan', 'none', '']:
+                        description = f"SPU: {spu_id}"
+                    
+                    # 判断状态（支持多种状态值）
+                    status_str = str(row.get('状态', '')).strip()
+                    # 已发布的状态值包括：已发布、已发布到站点
+                    # 未发布的状态值包括：未发布、价格申报中、已下架
+                    is_published = (
+                        status_str == '已发布' or 
+                        status_str == '已发布到站点' or
+                        '已发布' in status_str
+                    )
+                    
                     product = Product(
                         shop_id=self.shop.id,
                         product_id=sku_id,
                         product_name=product_name,
+                        sku=sku_number,  # 设置SKU货号
                         current_price=price if price > 0 else 0,
-                        category=str(row.get('类目', '')),
-                        is_active=(row.get('状态') == '价格申报中'),
-                        description=f"SPU: {spu_id}\nSKU货号: {row.get('SKU货号', '')}",
-                        manager=getattr(self.shop, 'default_manager', None),
+                        currency='CNY',  # 申报价格单位是人民币
+                        category=category,
+                        is_active=is_published,
+                        description=description,
+                        manager=manager,
+                        skc_id=skc_id,
+                        price_status=price_status,  # 直接使用从表格导入的值
                         created_at=datetime.utcnow()
                     )
                     self.db.add(product)
@@ -424,9 +577,19 @@ class ExcelImportService:
                     'data': row.to_dict() if hasattr(row, 'to_dict') else str(row)
                 })
                 logger.error(f"导入商品失败 - 行{index + 1}: {e}")
+                # 如果事务失败，回滚并尝试继续
+                try:
+                    self.db.rollback()
+                except:
+                    pass
         
         # 提交所有更改
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"提交商品数据失败: {e}")
+            raise
         
         # 更新导入记录状态
         import_record.completed_at = datetime.utcnow()

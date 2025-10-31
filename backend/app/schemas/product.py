@@ -62,6 +62,10 @@ class ProductResponse(ProductBase):
     stock_quantity: int
     is_active: bool
     description: Optional[str] = None
+    manager: Optional[str] = None
+    category: Optional[str] = None
+    skc_id: Optional[str] = None
+    price_status: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     

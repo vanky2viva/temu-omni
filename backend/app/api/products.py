@@ -21,6 +21,9 @@ def get_products(
     limit: int = 100,
     shop_id: Optional[int] = None,
     is_active: Optional[bool] = None,
+    manager: Optional[str] = None,
+    category: Optional[str] = None,
+    q: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """获取商品列表"""
@@ -32,7 +35,27 @@ def get_products(
     if is_active is not None:
         query = query.filter(Product.is_active == is_active)
     
+    if manager:
+        query = query.filter(Product.manager == manager)
+    
+    if category:
+        query = query.filter(Product.category == category)
+    
+    if q:
+        search_term = f"%{q}%"
+        query = query.filter(
+            (Product.product_name.like(search_term)) |
+            (Product.sku.like(search_term)) |
+            (Product.product_id.like(search_term))
+        )
+    
     products = query.offset(skip).limit(limit).all()
+    
+    # 为每个商品填充负责人（如果商品没有负责人，使用店铺的默认负责人）
+    for product in products:
+        if not product.manager and product.shop:
+            product.manager = product.shop.default_manager or ''
+    
     return products
 
 

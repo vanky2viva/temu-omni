@@ -5,11 +5,15 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 
 # 创建数据库引擎
+# 添加echo=False避免日志过多，设置pool_pre_ping确保连接有效性
+# 使用pool_reset_on_return='commit'确保每次返回连接时重置
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
+    pool_reset_on_return='commit',
+    echo=False,
 )
 
 # 创建会话工厂
