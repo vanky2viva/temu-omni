@@ -85,6 +85,12 @@ export const statisticsApi = {
   getTrend: (params?: any) => api.get('/statistics/trend/', { params }),
 }
 
+// 物流API
+export const logisticsApi = {
+  getDeliveryHeatmap: (params?: { shop_id?: number; start_date?: string; end_date?: string }) =>
+    api.get('/logistics/delivery-heatmap', { params }),
+}
+
 // 数据导入API
 export const importApi = {
   // 导入订单数据（Excel文件）
