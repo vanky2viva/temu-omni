@@ -687,15 +687,11 @@ class ExcelImportService:
                     errors.append({'row': index + 1, 'error': '缺少订单编号'})
                     continue
                 
-                # 检查重复
+                # 检查是否已存在，存在则更新
                 existing = self.db.query(Order).filter(
                     Order.shop_id == self.shop.id,
                     Order.order_sn == order_sn
                 ).first()
-                
-                if existing:
-                    import_record.skipped_rows += 1
-                    continue
                 
                 # 解析数据
                 product_name = str(row.get('商品名称', row.get('商品', '')))
@@ -711,34 +707,71 @@ class ExcelImportService:
                 status_str = str(row.get('订单状态', row.get('状态', 'PENDING')))
                 status = self._parse_order_status(status_str)
                 
-                # 创建订单
-                order = Order(
-                    shop_id=self.shop.id,
-                    order_sn=order_sn,
-                    product_name=product_name,
-                    product_sku=str(row.get('SKU', row.get('商品SKU', ''))),
-                    quantity=quantity,
-                    unit_price=unit_price,
-                    total_price=total_price if total_price > 0 else unit_price * quantity,
-                    currency=str(row.get('币种', row.get('货币', 'USD'))),
-                    status=status,
-                    order_time=order_time,
-                    payment_time=payment_time,
-                    customer_id=str(row.get('客户ID', row.get('买家ID', ''))),
-                    shipping_country=str(row.get('收货国家', row.get('国家', ''))),
-                    created_at=datetime.utcnow()
-                )
+                if existing:
+                    # 更新现有订单
+                    existing.product_name = product_name
+                    existing.product_sku = str(row.get('SKU', row.get('商品SKU', '')))
+                    existing.quantity = quantity
+                    existing.unit_price = unit_price
+                    existing.total_price = total_price if total_price > 0 else unit_price * quantity
+                    existing.currency = str(row.get('币种', row.get('货币', 'USD')))
+                    existing.status = status
+                    existing.order_time = order_time
+                    existing.payment_time = payment_time
+                    existing.shipping_time = self._parse_datetime(row.get('发货时间'))
+                    existing.delivery_time = self._parse_datetime(row.get('送达时间'))
+                    existing.customer_id = str(row.get('客户ID', row.get('买家ID', '')))
+                    existing.shipping_country = str(row.get('收货国家', row.get('国家', '')))
+                    existing.updated_at = datetime.utcnow()
+                    
+                    # 保存原始数据
+                    existing.raw_data = json.dumps(row.to_dict(), ensure_ascii=False, default=str)
+                    
+                    import_record.success_rows += 1
+                    success_items.append({'row': index + 1, 'order_sn': order_sn, 'action': 'updated'})
+                else:
+                    # 创建新订单
+                    order = Order(
+                        shop_id=self.shop.id,
+                        order_sn=order_sn,
+                        product_name=product_name,
+                        product_sku=str(row.get('SKU', row.get('商品SKU', ''))),
+                        quantity=quantity,
+                        unit_price=unit_price,
+                        total_price=total_price if total_price > 0 else unit_price * quantity,
+                        currency=str(row.get('币种', row.get('货币', 'USD'))),
+                        status=status,
+                        order_time=order_time,
+                        payment_time=payment_time,
+                        shipping_time=self._parse_datetime(row.get('发货时间')),
+                        delivery_time=self._parse_datetime(row.get('送达时间')),
+                        customer_id=str(row.get('客户ID', row.get('买家ID', ''))),
+                        shipping_country=str(row.get('收货国家', row.get('国家', ''))),
+                        raw_data=json.dumps(row.to_dict(), ensure_ascii=False, default=str),
+                        created_at=datetime.utcnow()
+                    )
+                    
+                    self.db.add(order)
+                    import_record.success_rows += 1
+                    success_items.append({'row': index + 1, 'order_sn': order_sn, 'action': 'created'})
                 
-                self.db.add(order)
-                import_record.success_rows += 1
-                success_items.append({'row': index + 1, 'order_sn': order_sn, 'amount': float(total_price)})
+                # 每处理一行就提交，避免批量提交时的冲突
+                try:
+                    self.db.commit()
+                except Exception as commit_error:
+                    logger.error(f"提交订单失败 - 行{index + 1}, 订单号{order_sn}: {commit_error}")
+                    self.db.rollback()
+                    import_record.failed_rows += 1
+                    import_record.success_rows -= 1  # 回退成功计数
+                    errors.append({'row': index + 1, 'order_sn': order_sn, 'error': str(commit_error)})
                 
             except Exception as e:
                 import_record.failed_rows += 1
                 errors.append({'row': index + 1, 'error': str(e)})
                 logger.error(f"导入订单失败 - 行{index + 1}: {e}")
+                self.db.rollback()  # 确保回滚
         
-        self.db.commit()
+        # 不需要再次批量提交，因为每行都已经单独提交
         
         import_record.completed_at = datetime.utcnow()
         if import_record.failed_rows == 0:
