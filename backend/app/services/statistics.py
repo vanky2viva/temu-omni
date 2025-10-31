@@ -50,8 +50,10 @@ class StatisticsService:
             filters.append(Order.status == status)
         
         # 执行统计查询
+        # 注意：订单数按订单号去重统计（一个订单号可能对应多条记录，每个订单号为一单）
+        # GMV、成本、利润按订单记录统计（每个记录都有对应的金额）
         result = db.query(
-            func.count(Order.id).label("total_orders"),
+            func.count(func.distinct(Order.order_sn)).label("total_orders"),  # 按订单号去重统计订单数
             func.sum(Order.total_price).label("total_gmv"),
             func.sum(Order.total_cost).label("total_cost"),
             func.sum(Order.profit).label("total_profit"),
@@ -113,9 +115,10 @@ class StatisticsService:
             filters.append(Order.shop_id.in_(shop_ids))
         
         # 按日期分组统计
+        # 注意：订单数按订单号去重统计（一个订单号可能对应多条记录，每个订单号为一单）
         results = db.query(
             func.date(Order.order_time).label("date"),
-            func.count(Order.id).label("orders"),
+            func.count(func.distinct(Order.order_sn)).label("orders"),  # 按订单号去重统计订单数
             func.sum(Order.total_price).label("gmv"),
             func.sum(Order.total_cost).label("cost"),
             func.sum(Order.profit).label("profit"),

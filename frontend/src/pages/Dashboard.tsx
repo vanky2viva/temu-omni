@@ -77,7 +77,7 @@ function Dashboard() {
     },
     xAxis: {
       type: 'category',
-      data: dailyData?.map((item: any) => dayjs(item.date).format('MM-DD')) || [],
+      data: salesOverview?.daily_trends?.map((item: any) => dayjs(item.date).format('MM-DD')) || [],
       axisLine: {
         lineStyle: {
           color: '#30363d',
@@ -139,7 +139,7 @@ function Dashboard() {
         name: '每日订单量',
         type: 'bar',
         yAxisIndex: 0,
-        data: dailyData?.map((item: any) => item.orders) || [],
+        data: salesOverview?.daily_trends?.map((item: any) => item.orders) || [],
         itemStyle: { 
           color: '#faad14',
         },
@@ -151,7 +151,7 @@ function Dashboard() {
         smooth: true,
         data: (() => {
           let cumulative = 0
-          return dailyData?.map((item: any) => {
+          return salesOverview?.daily_trends?.map((item: any) => {
             cumulative += item.orders || 0
             return cumulative
           }) || []
@@ -319,7 +319,7 @@ function Dashboard() {
     })(),
   }
 
-  if (overviewLoading) {
+  if (overviewLoading || salesLoading) {
     return <Spin size="large" />
   }
 
@@ -341,7 +341,7 @@ function Dashboard() {
           <Card className="stat-card" bordered={false}>
             <Statistic
               title="总订单量"
-              value={overview?.total_orders || 0}
+              value={salesOverview?.total_orders || 0}
               prefix={<ShoppingOutlined />}
             />
           </Card>
@@ -390,7 +390,7 @@ function Dashboard() {
       {/* 趋势图表 */}
       <Row gutter={[24, 24]}>
         <Col span={24}>
-          <Card className="chart-card" loading={dailyLoading} bordered={false}>
+          <Card className="chart-card" loading={salesLoading} bordered={false}>
             <ReactECharts option={trendChartOption} style={{ height: 400 }} />
           </Card>
         </Col>
