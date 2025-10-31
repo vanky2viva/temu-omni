@@ -53,6 +53,9 @@ class OrderResponse(OrderBase):
     delivery_time: Optional[datetime] = None
     customer_id: Optional[str] = None
     shipping_country: Optional[str] = None
+    shipping_city: Optional[str] = None
+    shipping_province: Optional[str] = None
+    shipping_postal_code: Optional[str] = None
     notes: Optional[str] = None
     raw_data: Optional[str] = None
     created_at: datetime

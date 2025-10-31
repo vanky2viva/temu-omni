@@ -39,6 +39,11 @@ const menuItems = [
     label: '商品管理',
   },
   {
+    key: '/statistics',
+    icon: <BarChartOutlined />,
+    label: '销量统计',
+  },
+  {
     key: '/logistics',
     icon: <CarOutlined />,
     label: '物流管理',
@@ -47,11 +52,6 @@ const menuItems = [
     key: '/finance',
     icon: <WalletOutlined />,
     label: '财务管理',
-  },
-  {
-    key: '/statistics',
-    icon: <BarChartOutlined />,
-    label: '销量统计',
   },
   {
     key: '/gmv-table',

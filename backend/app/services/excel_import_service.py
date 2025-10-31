@@ -777,8 +777,16 @@ class ExcelImportService:
                     
                     existing.customer_id = self.get_column_value(row, ['客户ID', '买家ID', '用户ID'], '')
                     
-                    shipping_country = self.get_column_value(row, ['国家', '收货国家', '收货人国家'], '')
+                    # 提取地址信息
+                    shipping_country = self.get_column_value(row, ['国家', '收货国家', '收货人国家', 'Country'], '')
+                    shipping_city = self.get_column_value(row, ['城市', '收货城市', 'City'], '')
+                    shipping_province = self.get_column_value(row, ['省份', '州', '收货省份', '收货州', 'Province', 'State'], '')
+                    shipping_postal_code = self.get_column_value(row, ['邮编', '邮政编码', '收货邮编', 'Postal Code', 'Zip Code'], '')
+                    
                     existing.shipping_country = shipping_country
+                    existing.shipping_city = shipping_city if shipping_city else None
+                    existing.shipping_province = shipping_province if shipping_province else None
+                    existing.shipping_postal_code = shipping_postal_code if shipping_postal_code else None
                     existing.updated_at = datetime.utcnow()
                     
                     # 保存原始数据
@@ -806,7 +814,10 @@ class ExcelImportService:
                     shipping_time=self._parse_datetime(self.get_column_value(row, ['实际发货时间', '发货时间', '运送时间'], '')),
                     delivery_time=self._parse_datetime(self.get_column_value(row, ['送达时间', '交付时间'], '')),
                     customer_id=self.get_column_value(row, ['客户ID', '买家ID', '用户ID'], ''),
-                    shipping_country=self.get_column_value(row, ['国家', '收货国家', '收货人国家'], ''),
+                    shipping_country=self.get_column_value(row, ['国家', '收货国家', '收货人国家', 'Country'], ''),
+                    shipping_city=self.get_column_value(row, ['城市', '收货城市', 'City'], '') or None,
+                    shipping_province=self.get_column_value(row, ['省份', '州', '收货省份', '收货州', 'Province', 'State'], '') or None,
+                    shipping_postal_code=self.get_column_value(row, ['邮编', '邮政编码', '收货邮编', 'Postal Code', 'Zip Code'], '') or None,
                         raw_data=json.dumps(row.to_dict(), ensure_ascii=False, default=str),
                         created_at=datetime.utcnow()
                     )
