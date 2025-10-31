@@ -9,6 +9,7 @@ import {
 import ReactECharts from 'echarts-for-react'
 import { statisticsApi } from '@/services/api'
 import dayjs from 'dayjs'
+import axios from 'axios'
 
 function Dashboard() {
   // 获取总览数据
@@ -23,13 +24,16 @@ function Dashboard() {
     queryFn: () => statisticsApi.getDaily({ days: 30 }),
   })
 
-  // 获取店铺对比数据
-  const { data: shopComparison, isLoading: shopLoading } = useQuery({
-    queryKey: ['shopComparison'],
-    queryFn: () => statisticsApi.getShopComparison(),
+  // 获取销量总览数据
+  const { data: salesOverview, isLoading: salesLoading } = useQuery({
+    queryKey: ['sales-overview', 30],
+    queryFn: async () => {
+      const response = await axios.get('/api/analytics/sales-overview', { params: { days: 30 } })
+      return response.data
+    },
   })
 
-  // 趋势图配置
+  // 趋势图配置 - 每日订单量柱状图和总订单量曲线图
   const trendChartOption = {
     backgroundColor: 'transparent',
     title: {
@@ -58,7 +62,7 @@ function Dashboard() {
       },
     },
     legend: {
-      data: ['GMV', '利润', '订单量'],
+      data: ['每日订单量', '总订单量'],
       bottom: 0,
       textStyle: {
         fontSize: 12,
@@ -73,7 +77,6 @@ function Dashboard() {
     },
     xAxis: {
       type: 'category',
-      boundaryGap: false,
       data: dailyData?.map((item: any) => dayjs(item.date).format('MM-DD')) || [],
       axisLine: {
         lineStyle: {
@@ -88,7 +91,7 @@ function Dashboard() {
     yAxis: [
       {
         type: 'value',
-        name: 'GMV/利润',
+        name: '每日订单量',
         position: 'left',
         axisLine: {
           lineStyle: {
@@ -111,7 +114,7 @@ function Dashboard() {
       },
       {
         type: 'value',
-        name: '订单量',
+        name: '总订单量',
         position: 'right',
         axisLine: {
           lineStyle: {
@@ -133,69 +136,38 @@ function Dashboard() {
     ],
     series: [
       {
-        name: 'GMV',
+        name: '每日订单量',
+        type: 'bar',
+        yAxisIndex: 0,
+        data: dailyData?.map((item: any) => item.orders) || [],
+        itemStyle: { 
+          color: '#faad14',
+        },
+      },
+      {
+        name: '总订单量',
         type: 'line',
+        yAxisIndex: 1,
         smooth: true,
-        data: dailyData?.map((item: any) => item.gmv) || [],
+        data: (() => {
+          let cumulative = 0
+          return dailyData?.map((item: any) => {
+            cumulative += item.orders || 0
+            return cumulative
+          }) || []
+        })(),
         itemStyle: { 
           color: '#58a6ff',
         },
         lineStyle: {
           width: 2,
         },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(88, 166, 255, 0.2)' },
-              { offset: 1, color: 'rgba(88, 166, 255, 0.0)' },
-            ],
-          },
-        },
-      },
-      {
-        name: '利润',
-        type: 'line',
-        smooth: true,
-        data: dailyData?.map((item: any) => item.profit) || [],
-        itemStyle: { 
-          color: '#3fb950',
-        },
-        lineStyle: {
-          width: 2,
-        },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(63, 185, 80, 0.2)' },
-              { offset: 1, color: 'rgba(63, 185, 80, 0.0)' },
-            ],
-          },
-        },
-      },
-      {
-        name: '订单量',
-        type: 'bar',
-        yAxisIndex: 1,
-        data: dailyData?.map((item: any) => item.orders) || [],
-        itemStyle: { 
-          color: '#8b949e',
-        },
       },
     ],
   }
 
-  // 店铺对比图配置
-  const shopChartOption = {
+  // 销量趋势图配置 - 与销量统计中一致
+  const salesChartOption = {
     backgroundColor: 'transparent',
     title: {
       text: '店铺业绩对比',
@@ -209,50 +181,55 @@ function Dashboard() {
     tooltip: {
       trigger: 'axis',
       axisPointer: {
-        type: 'shadow',
-        shadowStyle: {
-          color: 'rgba(88, 166, 255, 0.1)',
+        type: 'cross',
+        label: {
+          backgroundColor: '#6a7985',
         },
       },
-      backgroundColor: '#161b22',
-      borderColor: '#30363d',
+      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      borderColor: '#1890ff',
       borderWidth: 1,
       textStyle: {
-        color: '#c9d1d9',
-        fontSize: 12,
+        color: '#fff',
       },
     },
     legend: {
-      data: ['GMV', '利润'],
-      bottom: 0,
+      data: salesOverview?.shop_trends 
+        ? ['总销量', ...Object.keys(salesOverview.shop_trends)] 
+        : ['总销量'],
+      bottom: 10,
       textStyle: {
-        fontSize: 12,
-        color: '#8b949e',
+        color: '#fff',
       },
     },
     grid: {
       left: '3%',
       right: '4%',
-      bottom: '10%',
+      bottom: '15%',
+      top: '10%',
       containLabel: true,
     },
     xAxis: {
       type: 'category',
-      data: shopComparison?.map((item: any) => item.shop_name) || [],
-      axisLabel: {
-        interval: 0,
-        rotate: 30,
-        color: '#8b949e',
-        fontSize: 11,
-      },
+      boundaryGap: false,
+      data: salesOverview?.daily_trends?.map((item: any) => item.date) || [],
       axisLine: {
         lineStyle: {
           color: '#30363d',
         },
+      },
+      axisLabel: {
+        color: '#8b949e',
+        rotate: 45,
+        formatter: (value: string) => dayjs(value).format('MM-DD'),
       },
     },
     yAxis: {
       type: 'value',
+      name: '销量（件）',
+      nameTextStyle: {
+        color: '#8b949e',
+      },
       axisLine: {
         lineStyle: {
           color: '#30363d',
@@ -260,34 +237,86 @@ function Dashboard() {
       },
       axisLabel: {
         color: '#8b949e',
-        fontSize: 11,
       },
       splitLine: {
         lineStyle: {
           color: '#21262d',
+          type: 'dashed',
         },
       },
     },
-    series: [
-      {
-        name: 'GMV',
-        type: 'bar',
-        data: shopComparison?.map((item: any) => item.gmv) || [],
-        itemStyle: { 
-          color: '#58a6ff',
+    series: (() => {
+      const series: any[] = []
+      const dailyTrends = salesOverview?.daily_trends || []
+      const shopTrends = salesOverview?.shop_trends || {}
+      
+      // 总销量
+      series.push({
+        name: '总销量',
+        type: 'line',
+        data: dailyTrends.map((item: any) => item.quantity),
+        smooth: true,
+        lineStyle: {
+          width: 3,
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 1,
+            y2: 0,
+            colorStops: [
+              { offset: 0, color: '#1890ff' },
+              { offset: 1, color: '#722ed1' },
+            ],
+          },
         },
-        barWidth: '30%',
-      },
-      {
-        name: '利润',
-        type: 'bar',
-        data: shopComparison?.map((item: any) => item.profit) || [],
-        itemStyle: { 
-          color: '#3fb950',
+        itemStyle: {
+          color: '#1890ff',
         },
-        barWidth: '30%',
-      },
-    ],
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(24, 144, 255, 0.3)' },
+              { offset: 1, color: 'rgba(24, 144, 255, 0.05)' },
+            ],
+          },
+        },
+      })
+      
+      // 各店铺销量
+      const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2']
+      Object.keys(shopTrends).forEach((shopName, index) => {
+        const shopData = shopTrends[shopName]
+        const dates = dailyTrends.map((item: any) => item.date)
+        const quantities: number[] = dates.map((date: string) => {
+          const dayData = shopData.find((d: any) => d.date === date)
+          return dayData ? dayData.quantity : 0
+        })
+        
+        series.push({
+          name: shopName,
+          type: 'line',
+          data: quantities,
+          smooth: true,
+          lineStyle: {
+            width: 2,
+          },
+          itemStyle: {
+            color: colors[index % colors.length],
+          },
+          areaStyle: {
+            opacity: 0.15,
+          },
+        })
+      })
+      
+      return series
+    })(),
   }
 
   if (overviewLoading) {
@@ -370,8 +399,8 @@ function Dashboard() {
       {/* 店铺对比图表 */}
       <Row gutter={[24, 24]} style={{ marginTop: 24 }}>
         <Col span={24}>
-          <Card className="chart-card" loading={shopLoading} bordered={false}>
-            <ReactECharts option={shopChartOption} style={{ height: 400 }} />
+          <Card className="chart-card" loading={salesLoading} bordered={false}>
+            <ReactECharts option={salesChartOption} style={{ height: 400 }} />
           </Card>
         </Col>
       </Row>
