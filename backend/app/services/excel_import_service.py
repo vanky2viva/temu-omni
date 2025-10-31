@@ -22,6 +22,24 @@ class ExcelImportService:
         self.shop = shop
         self.feishu_service = FeishuSheetsService()
     
+    def get_column_value(self, row, possible_names, default=''):
+        """尝试多个可能的列名获取值（兼容pandas Series和dict）"""
+        for name in possible_names:
+            try:
+                # pandas Series和dict都支持get方法
+                value = row.get(name)
+                if value is not None and pd.notna(value) and str(value).strip():
+                    return str(value).strip()
+            except (KeyError, AttributeError):
+                # 如果get失败，尝试直接访问（pandas Series支持）
+                try:
+                    value = row[name]
+                    if value is not None and pd.notna(value) and str(value).strip():
+                        return str(value).strip()
+                except (KeyError, AttributeError):
+                    continue
+        return default
+    
     async def import_activities_from_url(
         self,
         feishu_url: str,
@@ -369,14 +387,6 @@ class ExcelImportService:
         # 打印所有列名以便调试
         logger.info(f"Excel列名: {list(df.columns)}")
         
-        # 辅助函数：尝试多个可能的列名获取值
-        def get_column_value(row, possible_names, default=''):
-            """尝试多个可能的列名获取值"""
-            for name in possible_names:
-                if name in row and pd.notna(row.get(name)) and str(row.get(name)).strip():
-                    return str(row.get(name)).strip()
-            return default
-        
         # 检查必要的字段是否存在（提前检测，避免事务失败）
         try:
             # 尝试查询一个产品来检测表结构
@@ -431,7 +441,7 @@ class ExcelImportService:
                         '价格状态', '申报状态', '价格状态 ', '申报状态 ',
                         '申报价格 状态', '申报 价格状态'
                     ]
-                    price_status = get_column_value(row, price_status_candidates, '')
+                    price_status = self.get_column_value(row, price_status_candidates, '')
                     
                     # 如果为空，尝试从所有包含"状态"的列获取
                     if not price_status:
@@ -481,9 +491,10 @@ class ExcelImportService:
                     
                     # 更新SPU ID（如果存在）
                     if spu_id and spu_id.lower() not in ['nan', 'none', '']:
-                        # 更新description中的SPU信息
-                        if spu_id:
-                            existing.description = f"SPU: {spu_id}"
+                        spu_id_value = spu_id.strip()
+                        existing.spu_id = spu_id_value
+                        # 同时更新description中的SPU信息以便兼容
+                        existing.description = f"SPU: {spu_id_value}"
                     
                     import_record.success_rows += 1
                     success_items.append({
@@ -506,7 +517,7 @@ class ExcelImportService:
                         '价格状态', '申报状态', '价格状态 ', '申报状态 ',
                         '申报价格 状态', '申报 价格状态'
                     ]
-                    price_status = get_column_value(row, price_status_candidates, '')
+                    price_status = self.get_column_value(row, price_status_candidates, '')
                     
                     # 如果为空，尝试从所有包含"状态"的列获取
                     if not price_status:
@@ -531,10 +542,15 @@ class ExcelImportService:
                     if price_status.lower() in ['nan', 'none', '']:
                         price_status = None
                     
-                    # 处理SPU ID
-                    description = None
+                    # 处理SPU ID（保存到独立字段）
+                    spu_id_value = None
                     if spu_id and spu_id.lower() not in ['nan', 'none', '']:
-                        description = f"SPU: {spu_id}"
+                        spu_id_value = spu_id.strip()
+                    
+                    # description 仍然保存 SPU 信息以便兼容
+                    description = None
+                    if spu_id_value:
+                        description = f"SPU: {spu_id_value}"
                     
                     # 判断状态（支持多种状态值）
                     status_str = str(row.get('状态', '')).strip()
@@ -558,6 +574,7 @@ class ExcelImportService:
                         description=description,
                         manager=manager,
                         skc_id=skc_id,
+                        spu_id=spu_id_value,  # 保存 SPU ID 到独立字段
                         price_status=price_status,  # 直接使用从表格导入的值
                         created_at=datetime.utcnow()
                     )
@@ -687,41 +704,81 @@ class ExcelImportService:
                     errors.append({'row': index + 1, 'error': '缺少订单编号'})
                     continue
                 
-                # 检查是否已存在，存在则更新
+                # 解析数据
+                product_name = self.get_column_value(row, ['商品名称', '商品'], '')
+                
+                # 获取数量（优先使用应履约件数）
+                quantity_str = self.get_column_value(row, ['应履约件数', '数量', '购买数量'], '1')
+                try:
+                    quantity = int(float(quantity_str)) if quantity_str else 1
+                except (ValueError, TypeError):
+                    quantity = 1
+                
+                # 获取单价和总金额
+                # 注意：Excel中没有金额字段，因此单价和总金额默认为0
+                # 后续可以通过其他方式（如API、手动更新等）补充金额数据
+                unit_price_str = self.get_column_value(row, ['单价', '商品单价', '商品价格'], '0')
+                unit_price = self._parse_price(unit_price_str)
+                
+                total_price_str = self.get_column_value(row, ['订单金额', '总金额', '订单总价', '成交金额'], '0')
+                total_price = self._parse_price(total_price_str)
+                
+                # 如果总金额为0且单价也为0，则保持总金额为0（Excel中没有金额数据）
+                # 这样前端会显示"-"，表示金额待补充
+                
+                # 获取SKU（只使用SKUID，如果没有则保持为空）
+                product_sku = self.get_column_value(row, ['SKUID', 'SKU ID'], '')
+                if product_sku and product_sku.lower() in ['nan', 'none', '']:
+                    product_sku = ''
+                
+                # 获取SPU ID
+                spu_id = self.get_column_value(row, ['SPUID', 'SPU ID'], '')
+                if spu_id and spu_id.lower() in ['nan', 'none', '']:
+                    spu_id = ''
+                
+                # 去重规则：根据订单号+SKU+SPU组合查询（允许同一订单号下有不同SKU/SPU）
                 existing = self.db.query(Order).filter(
-                    Order.shop_id == self.shop.id,
-                    Order.order_sn == order_sn
+                    Order.order_sn == order_sn,
+                    Order.product_sku == (product_sku if product_sku else None),
+                    Order.spu_id == (spu_id if spu_id else None)
                 ).first()
                 
-                # 解析数据
-                product_name = str(row.get('商品名称', row.get('商品', '')))
-                quantity = int(row.get('数量', row.get('购买数量', 1)))
-                unit_price = self._parse_price(str(row.get('单价', row.get('商品单价', '0'))))
-                total_price = self._parse_price(str(row.get('订单金额', row.get('总金额', '0'))))
-                
-                order_time = self._parse_datetime(row.get('下单时间', row.get('订单时间')))
+                # 获取订单时间（优先使用订单创建时间）
+                order_time_str = self.get_column_value(row, ['订单创建时间', '下单时间', '订单时间'], '')
+                order_time = self._parse_datetime(order_time_str)
                 if not order_time:
                     order_time = datetime.utcnow()
                 
-                payment_time = self._parse_datetime(row.get('支付时间'))
-                status_str = str(row.get('订单状态', row.get('状态', 'PENDING')))
+                payment_time_str = self.get_column_value(row, ['支付时间', '付款时间'], '')
+                payment_time = self._parse_datetime(payment_time_str)
+                
+                status_str = self.get_column_value(row, ['订单状态', '状态'], 'PENDING')
                 status = self._parse_order_status(status_str)
                 
                 if existing:
-                    # 更新现有订单
+                    # 更新现有订单（基于订单号+SKU+SPU组合去重）
                     existing.product_name = product_name
-                    existing.product_sku = str(row.get('SKU', row.get('商品SKU', '')))
+                    existing.product_sku = product_sku
+                    existing.spu_id = spu_id if spu_id else None
                     existing.quantity = quantity
                     existing.unit_price = unit_price
-                    existing.total_price = total_price if total_price > 0 else unit_price * quantity
-                    existing.currency = str(row.get('币种', row.get('货币', 'USD')))
+                    # 如果Excel中没有总金额，则尝试用单价*数量计算；如果单价也为0，则保持为0
+                    # 这样前端会显示"-"，表示金额待后续补充
+                    existing.total_price = total_price if total_price > 0 else (unit_price * quantity if unit_price > 0 else 0)
+                    existing.currency = 'CNY'  # 订单金额统一为人民币
                     existing.status = status
                     existing.order_time = order_time
                     existing.payment_time = payment_time
-                    existing.shipping_time = self._parse_datetime(row.get('发货时间'))
-                    existing.delivery_time = self._parse_datetime(row.get('送达时间'))
-                    existing.customer_id = str(row.get('客户ID', row.get('买家ID', '')))
-                    existing.shipping_country = str(row.get('收货国家', row.get('国家', '')))
+                    shipping_time_str = self.get_column_value(row, ['实际发货时间', '发货时间', '运送时间'], '')
+                    existing.shipping_time = self._parse_datetime(shipping_time_str)
+                    
+                    delivery_time_str = self.get_column_value(row, ['送达时间', '交付时间'], '')
+                    existing.delivery_time = self._parse_datetime(delivery_time_str)
+                    
+                    existing.customer_id = self.get_column_value(row, ['客户ID', '买家ID', '用户ID'], '')
+                    
+                    shipping_country = self.get_column_value(row, ['国家', '收货国家', '收货人国家'], '')
+                    existing.shipping_country = shipping_country
                     existing.updated_at = datetime.utcnow()
                     
                     # 保存原始数据
@@ -730,23 +787,26 @@ class ExcelImportService:
                     import_record.success_rows += 1
                     success_items.append({'row': index + 1, 'order_sn': order_sn, 'action': 'updated'})
                 else:
-                    # 创建新订单
+                    # 创建新订单（允许同一订单号下有多个SKU/SPU）
                     order = Order(
                         shop_id=self.shop.id,
                         order_sn=order_sn,
                         product_name=product_name,
-                        product_sku=str(row.get('SKU', row.get('商品SKU', ''))),
+                        product_sku=product_sku if product_sku else None,
+                        spu_id=spu_id if spu_id else None,
                         quantity=quantity,
                         unit_price=unit_price,
-                        total_price=total_price if total_price > 0 else unit_price * quantity,
-                        currency=str(row.get('币种', row.get('货币', 'USD'))),
+                        # 如果Excel中没有总金额，则尝试用单价*数量计算；如果单价也为0，则保持为0
+                        # 这样前端会显示"-"，表示金额待后续补充
+                        total_price=total_price if total_price > 0 else (unit_price * quantity if unit_price > 0 else 0),
+                        currency='CNY',  # 订单金额统一为人民币
                         status=status,
                         order_time=order_time,
                         payment_time=payment_time,
-                        shipping_time=self._parse_datetime(row.get('发货时间')),
-                        delivery_time=self._parse_datetime(row.get('送达时间')),
-                        customer_id=str(row.get('客户ID', row.get('买家ID', ''))),
-                        shipping_country=str(row.get('收货国家', row.get('国家', ''))),
+                    shipping_time=self._parse_datetime(self.get_column_value(row, ['实际发货时间', '发货时间', '运送时间'], '')),
+                    delivery_time=self._parse_datetime(self.get_column_value(row, ['送达时间', '交付时间'], '')),
+                    customer_id=self.get_column_value(row, ['客户ID', '买家ID', '用户ID'], ''),
+                    shipping_country=self.get_column_value(row, ['国家', '收货国家', '收货人国家'], ''),
                         raw_data=json.dumps(row.to_dict(), ensure_ascii=False, default=str),
                         created_at=datetime.utcnow()
                     )
@@ -783,25 +843,70 @@ class ExcelImportService:
         
         import_record.error_log = json.dumps(errors, ensure_ascii=False) if errors else None
         import_record.success_log = json.dumps(success_items[:10], ensure_ascii=False)
+        
+        # 统计新增和更新的数量
+        created_count = sum(1 for item in success_items if item.get('action') == 'created')
+        updated_count = sum(1 for item in success_items if item.get('action') == 'updated')
+        
+        # 将统计信息保存到success_log中（扩展格式）
+        success_log_data = {
+            'items': success_items[:10],
+            'stats': {
+                'created': created_count,
+                'updated': updated_count
+            }
+        }
+        import_record.success_log = json.dumps(success_log_data, ensure_ascii=False)
+        
         self.db.commit()
         
         logger.info(
-            f"订单导入完成 - 成功: {import_record.success_rows}, "
-            f"失败: {import_record.failed_rows}, 跳过: {import_record.skipped_rows}"
+            f"订单导入完成 - 新增: {created_count}条, 更新: {updated_count}条, "
+            f"成功: {import_record.success_rows}, 失败: {import_record.failed_rows}, 跳过: {import_record.skipped_rows}"
         )
         
         return import_record
     
     def _parse_order_status(self, status_str: str) -> OrderStatus:
-        """解析订单状态"""
-        status_str = status_str.upper().strip()
+        """解析订单状态
+        
+        注意：Excel表格中的状态映射：
+        - 待发货 -> PROCESSING（处理中）- 计入销量统计
+        - 平台处理中 -> PAID（已支付）- 不计入销量统计
+        - 已发货 -> SHIPPED（已发货）- 计入销量统计
+        - 已签收/已送达 -> DELIVERED（已送达）- 计入销量统计
+        
+        没有：待支付、已完成、已取消、已退款
+        """
+        if not status_str:
+            return OrderStatus.PROCESSING  # 默认为处理中（待发货）
+        
+        # 保持原始大小写进行匹配（因为Excel中的状态是中文）
+        status_str_orig = status_str.strip()
+        status_str_upper = status_str_orig.upper()
+        
         status_mapping = {
-            'PENDING': OrderStatus.PENDING, '待支付': OrderStatus.PENDING,
-            'PAID': OrderStatus.PAID, '已支付': OrderStatus.PAID,
-            'SHIPPED': OrderStatus.SHIPPED, '已发货': OrderStatus.SHIPPED,
-            'DELIVERED': OrderStatus.DELIVERED, '已完成': OrderStatus.DELIVERED,
-            'CANCELLED': OrderStatus.CANCELLED, '已取消': OrderStatus.CANCELLED,
-            'REFUNDED': OrderStatus.REFUNDED, '已退款': OrderStatus.REFUNDED,
+            # Excel中实际存在的状态
+            '待发货': OrderStatus.PROCESSING,  # 待发货状态，计入销量统计
+            '平台处理中': OrderStatus.PAID,  # 平台处理中状态，不计入销量统计（使用PAID状态表示）
+            '已发货': OrderStatus.SHIPPED,
+            '已送达': OrderStatus.DELIVERED,
+            '已签收': OrderStatus.DELIVERED,
+            # 英文状态（以防万一）
+            'PROCESSING': OrderStatus.PROCESSING,
+            '处理中': OrderStatus.PROCESSING,
+            'SHIPPED': OrderStatus.SHIPPED,
+            'DELIVERED': OrderStatus.DELIVERED,
         }
-        return status_mapping.get(status_str, OrderStatus.PENDING)
+        
+        # 先尝试原始字符串匹配（中文）
+        if status_str_orig in status_mapping:
+            return status_mapping[status_str_orig]
+        
+        # 再尝试大写匹配（英文）
+        if status_str_upper in status_mapping:
+            return status_mapping[status_str_upper]
+        
+        # 默认返回处理中状态（待发货）
+        return OrderStatus.PROCESSING
 

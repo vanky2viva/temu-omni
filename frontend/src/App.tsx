@@ -7,6 +7,7 @@ import ProductList from './pages/ProductList'
 import Logistics from './pages/Logistics'
 import Finance from './pages/Finance'
 import Statistics from './pages/Statistics'
+import SalesStatistics from './pages/SalesStatistics'
 import GmvTable from './pages/GmvTable'
 import SkuAnalysis from './pages/SkuAnalysis'
 import HotSellerPage from './pages/HotSellerPage'
@@ -24,7 +25,7 @@ function App() {
           <Route path="products" element={<ProductList />} />
           <Route path="logistics" element={<Logistics />} />
           <Route path="finance" element={<Finance />} />
-          <Route path="statistics" element={<Statistics />} />
+          <Route path="statistics" element={<SalesStatistics />} />
           <Route path="gmv-table" element={<GmvTable />} />
           <Route path="sku-analysis" element={<SkuAnalysis />} />
           <Route path="hot-seller" element={<HotSellerPage />} />
@@ -36,4 +37,3 @@ function App() {
 }
 
 export default App
-

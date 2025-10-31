@@ -1,6 +1,7 @@
 """数据导入API"""
 import os
 import shutil
+import json
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Body
 from pydantic import BaseModel, HttpUrl
@@ -61,16 +62,55 @@ async def import_orders(
         import_service = ExcelImportService(db, shop)
         result = await import_service.import_orders(file_path=file_path, file_name=file.filename, file_size=file_size)
         
+        # 解析成功日志，获取新增和更新的数量
+        created_count = 0
+        updated_count = 0
+        if result.success_log:
+            try:
+                success_log_data = json.loads(result.success_log)
+                if isinstance(success_log_data, dict) and 'stats' in success_log_data:
+                    created_count = success_log_data['stats'].get('created', 0)
+                    updated_count = success_log_data['stats'].get('updated', 0)
+                else:
+                    # 兼容旧格式：直接统计action字段
+                    if isinstance(success_log_data, list):
+                        for item in success_log_data:
+                            if item.get('action') == 'created':
+                                created_count += 1
+                            elif item.get('action') == 'updated':
+                                updated_count += 1
+            except:
+                pass
+        
+        # 根据导入状态决定成功/失败
+        is_success = result.status.value in ['SUCCESS', 'PARTIAL']
+        
+        # 生成消息：显示新增和更新的数量
+        if is_success:
+            message_parts = []
+            if created_count > 0:
+                message_parts.append(f"新增{created_count}条")
+            if updated_count > 0:
+                message_parts.append(f"更新{updated_count}条")
+            if message_parts:
+                message = f"订单数据导入完成：{', '.join(message_parts)}"
+            else:
+                message = "订单数据导入完成"
+        else:
+            message = "订单数据导入失败"
+        
         return {
-            "success": True,
-            "message": "订单数据导入完成",
+            "success": is_success,
+            "message": message,
             "data": {
                 "import_id": result.id,
                 "status": result.status.value,
                 "total_rows": result.total_rows,
                 "success_rows": result.success_rows,
                 "failed_rows": result.failed_rows,
-                "skipped_rows": result.skipped_rows
+                "skipped_rows": result.skipped_rows,
+                "created_count": created_count,
+                "updated_count": updated_count
             }
         }
     except Exception as e:

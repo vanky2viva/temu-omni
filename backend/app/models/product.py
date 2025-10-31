@@ -35,6 +35,7 @@ class Product(Base):
     category = Column(String(200), comment="商品分类")
     manager = Column(String(100), comment="负责人")
     skc_id = Column(String(100), comment="SKC ID")
+    spu_id = Column(String(100), index=True, comment="SPU ID")  # SPU ID，一个SPU对应多个SKU
     price_status = Column(String(50), comment="申报价格状态")
     
     # 时间戳

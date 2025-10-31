@@ -51,7 +51,7 @@ const menuItems = [
   {
     key: '/statistics',
     icon: <BarChartOutlined />,
-    label: '数据统计',
+    label: '销量统计',
   },
   {
     key: '/gmv-table',

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Table, Button, Space, Modal, Form, Input, Switch, message, Tag, Tooltip } from 'antd'
+import { Table, Button, Space, Modal, Form, Input, Switch, message, Tag, Tooltip, Select } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ApiOutlined, CheckCircleOutlined, WarningOutlined, SyncOutlined, UploadOutlined } from '@ant-design/icons'
 import { shopApi, syncApi } from '@/services/api'
 import ImportDataModal from '@/components/ImportDataModal'
@@ -225,9 +225,11 @@ function ShopList() {
 
   const columns = [
     {
-      title: '店铺ID',
-      dataIndex: 'shop_id',
-      key: 'shop_id',
+      title: '店铺负责人',
+      dataIndex: 'default_manager',
+      key: 'default_manager',
+      width: 120,
+      render: (manager: string) => manager || '-',
     },
     {
       title: '店铺名称',
@@ -375,11 +377,11 @@ function ShopList() {
             name="region"
             rules={[{ required: true, message: '请选择地区' }]}
           >
-            <select style={{ width: '100%', height: 32, borderRadius: 6, border: '1px solid #d9d9d9' }}>
-              <option value="us">US（美国）</option>
-              <option value="eu">EU（欧洲）</option>
-              <option value="global">GLOBAL（全球）</option>
-            </select>
+            <Select placeholder="请选择地区" allowClear={false}>
+              <Select.Option value="us">US（美国）</Select.Option>
+              <Select.Option value="eu">EU（欧洲）</Select.Option>
+              <Select.Option value="global">GLOBAL（全球）</Select.Option>
+            </Select>
           </Form.Item>
           <Form.Item label="经营主体" name="entity">
             <Input />

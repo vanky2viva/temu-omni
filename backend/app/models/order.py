@@ -1,5 +1,5 @@
 """订单模型"""
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, Text, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, Text, ForeignKey, Enum, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.core.database import Base
@@ -28,14 +28,21 @@ class Order(Base):
     shop_id = Column(Integer, ForeignKey("shops.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # 订单基本信息
-    order_sn = Column(String(100), unique=True, index=True, nullable=False, comment="订单编号")
+    order_sn = Column(String(100), index=True, nullable=False, comment="订单编号")
     temu_order_id = Column(String(100), unique=True, index=True, comment="Temu订单ID")
     
     # 商品信息
     product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"), index=True)
     product_name = Column(String(500), comment="商品名称")
-    product_sku = Column(String(200), comment="商品SKU")
-    quantity = Column(Integer, default=1, comment="购买数量")
+    product_sku = Column(String(200), index=True, comment="商品SKU")
+    spu_id = Column(String(100), index=True, comment="SPU ID")
+    quantity = Column(Integer, default=1, comment="购买数量（应履约件数）")
+    
+    # 唯一约束：订单号+SKU+SPU组合唯一（允许同一订单号下有不同SKU/SPU）
+    __table_args__ = (
+        UniqueConstraint('order_sn', 'product_sku', 'spu_id', name='uq_order_sn_sku_spu'),
+        {'comment': '订单表，同一订单号可以包含多个SKU/SPU'}
+    )
     
     # 价格信息
     unit_price = Column(Numeric(10, 2), nullable=False, comment="单价")

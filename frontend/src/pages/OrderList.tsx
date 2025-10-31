@@ -85,25 +85,21 @@ function OrderList() {
       align: 'center' as const,
     },
     {
-      title: '单价',
-      dataIndex: 'unit_price',
-      key: 'unit_price',
-      width: 100,
-      align: 'right' as const,
-      render: (price: number, record: any) => 
-        price ? `${price} ${record.currency}` : '-',
-    },
-    {
       title: '订单金额',
       dataIndex: 'total_price',
       key: 'total_price',
       width: 120,
       align: 'right' as const,
-      render: (price: number, record: any) => (
-        <span style={{ fontWeight: 'bold', color: '#1890ff' }}>
-          {price} {record.currency}
-        </span>
-      ),
+      render: (price: number | null | undefined, record: any) => {
+        if (price === null || price === undefined || price === 0) return '-'
+        // 统一显示为人民币，使用￥符号
+        const priceNum = typeof price === 'number' ? price : parseFloat(String(price)) || 0
+        return (
+          <span style={{ fontWeight: 'bold', color: '#1890ff' }}>
+            ¥{priceNum.toFixed(2)}
+          </span>
+        )
+      },
     },
     {
       title: '状态',

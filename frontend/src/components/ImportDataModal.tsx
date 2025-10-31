@@ -168,31 +168,111 @@ const ImportDataModal: React.FC<ImportDataModalProps> = ({
     })
   }
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (importMode === 'file') {
-      // 文件导入
+      // 多文件导入
       if (fileList.length === 0) {
         message.warning('请先选择文件')
         return
       }
 
-      // 兼容处理：fileList[0] 可能是 File 对象或 UploadFile 对象
-      const file = fileList[0].originFileObj || fileList[0]
-      
-      if (!file || !(file instanceof File)) {
-        message.error('文件对象无效，请重新选择')
+      // 提取所有文件
+      const files: File[] = []
+      for (const fileItem of fileList) {
+        const file = fileItem.originFileObj || fileItem
+        if (file && file instanceof File) {
+          files.push(file)
+        }
+      }
+
+      if (files.length === 0) {
+        message.error('没有有效的文件，请重新选择')
         return
       }
 
-      message.loading({ content: '正在导入数据...', key: 'import', duration: 0 })
+      message.loading({ 
+        content: `正在导入 ${files.length} 个文件...`, 
+        key: 'import', 
+        duration: 0 
+      })
 
-      if (activeTab === 'orders') {
-        importOrdersMutation.mutate(file)
-      } else if (activeTab === 'activities') {
-        importActivitiesMutation.mutate(file)
-      } else if (activeTab === 'products') {
-        importProductsMutation.mutate(file)
+      // 依次导入每个文件
+      let totalSuccess = 0
+      let totalFailed = 0
+      let totalSkipped = 0
+      let totalRows = 0
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        try {
+          message.loading({ 
+            content: `正在导入文件 ${i + 1}/${files.length}: ${file.name}...`, 
+            key: 'import', 
+            duration: 0 
+          })
+
+          let result
+          if (activeTab === 'orders') {
+            result = await importApi.importOrders(shopId, file)
+          } else if (activeTab === 'activities') {
+            result = await importApi.importActivities(shopId, file)
+          } else if (activeTab === 'products') {
+            result = await importApi.importProducts(shopId, file)
+          } else {
+            continue
+          }
+
+          const data = result?.data || result
+          if (data) {
+            totalSuccess += data.success_rows || 0
+            totalFailed += data.failed_rows || 0
+            totalSkipped += data.skipped_rows || 0
+            totalRows += data.total_rows || 0
+          }
+        } catch (error: any) {
+          totalFailed++
+          console.error(`文件 ${file.name} 导入失败:`, error)
+          message.error(`文件 "${file.name}" 导入失败: ${error?.response?.data?.detail || error?.message || '未知错误'}`)
+        }
       }
+
+      message.destroy('import')
+
+      // 显示汇总结果
+      const dataType = activeTab === 'orders' ? '订单数据' : 
+                       activeTab === 'activities' ? '活动数据' : '商品数据'
+      
+      Modal.success({
+        title: `✅ ${files.length} 个文件导入完成`,
+        content: (
+          <div>
+            <p>{dataType}已全部导入完成！</p>
+            <div style={{ marginTop: 12, padding: 12, background: '#f6f8fa', borderRadius: 4 }}>
+              <p style={{ fontWeight: 'bold', marginBottom: 8 }}>汇总统计：</p>
+              <ul style={{ fontSize: 12, margin: 0, paddingLeft: 20 }}>
+                <li>文件数量: <strong>{files.length}</strong></li>
+                <li>总行数: <strong>{totalRows}</strong></li>
+                <li>成功: <strong style={{ color: '#52c41a' }}>{totalSuccess}</strong></li>
+                {totalFailed > 0 && (
+                  <li>失败: <strong style={{ color: '#ff4d4f' }}>{totalFailed}</strong></li>
+                )}
+                {totalSkipped > 0 && (
+                  <li>跳过: <strong style={{ color: '#faad14' }}>{totalSkipped}</strong></li>
+                )}
+              </ul>
+            </div>
+          </div>
+        ),
+      })
+
+      // 刷新数据
+      setFileList([])
+      queryClient.invalidateQueries({ queryKey: ['orders'] })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['activities'] })
+      queryClient.invalidateQueries({ queryKey: ['statistics'] })
+      queryClient.invalidateQueries({ queryKey: ['sales-overview'] })
+      queryClient.invalidateQueries({ queryKey: ['sku-sales-ranking'] })
     } else {
       // 在线表格导入
       if (!onlineUrl.trim()) {
@@ -220,36 +300,48 @@ const ImportDataModal: React.FC<ImportDataModalProps> = ({
 
   const uploadProps: UploadProps = {
     name: 'file',
-    multiple: false,
+    multiple: true,  // 支持多文件上传
     fileList,
     accept: '.xlsx,.xls',
-    beforeUpload: (file) => {
+    beforeUpload: (file, fileList) => {
       const isExcel = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-        file.type === 'application/vnd.ms-excel'
+        file.type === 'application/vnd.ms-excel' ||
+        file.name.endsWith('.xlsx') ||
+        file.name.endsWith('.xls')
       
       if (!isExcel) {
-        message.error('只能上传 Excel 文件！')
+        message.error(`文件 "${file.name}" 不是 Excel 文件！`)
         return Upload.LIST_IGNORE
       }
 
       const isLt10M = file.size / 1024 / 1024 < 10
       if (!isLt10M) {
-        message.error('文件大小不能超过 10MB！')
+        message.error(`文件 "${file.name}" 大小超过 10MB！`)
         return Upload.LIST_IGNORE
       }
 
       // 构建符合 UploadFile 格式的对象
       const uploadFile = {
-        uid: `-${Date.now()}`,
+        uid: `${Date.now()}-${Math.random()}`,
         name: file.name,
         status: 'done' as const,
         originFileObj: file,
       }
-      setFileList([uploadFile])
+      
+      // 添加到文件列表（支持多文件）
+      setFileList((prev) => {
+        // 检查是否已存在同名文件
+        const exists = prev.some(f => f.name === file.name)
+        if (exists) {
+          message.warning(`文件 "${file.name}" 已存在，已跳过`)
+          return prev
+        }
+        return [...prev, uploadFile]
+      })
       return false // 阻止自动上传
     },
-    onRemove: () => {
-      setFileList([])
+    onRemove: (file) => {
+      setFileList((prev) => prev.filter((f) => f.uid !== file.uid))
     },
   }
 
@@ -343,8 +435,20 @@ const ImportDataModal: React.FC<ImportDataModalProps> = ({
                 </p>
                 <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
                 <p className="ant-upload-hint">
-                  支持 .xlsx 和 .xls 格式，文件大小不超过 10MB
+                  支持同时上传多个 .xlsx 和 .xls 格式文件，单个文件大小不超过 10MB
                 </p>
+                {fileList.length > 0 && (
+                  <div style={{ marginTop: 12, padding: 8, background: '#f0f0f0', borderRadius: 4 }}>
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 'bold' }}>
+                      已选择 {fileList.length} 个文件：
+                    </p>
+                    <ul style={{ margin: '8px 0 0 0', paddingLeft: 20, fontSize: 12 }}>
+                      {fileList.map((file) => (
+                        <li key={file.uid}>{file.name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </Dragger>
             ) : (
               <div>
@@ -438,8 +542,20 @@ const ImportDataModal: React.FC<ImportDataModalProps> = ({
                 </p>
                 <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
                 <p className="ant-upload-hint">
-                  支持 .xlsx 和 .xls 格式，文件大小不超过 10MB
+                  支持同时上传多个 .xlsx 和 .xls 格式文件，单个文件大小不超过 10MB
                 </p>
+                {fileList.length > 0 && (
+                  <div style={{ marginTop: 12, padding: 8, background: '#f0f0f0', borderRadius: 4 }}>
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 'bold' }}>
+                      已选择 {fileList.length} 个文件：
+                    </p>
+                    <ul style={{ margin: '8px 0 0 0', paddingLeft: 20, fontSize: 12 }}>
+                      {fileList.map((file) => (
+                        <li key={file.uid}>{file.name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </Dragger>
             ) : (
               <div>
@@ -533,8 +649,20 @@ const ImportDataModal: React.FC<ImportDataModalProps> = ({
                 </p>
                 <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
                 <p className="ant-upload-hint">
-                  支持 .xlsx 和 .xls 格式，文件大小不超过 10MB
+                  支持同时上传多个 .xlsx 和 .xls 格式文件，单个文件大小不超过 10MB
                 </p>
+                {fileList.length > 0 && (
+                  <div style={{ marginTop: 12, padding: 8, background: '#f0f0f0', borderRadius: 4 }}>
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 'bold' }}>
+                      已选择 {fileList.length} 个文件：
+                    </p>
+                    <ul style={{ margin: '8px 0 0 0', paddingLeft: 20, fontSize: 12 }}>
+                      {fileList.map((file) => (
+                        <li key={file.uid}>{file.name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </Dragger>
             ) : (
               <div>

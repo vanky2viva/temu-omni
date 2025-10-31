@@ -65,6 +65,7 @@ class ProductResponse(ProductBase):
     manager: Optional[str] = None
     category: Optional[str] = None
     skc_id: Optional[str] = None
+    spu_id: Optional[str] = None
     price_status: Optional[str] = None
     created_at: datetime
     updated_at: datetime
