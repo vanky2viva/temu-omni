@@ -5,8 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.product import Product, ProductCost
 from app.models.shop import Shop
+from app.models.user import User
 from app.schemas.product import (
     ProductCreate, ProductUpdate, ProductResponse,
     ProductCostCreate, ProductCostResponse
@@ -24,7 +26,8 @@ def get_products(
     manager: Optional[str] = None,
     category: Optional[str] = None,
     q: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """获取商品列表"""
     query = db.query(Product)
@@ -60,7 +63,7 @@ def get_products(
 
 
 @router.get("/{product_id}", response_model=ProductResponse)
-def get_product(product_id: int, db: Session = Depends(get_db)):
+def get_product(product_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """获取商品详情"""
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
@@ -72,7 +75,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
-def create_product(product: ProductCreate, db: Session = Depends(get_db)):
+def create_product(product: ProductCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """创建商品"""
     data = product.model_dump()
     # 若未指定负责人，则使用店铺默认负责人
@@ -91,7 +94,8 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
 def update_product(
     product_id: int,
     product_update: ProductUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """更新商品信息"""
     product = db.query(Product).filter(Product.id == product_id).first()
@@ -111,7 +115,7 @@ def update_product(
 
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_product(product_id: int, db: Session = Depends(get_db)):
+def delete_product(product_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """删除商品"""
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
@@ -127,7 +131,7 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
 
 # 商品成本管理
 @router.get("/{product_id}/costs", response_model=List[ProductCostResponse])
-def get_product_costs(product_id: int, db: Session = Depends(get_db)):
+def get_product_costs(product_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """获取商品成本历史"""
     costs = db.query(ProductCost).filter(
         ProductCost.product_id == product_id
@@ -136,7 +140,7 @@ def get_product_costs(product_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/costs", response_model=ProductCostResponse, status_code=status.HTTP_201_CREATED)
-def create_product_cost(cost: ProductCostCreate, db: Session = Depends(get_db)):
+def create_product_cost(cost: ProductCostCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """添加商品成本记录"""
     # 检查商品是否存在
     product = db.query(Product).filter(Product.id == cost.product_id).first()

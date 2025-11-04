@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.shop import Shop
+from app.models.user import User
 from app.services.sync_service import sync_shop_data, sync_all_shops
 from app.services.temu_service import get_temu_service
 
@@ -14,7 +16,8 @@ router = APIRouter(prefix="/sync", tags=["sync"])
 @router.post("/shops/{shop_id}/verify-token")
 async def verify_shop_token(
     shop_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     验证店铺Token
@@ -56,7 +59,8 @@ async def sync_shop_orders(
     shop_id: int,
     full_sync: bool = False,
     background_tasks: BackgroundTasks = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     同步指定店铺的订单数据
@@ -106,7 +110,8 @@ async def sync_shop_orders(
 async def sync_shop_products(
     shop_id: int,
     full_sync: bool = False,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     同步指定店铺的商品数据
@@ -156,7 +161,8 @@ async def sync_shop_products(
 async def sync_shop_all_data(
     shop_id: int,
     full_sync: bool = False,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     同步指定店铺的所有数据（订单+商品+分类）
@@ -202,7 +208,8 @@ async def sync_shop_all_data(
 @router.post("/all-shops")
 async def sync_all_shops_data(
     full_sync: bool = False,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     同步所有启用店铺的数据
@@ -237,7 +244,8 @@ async def sync_all_shops_data(
 @router.get("/shops/{shop_id}/status")
 async def get_sync_status(
     shop_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取店铺的同步状态

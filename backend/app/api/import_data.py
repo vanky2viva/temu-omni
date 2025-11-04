@@ -8,7 +8,9 @@ from pydantic import BaseModel, HttpUrl
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.shop import Shop
+from app.models.user import User
 from app.models.import_history import ImportHistory, ImportType
 from app.services.excel_import_service import ExcelImportService
 from app.services.feishu_sheets_service import FeishuSheetsService
@@ -39,7 +41,8 @@ class OnlineSheetImportRequest(BaseModel):
 async def import_orders(
     shop_id: int,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     导入订单数据
@@ -124,7 +127,8 @@ async def import_orders(
 async def import_activities(
     shop_id: int,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     导入活动数据
@@ -190,7 +194,8 @@ async def import_activities(
 async def import_products(
     shop_id: int,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     导入商品数据
@@ -258,7 +263,8 @@ async def get_import_history(
     skip: int = 0,
     limit: int = 20,
     import_type: str = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取导入历史记录
@@ -355,7 +361,8 @@ async def get_import_detail(
 async def import_orders_from_url(
     shop_id: int,
     request: OnlineSheetImportRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     从在线表格导入订单数据
@@ -394,7 +401,8 @@ async def import_orders_from_url(
 async def import_activities_from_url(
     shop_id: int,
     request: OnlineSheetImportRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     从在线表格导入活动数据
@@ -446,7 +454,8 @@ async def import_activities_from_url(
 async def import_products_from_url(
     shop_id: int,
     request: OnlineSheetImportRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     从在线表格导入商品数据

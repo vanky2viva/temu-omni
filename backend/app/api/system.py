@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.system_config import SystemConfig
+from app.models.user import User
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -23,7 +25,7 @@ class AppConfigResponse(BaseModel):
 
 
 @router.get("/app-config/", response_model=AppConfigResponse)
-def get_app_config(db: Session = Depends(get_db)):
+def get_app_config(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """获取应用配置"""
     app_key = db.query(SystemConfig).filter(SystemConfig.key == "temu_app_key").first()
     app_secret = db.query(SystemConfig).filter(SystemConfig.key == "temu_app_secret").first()
@@ -35,7 +37,7 @@ def get_app_config(db: Session = Depends(get_db)):
 
 
 @router.put("/app-config/")
-def update_app_config(config: AppConfigUpdate, db: Session = Depends(get_db)):
+def update_app_config(config: AppConfigUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """更新应用配置"""
     # 更新或创建 app_key
     app_key_config = db.query(SystemConfig).filter(SystemConfig.key == "temu_app_key").first()

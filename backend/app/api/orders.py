@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.order import Order, OrderStatus
+from app.models.user import User
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -19,7 +21,8 @@ def get_orders(
     status_filter: Optional[OrderStatus] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """获取订单列表"""
     query = db.query(Order)
@@ -41,7 +44,7 @@ def get_orders(
 
 
 @router.get("/{order_id}", response_model=OrderResponse)
-def get_order(order_id: int, db: Session = Depends(get_db)):
+def get_order(order_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """获取订单详情"""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
@@ -53,7 +56,7 @@ def get_order(order_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
-def create_order(order: OrderCreate, db: Session = Depends(get_db)):
+def create_order(order: OrderCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """创建订单"""
     # 检查订单编号是否已存在
     existing_order = db.query(Order).filter(Order.order_sn == order.order_sn).first()
@@ -79,7 +82,8 @@ def create_order(order: OrderCreate, db: Session = Depends(get_db)):
 def update_order(
     order_id: int,
     order_update: OrderUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """更新订单信息"""
     order = db.query(Order).filter(Order.id == order_id).first()
@@ -103,7 +107,7 @@ def update_order(
 
 
 @router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_order(order_id: int, db: Session = Depends(get_db)):
+def delete_order(order_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """删除订单"""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { ConfigProvider, Layout, Menu, Switch, theme } from 'antd'
+import { ConfigProvider, Layout, Menu, Switch, theme, Dropdown, Button, Avatar } from 'antd'
 import {
   DashboardOutlined,
   ShopOutlined,
@@ -13,7 +13,10 @@ import {
   SettingOutlined,
   CarOutlined,
   WalletOutlined,
+  LogoutOutlined,
+  UserOutlined,
 } from '@ant-design/icons'
+import type { MenuProps } from 'antd'
 
 const { Header, Content, Sider } = Layout
 
@@ -100,6 +103,23 @@ function MainLayout() {
     navigate(key)
   }
 
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    navigate('/login')
+  }
+
+  const userMenuItems: MenuProps['items'] = [
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: '退出登录',
+      onClick: handleLogout,
+    },
+  ]
+
+  const user = JSON.parse(localStorage.getItem('user') || '{}')
+
   return (
     <ConfigProvider theme={{ algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm }}>
       <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
@@ -162,6 +182,14 @@ function MainLayout() {
               checked={isDark}
               onChange={setIsDark}
             />
+            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+              <Button type="text" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Avatar size="small" icon={<UserOutlined />} />
+                <span style={{ color: isDark ? '#c9d1d9' : '#1f2328' }}>
+                  {user.username || '用户'}
+                </span>
+              </Button>
+            </Dropdown>
           </div>
         </Header>
         <Content style={{ margin: '24px 16px 16px' }}>

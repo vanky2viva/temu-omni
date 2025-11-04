@@ -7,9 +7,11 @@ from sqlalchemy import func, and_, or_, extract, case
 from decimal import Decimal
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.order import Order, OrderStatus
 from app.models.product import Product
 from app.models.shop import Shop
+from app.models.user import User
 
 # 香港时区 (UTC+8)
 HK_TIMEZONE = timezone(timedelta(hours=8))
@@ -22,7 +24,8 @@ def get_gmv_table(
     shop_ids: Optional[List[int]] = Query(None),
     period_type: str = Query("month", regex="^(day|week|month)$"),
     periods: int = Query(12),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取GMV表格数据
@@ -143,7 +146,8 @@ def get_sku_sales(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     limit: int = Query(20),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取SKU销量对比
@@ -211,7 +215,8 @@ def get_hot_seller_ranking(
     year: int = Query(None),
     month: int = Query(None),
     shop_ids: Optional[List[int]] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取爆单榜 - 负责人销量排行
@@ -297,7 +302,8 @@ def get_manager_sku_details(
     year: int = Query(None),
     month: int = Query(None),
     shop_ids: Optional[List[int]] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取负责人的SKU销售详情
@@ -455,7 +461,8 @@ def get_sales_overview(
     manager: Optional[str] = Query(None, description="负责人"),
     region: Optional[str] = Query(None, description="地区"),
     sku_search: Optional[str] = Query(None, description="SKU搜索关键词"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取销量统计总览
@@ -560,7 +567,8 @@ def get_sku_sales_ranking(
     region: Optional[str] = Query(None, description="地区"),
     sku_search: Optional[str] = Query(None, description="SKU搜索关键词"),
     limit: int = Query(100, description="返回数量限制"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取SKU销量排行
@@ -668,7 +676,8 @@ def get_spu_sales_ranking(
     region: Optional[str] = Query(None, description="地区"),
     sku_search: Optional[str] = Query(None, description="SKU搜索关键词"),
     limit: int = Query(100, description="返回数量限制"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取SPU销量排行（汇总所有相关SKU的销量）
@@ -762,7 +771,8 @@ def get_manager_sales(
     shop_ids: Optional[List[int]] = Query(None, description="店铺ID列表"),
     manager: Optional[str] = Query(None, description="指定负责人（不指定则返回所有负责人）"),
     region: Optional[str] = Query(None, description="地区"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取负责人销量统计

@@ -5,7 +5,7 @@ from loguru import logger
 
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api import shops, orders, products, statistics, sync, analytics, system, import_data
+from app.api import shops, orders, products, statistics, sync, analytics, system, import_data, auth
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -28,6 +28,7 @@ app.add_middleware(
 )
 
 # 注册路由
+app.include_router(auth.router, prefix="/api")  # 认证路由（无需认证）
 app.include_router(shops.router, prefix="/api")
 app.include_router(orders.router, prefix="/api")
 app.include_router(products.router, prefix="/api")
@@ -59,6 +60,13 @@ async def startup_event():
     """应用启动事件"""
     logger.info(f"{settings.APP_NAME} v{settings.APP_VERSION} is starting...")
     logger.info(f"Debug mode: {settings.DEBUG}")
+    
+    # 初始化默认管理员用户
+    try:
+        from app.core.init_default_user import init_default_user
+        init_default_user()
+    except Exception as e:
+        logger.warning(f"初始化默认用户失败: {str(e)}")
 
 
 @app.on_event("shutdown")

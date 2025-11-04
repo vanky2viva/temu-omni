@@ -6,7 +6,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.shop import Shop, ShopRegion
+from app.models.user import User
 from app.schemas.shop import ShopCreate, ShopUpdate, ShopResponse
 
 router = APIRouter(prefix="/shops", tags=["shops"])
@@ -16,7 +18,8 @@ router = APIRouter(prefix="/shops", tags=["shops"])
 def get_shops(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """获取店铺列表"""
     shops = db.query(Shop).offset(skip).limit(limit).all()
@@ -27,7 +30,7 @@ def get_shops(
 
 
 @router.get("/{shop_id}", response_model=ShopResponse)
-def get_shop(shop_id: int, db: Session = Depends(get_db)):
+def get_shop(shop_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """获取店铺详情"""
     shop = db.query(Shop).filter(Shop.id == shop_id).first()
     if not shop:
@@ -40,7 +43,7 @@ def get_shop(shop_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=ShopResponse, status_code=status.HTTP_201_CREATED)
-def create_shop(shop: ShopCreate, db: Session = Depends(get_db)):
+def create_shop(shop: ShopCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """创建店铺"""
     # 允许未配置应用凭证也可创建店铺；仅在授权/同步时需要
     # 如果提交了shop_id则校验唯一；否则生成占位ID
@@ -85,7 +88,8 @@ class AuthorizeRequest(BaseModel):
 def authorize_shop(
     shop_id: int,
     body: AuthorizeRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """为店铺配置/更新 Access Token 并进行基本校验"""
     shop = db.query(Shop).filter(Shop.id == shop_id).first()
@@ -120,7 +124,8 @@ def update_shop(
     shop_id: int,
     shop_update: ShopUpdate,
     sync_to_products: bool = False,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     更新店铺信息
@@ -166,7 +171,8 @@ def update_shop(
 def sync_manager_to_products(
     shop_id: int,
     update_all: bool = False,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     同步店铺负责人到商品
@@ -213,7 +219,7 @@ def sync_manager_to_products(
 
 
 @router.delete("/{shop_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_shop(shop_id: int, db: Session = Depends(get_db)):
+def delete_shop(shop_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """删除店铺"""
     shop = db.query(Shop).filter(Shop.id == shop_id).first()
     if not shop:

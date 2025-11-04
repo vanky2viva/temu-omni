@@ -5,8 +5,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.services.statistics import StatisticsService
 from app.models.order import OrderStatus
+from app.models.user import User
 
 router = APIRouter(prefix="/statistics", tags=["statistics"])
 
@@ -17,7 +19,8 @@ def get_overview_statistics(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     status: Optional[OrderStatus] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取订单总览统计
@@ -39,7 +42,8 @@ def get_daily_statistics(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     days: int = 30,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取每日统计数据
@@ -59,7 +63,8 @@ def get_daily_statistics(
 def get_weekly_statistics(
     shop_ids: Optional[List[int]] = Query(None),
     weeks: int = 12,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取每周统计数据
@@ -77,7 +82,8 @@ def get_weekly_statistics(
 def get_monthly_statistics(
     shop_ids: Optional[List[int]] = Query(None),
     months: int = 12,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取每月统计数据
@@ -95,7 +101,8 @@ def get_monthly_statistics(
 def get_shop_comparison(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取店铺对比数据
@@ -113,7 +120,8 @@ def get_shop_comparison(
 def get_sales_trend(
     shop_ids: Optional[List[int]] = Query(None),
     days: int = 30,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     获取销量趋势数据

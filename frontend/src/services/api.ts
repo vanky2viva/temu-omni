@@ -8,7 +8,11 @@ const api = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
-    // 可以在这里添加token等认证信息
+    // 添加token到请求头
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
     return config
   },
   (error) => {
@@ -23,6 +27,12 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response) {
+      // 处理401未授权错误，跳转到登录页
+      if (error.response.status === 401) {
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        window.location.href = '/login'
+      }
       // 处理HTTP错误
       console.error('API Error:', error.response.data)
     }
