@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_, extract, case
+from sqlalchemy import func, and_, or_, extract, case, text
 from decimal import Decimal
 
 from app.core.database import get_db
@@ -12,11 +12,23 @@ from app.models.order import Order, OrderStatus
 from app.models.product import Product
 from app.models.shop import Shop
 from app.models.user import User
+from app.utils.currency import CurrencyConverter
 
 # 香港时区 (UTC+8)
 HK_TIMEZONE = timezone(timedelta(hours=8))
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+# 汇率转换辅助函数
+def _convert_to_cny(column, usd_rate=None):
+    """将金额列转换为CNY"""
+    if usd_rate is None:
+        usd_rate = CurrencyConverter.USD_TO_CNY_RATE
+    return case(
+        (Order.currency == 'USD', column * usd_rate),
+        (Order.currency == 'CNY', column),
+        else_=column * usd_rate
+    )
 
 
 @router.get("/gmv-table")
@@ -56,16 +68,17 @@ def get_gmv_table(
     if shop_ids:
         filters.append(Order.shop_id.in_(shop_ids))
     
-    # 根据周期类型分组
+    # 根据周期类型分组，统一转换为CNY
+    usd_rate = CurrencyConverter.USD_TO_CNY_RATE
     if period_type == "day":
         group_by = func.date(Order.order_time)
         results = db.query(
             func.date(Order.order_time).label("period"),
             Shop.shop_name,
             func.count(Order.id).label("orders"),
-            func.sum(Order.total_price).label("gmv"),
-            func.sum(Order.total_cost).label("cost"),
-            func.sum(Order.profit).label("profit"),
+            func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("gmv"),
+            func.sum(_convert_to_cny(Order.total_cost, usd_rate)).label("cost"),
+            func.sum(_convert_to_cny(Order.profit, usd_rate)).label("profit"),
         ).join(Shop, Shop.id == Order.shop_id).filter(
             and_(*filters)
         ).group_by(
@@ -80,9 +93,9 @@ def get_gmv_table(
             extract('week', Order.order_time).label("week"),
             Shop.shop_name,
             func.count(Order.id).label("orders"),
-            func.sum(Order.total_price).label("gmv"),
-            func.sum(Order.total_cost).label("cost"),
-            func.sum(Order.profit).label("profit"),
+            func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("gmv"),
+            func.sum(_convert_to_cny(Order.total_cost, usd_rate)).label("cost"),
+            func.sum(_convert_to_cny(Order.profit, usd_rate)).label("profit"),
         ).join(Shop, Shop.id == Order.shop_id).filter(
             and_(*filters)
         ).group_by(
@@ -100,9 +113,9 @@ def get_gmv_table(
             extract('month', Order.order_time).label("month"),
             Shop.shop_name,
             func.count(Order.id).label("orders"),
-            func.sum(Order.total_price).label("gmv"),
-            func.sum(Order.total_cost).label("cost"),
-            func.sum(Order.profit).label("profit"),
+            func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("gmv"),
+            func.sum(_convert_to_cny(Order.total_cost, usd_rate)).label("cost"),
+            func.sum(_convert_to_cny(Order.profit, usd_rate)).label("profit"),
         ).join(Shop, Shop.id == Order.shop_id).filter(
             and_(*filters)
         ).group_by(
@@ -177,14 +190,16 @@ def get_sku_sales(
         filters.append(Order.shop_id.in_(shop_ids))
     
     # 按SKU分组统计
+    # 统一转换为CNY
+    usd_rate = CurrencyConverter.USD_TO_CNY_RATE
     results = db.query(
         Order.product_sku,
         Order.product_name,
         Shop.shop_name,
         func.sum(Order.quantity).label("total_quantity"),  # SKU销量：quantity之和
         func.count(func.distinct(Order.order_sn)).label("order_count"),  # 订单数：按订单号去重
-        func.sum(Order.total_price).label("total_gmv"),
-        func.sum(Order.profit).label("total_profit"),
+        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("total_gmv"),
+        func.sum(_convert_to_cny(Order.profit, usd_rate)).label("total_profit"),
     ).join(Shop, Shop.id == Order.shop_id).filter(
         and_(*filters),
         Order.product_sku.isnot(None)
@@ -252,14 +267,15 @@ def get_hot_seller_ranking(
     if shop_ids:
         filters.append(Order.shop_id.in_(shop_ids))
     
-    # 按负责人分组统计
+    # 按负责人分组统计，统一转换为CNY
+    usd_rate = CurrencyConverter.USD_TO_CNY_RATE
     results = db.query(
         Product.manager,
         Shop.shop_name,
         func.sum(Order.quantity).label("total_quantity"),  # SKU销量：quantity之和
         func.count(func.distinct(Order.order_sn)).label("order_count"),  # 订单数：按订单号去重
-        func.sum(Order.total_price).label("total_gmv"),
-        func.sum(Order.profit).label("total_profit"),
+        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("total_gmv"),
+        func.sum(_convert_to_cny(Order.profit, usd_rate)).label("total_profit"),
     ).join(
         Product, Product.id == Order.product_id
     ).join(
@@ -270,7 +286,7 @@ def get_hot_seller_ranking(
     ).group_by(
         Product.manager, Shop.shop_name
     ).order_by(
-        func.sum(Order.total_price).desc()
+        func.sum(_convert_to_cny(Order.total_price, usd_rate)).desc()
     ).all()
     
     # 格式化结果
@@ -341,15 +357,16 @@ def get_manager_sku_details(
     if shop_ids:
         filters.append(Order.shop_id.in_(shop_ids))
     
-    # 按SKU分组统计
+    # 按SKU分组统计，统一转换为CNY
+    usd_rate = CurrencyConverter.USD_TO_CNY_RATE
     results = db.query(
         Product.sku,
         Product.product_name,
         Shop.shop_name,
         func.sum(Order.quantity).label("total_quantity"),  # SKU销量：quantity之和
         func.count(func.distinct(Order.order_sn)).label("order_count"),  # 订单数：按订单号去重
-        func.sum(Order.total_price).label("total_gmv"),
-        func.sum(Order.profit).label("total_profit"),
+        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("total_gmv"),
+        func.sum(_convert_to_cny(Order.profit, usd_rate)).label("total_profit"),
     ).join(
         Product, Product.id == Order.product_id
     ).join(
@@ -359,7 +376,7 @@ def get_manager_sku_details(
     ).group_by(
         Product.sku, Product.product_name, Shop.shop_name
     ).order_by(
-        func.sum(Order.total_price).desc()
+        func.sum(_convert_to_cny(Order.total_price, usd_rate)).desc()
     ).all()
     
     # 格式化结果
@@ -931,6 +948,182 @@ def get_manager_sales(
     
     return {
         "managers": manager_data,
+        "period": {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "days": days
+        }
+    }
+
+
+@router.get("/payment-collection")
+def get_payment_collection(
+    shop_ids: Optional[List[int]] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取回款统计数据
+    
+    回款逻辑：已签收（DELIVERED）的订单，签收时间加8天后计入回款金额
+    
+    Args:
+        shop_ids: 店铺ID列表，None表示所有店铺
+        start_date: 开始日期（回款日期范围）
+        end_date: 结束日期（回款日期范围）
+        days: 天数（当未指定日期时使用，默认30天）
+    
+    Returns:
+        回款统计数据，包含每日回款金额（按店铺分组）和总计
+    """
+    # 统一转换为CNY的汇率
+    usd_rate = CurrencyConverter.USD_TO_CNY_RATE
+    
+    # 回款日期 = delivery_time + 8天
+    collection_date_expr = func.date(Order.delivery_time + text("INTERVAL '8 days'"))
+    
+    # 确定日期范围（回款日期范围）
+    # 如果未指定end_date，则查询到未来7天（基于最新的签收日期）
+    if not end_date:
+        # 查找最新的签收日期
+        latest_delivery_query = db.query(func.max(Order.delivery_time)).filter(
+            Order.status == OrderStatus.DELIVERED,
+            Order.delivery_time.isnot(None)
+        )
+        if shop_ids:
+            latest_delivery_query = latest_delivery_query.filter(Order.shop_id.in_(shop_ids))
+        
+        latest_delivery = latest_delivery_query.scalar()
+        
+        if latest_delivery:
+            # 最新签收日期 + 8天 + 7天（未来7天）= 最新签收日期 + 15天
+            latest_delivery_date = latest_delivery.date() if isinstance(latest_delivery, datetime) else latest_delivery
+            end_date = datetime.combine(latest_delivery_date + timedelta(days=15), datetime.min.time())
+        else:
+            end_date = datetime.now() + timedelta(days=7)  # 如果没有签收记录，显示未来7天
+    
+    if not start_date:
+        start_date = end_date - timedelta(days=days)
+    
+    # 构建查询条件
+    # 筛选已签收的订单，且回款日期在指定范围内
+    filters = [
+        Order.status == OrderStatus.DELIVERED,
+        Order.delivery_time.isnot(None),
+        # 回款日期 = delivery_time + 8天
+        collection_date_expr >= start_date.date(),
+        collection_date_expr <= end_date.date()
+    ]
+    
+    if shop_ids:
+        filters.append(Order.shop_id.in_(shop_ids))
+    
+    # 按店铺和回款日期分组统计
+    
+    results = db.query(
+        Shop.id.label("shop_id"),
+        Shop.shop_name,
+        collection_date_expr.label("collection_date"),
+        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("collection_amount"),
+        func.count(Order.id).label("order_count")
+    ).join(
+        Shop, Shop.id == Order.shop_id
+    ).filter(
+        and_(*filters)
+    ).group_by(
+        Shop.id,
+        Shop.shop_name,
+        collection_date_expr
+    ).order_by(
+        collection_date_expr,
+        Shop.shop_name
+    ).all()
+    
+    # 计算总计
+    total_collection = db.query(
+        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("total_amount"),
+        func.count(Order.id).label("total_orders")
+    ).join(
+        Shop, Shop.id == Order.shop_id
+    ).filter(
+        and_(*filters)
+    ).first()
+    
+    # 格式化结果：按日期和店铺组织数据
+    daily_data: dict = {}  # {date: {shop_name: amount, ...}}
+    shop_list = set()
+    
+    for row in results:
+        date_str = row.collection_date.strftime("%Y-%m-%d")
+        shop_name = row.shop_name
+        amount = float(row.collection_amount or 0)
+        
+        shop_list.add(shop_name)
+        
+        if date_str not in daily_data:
+            daily_data[date_str] = {}
+        daily_data[date_str][shop_name] = amount
+    
+    # 生成日期列表（填充缺失的日期）
+    date_list = []
+    current_date = start_date.date()
+    end_date_only = end_date.date()
+    
+    while current_date <= end_date_only:
+        date_str = current_date.strftime("%Y-%m-%d")
+        date_list.append(date_str)
+        current_date += timedelta(days=1)
+    
+    # 生成表格数据：每日回款金额（按店铺），按日期倒序排序
+    table_data = []
+    for date_str in reversed(date_list):  # 倒序排列
+        row_data: dict = {
+            "date": date_str,
+            "total": 0.0
+        }
+        date_amounts = daily_data.get(date_str, {})
+        for shop_name in sorted(shop_list):
+            amount = date_amounts.get(shop_name, 0.0)
+            row_data[shop_name] = amount
+            row_data["total"] += amount
+        table_data.append(row_data)
+    
+    # 生成图表数据：每个店铺的折线图数据
+    chart_series = []
+    for shop_name in sorted(shop_list):
+        series_data = []
+        for date_str in date_list:
+            amount = daily_data.get(date_str, {}).get(shop_name, 0.0)
+            series_data.append(round(amount, 2))
+        chart_series.append({
+            "name": shop_name,
+            "data": series_data
+        })
+    
+    # 总计折线图数据
+    total_series_data = []
+    for date_str in date_list:
+        total = sum(daily_data.get(date_str, {}).values())
+        total_series_data.append(round(total, 2))
+    chart_series.append({
+        "name": "总计",
+        "data": total_series_data
+    })
+    
+    return {
+        "table_data": table_data,
+        "chart_data": {
+            "dates": date_list,
+            "series": chart_series
+        },
+        "summary": {
+            "total_amount": float(total_collection.total_amount or 0),
+            "total_orders": int(total_collection.total_orders or 0),
+            "shops": sorted(list(shop_list))
+        },
         "period": {
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),

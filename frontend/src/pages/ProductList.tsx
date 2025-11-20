@@ -13,7 +13,7 @@ import {
   Tag,
   Tooltip,
 } from 'antd'
-import { PlusOutlined, DollarOutlined, SearchOutlined, DeleteOutlined } from '@ant-design/icons'
+import { PlusOutlined, DollarOutlined, SearchOutlined, DeleteOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { productApi, shopApi } from '@/services/api'
 import dayjs from 'dayjs'
 
@@ -21,6 +21,10 @@ function ProductList() {
   const [isCostModalOpen, setIsCostModalOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
   const [costForm] = Form.useForm()
+  const [editingCostPrice, setEditingCostPrice] = useState<{ [key: number]: number | null }>({})
+  const [editingSupplyPrice, setEditingSupplyPrice] = useState<{ [key: number]: number | null }>({})
+  const [isEditingSupplyPrice, setIsEditingSupplyPrice] = useState<{ [key: number]: boolean }>({})
+  const [isEditingCostPrice, setIsEditingCostPrice] = useState<{ [key: number]: boolean }>({})
   const queryClient = useQueryClient()
 
   // 获取店铺列表
@@ -32,7 +36,7 @@ function ProductList() {
 
   // 筛选条件
   const [shopId, setShopId] = useState<number | undefined>()
-  // 状态筛选：published | unpublished | all（默认已发布）
+  // 状态筛选：published | unpublished | all（默认在售中）
   const [statusFilter, setStatusFilter] = useState<'published' | 'unpublished' | 'all'>('published')
   const [manager, setManager] = useState<string | undefined>()
   const [category, setCategory] = useState<string | undefined>()
@@ -81,6 +85,32 @@ function ProductList() {
     },
   })
 
+  // 更新商品成本价格
+  const updateCostPriceMutation = useMutation({
+    mutationFn: ({ id, cost_price, currency }: { id: number; cost_price: number; currency?: string }) =>
+      productApi.updateProductCost(id, { cost_price, currency: currency || 'CNY' }),
+    onSuccess: () => {
+      message.success('成本价格更新成功')
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+    onError: () => {
+      message.error('成本价格更新失败')
+    },
+  })
+
+  // 更新商品供货价
+  const updateSupplyPriceMutation = useMutation({
+    mutationFn: ({ id, current_price }: { id: number; current_price: number }) =>
+      productApi.updateProduct(id, { current_price }),
+    onSuccess: () => {
+      message.success('供货价更新成功')
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+    onError: () => {
+      message.error('供货价更新失败')
+    },
+  })
+
   // 清理商品数据
   const clearProductsMutation = useMutation({
     mutationFn: (shopId?: number) => productApi.clearProducts(shopId),
@@ -118,7 +148,7 @@ function ProductList() {
     costForm.setFieldsValue({
       product_id: product.id,
       effective_from: dayjs(),
-      currency: 'USD',
+      currency: 'CNY',
     })
     setIsCostModalOpen(true)
   }
@@ -280,24 +310,189 @@ function ProductList() {
       render: (sku: string) => sku || '-',
     },
     {
-      title: '申报价格',
+      title: '供货价',
       dataIndex: 'current_price',
       key: 'current_price',
-      width: 120,
+      width: 180,
       render: (price: number, record: any) => {
-        if (!price) return '-'
-        // 申报价格单位是人民币，统一显示为RMB
-        // 如果是CNY或RMB，显示为人民币，否则默认显示为RMB（因为申报价格都是人民币）
-        const currency = (record.currency === 'CNY' || record.currency === 'RMB') ? 'RMB' : 'RMB'
-        return `${price} ${currency}`
+        const isEditing = isEditingSupplyPrice[record.id] || false
+        const currentValue = editingSupplyPrice[record.id] !== undefined 
+          ? editingSupplyPrice[record.id] 
+          : (price ?? 0)
+
+        const handleEdit = () => {
+          setIsEditingSupplyPrice(prev => ({ ...prev, [record.id]: true }))
+          setEditingSupplyPrice(prev => ({ ...prev, [record.id]: price ?? 0 }))
+        }
+
+        const handleSave = () => {
+          const finalValue = currentValue ?? 0
+          if (finalValue < 0) {
+            message.warning('价格不能为负数')
+            return
+          }
+          // 如果值没有变化，不提交
+          if (finalValue === (price ?? 0)) {
+            handleCancel()
+            return
+          }
+          updateSupplyPriceMutation.mutate({
+            id: record.id,
+            current_price: finalValue,
+          })
+        }
+
+        const handleCancel = () => {
+          setIsEditingSupplyPrice(prev => {
+            const newState = { ...prev }
+            delete newState[record.id]
+            return newState
+          })
+          setEditingSupplyPrice(prev => {
+            const newState = { ...prev }
+            delete newState[record.id]
+            return newState
+          })
+        }
+
+        return (
+          <Space.Compact style={{ width: '100%' }}>
+            <InputNumber
+              value={currentValue}
+              style={{ flex: 1 }}
+              size="small"
+              min={0}
+              precision={2}
+              placeholder="0"
+              disabled={!isEditing}
+              onChange={(value) => {
+                setEditingSupplyPrice(prev => ({
+                  ...prev,
+                  [record.id]: value ?? 0
+                }))
+              }}
+              addonAfter="CNY"
+            />
+            {isEditing ? (
+              <>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<CheckOutlined />}
+                  onClick={handleSave}
+                  loading={updateSupplyPriceMutation.isPending}
+                />
+                <Button
+                  size="small"
+                  icon={<CloseOutlined />}
+                  onClick={handleCancel}
+                  disabled={updateSupplyPriceMutation.isPending}
+                />
+              </>
+            ) : (
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={handleEdit}
+              />
+            )}
+          </Space.Compact>
+        )
       },
     },
     {
-      title: '申报价格状态',
-      dataIndex: 'price_status',
-      key: 'price_status',
-      width: 140,
-      render: (price_status: string) => price_status || '-',
+      title: '成本价格',
+      dataIndex: 'current_cost_price',
+      key: 'current_cost_price',
+      width: 180,
+      render: (costPrice: number, record: any) => {
+        const isEditing = isEditingCostPrice[record.id] || false
+        const currentValue = editingCostPrice[record.id] !== undefined 
+          ? editingCostPrice[record.id] 
+          : (costPrice ?? 0)
+
+        const handleEdit = () => {
+          setIsEditingCostPrice(prev => ({ ...prev, [record.id]: true }))
+          setEditingCostPrice(prev => ({ ...prev, [record.id]: costPrice ?? 0 }))
+        }
+
+        const handleSave = () => {
+          const finalValue = currentValue ?? 0
+          if (finalValue < 0) {
+            message.warning('价格不能为负数')
+            return
+          }
+          // 如果值没有变化，不提交
+          if (finalValue === (costPrice ?? 0)) {
+            handleCancel()
+            return
+          }
+          updateCostPriceMutation.mutate({
+            id: record.id,
+            cost_price: finalValue,
+            currency: 'CNY',
+          })
+        }
+
+        const handleCancel = () => {
+          setIsEditingCostPrice(prev => {
+            const newState = { ...prev }
+            delete newState[record.id]
+            return newState
+          })
+          setEditingCostPrice(prev => {
+            const newState = { ...prev }
+            delete newState[record.id]
+            return newState
+          })
+        }
+
+        return (
+          <Space.Compact style={{ width: '100%' }}>
+            <InputNumber
+              value={currentValue}
+              style={{ flex: 1 }}
+              size="small"
+              min={0}
+              precision={2}
+              placeholder="0"
+              disabled={!isEditing}
+              onChange={(value) => {
+                setEditingCostPrice(prev => ({
+                  ...prev,
+                  [record.id]: value ?? 0
+                }))
+              }}
+              addonAfter="CNY"
+            />
+            {isEditing ? (
+              <>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<CheckOutlined />}
+                  onClick={handleSave}
+                  loading={updateCostPriceMutation.isPending}
+                />
+                <Button
+                  size="small"
+                  icon={<CloseOutlined />}
+                  onClick={handleCancel}
+                  disabled={updateCostPriceMutation.isPending}
+                />
+              </>
+            ) : (
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={handleEdit}
+              />
+            )}
+          </Space.Compact>
+        )
+      },
     },
     {
       title: '状态',
@@ -306,24 +501,8 @@ function ProductList() {
       width: 100,
       render: (isActive: boolean) => (
         <Tag color={isActive ? 'success' : 'default'}>
-          {isActive ? '已发布' : '未发布'}
+          {isActive ? '在售中' : '未发布'}
         </Tag>
-      ),
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 150,
-      render: (_: any, record: any) => (
-        <Space size="middle">
-          <Button
-            type="link"
-            icon={<DollarOutlined />}
-            onClick={() => handleOpenCostModal(record)}
-          >
-            录入成本
-          </Button>
-        </Space>
       ),
     },
   ]
@@ -379,7 +558,7 @@ function ProductList() {
             value={statusFilter}
             onChange={setStatusFilter}
             options={[
-              { label: '已发布', value: 'published' },
+              { label: '在售中', value: 'published' },
               { label: '未发布', value: 'unpublished' },
               { label: '全部', value: 'all' },
             ]}
@@ -434,10 +613,10 @@ function ProductList() {
             rules={[{ required: true, message: '请选择货币' }]}
           >
             <Select>
+              <Select.Option value="CNY">CNY</Select.Option>
               <Select.Option value="USD">USD</Select.Option>
               <Select.Option value="EUR">EUR</Select.Option>
               <Select.Option value="GBP">GBP</Select.Option>
-              <Select.Option value="CNY">CNY</Select.Option>
             </Select>
           </Form.Item>
           <Form.Item label="备注" name="notes">

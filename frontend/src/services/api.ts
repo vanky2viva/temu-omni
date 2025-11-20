@@ -85,6 +85,8 @@ export const productApi = {
   deleteProduct: (id: number) => api.delete(`/products/${id}/`),
   getProductCosts: (id: number) => api.get(`/products/${id}/costs/`),
   createProductCost: (data: any) => api.post('/products/costs/', data),
+  updateProductCost: (id: number, data: { cost_price: number; currency?: string }) => 
+    api.put(`/products/${id}/cost`, data),
   clearProducts: (shopId?: number) => api.delete('/products/', { params: { shop_id: shopId } }),
 }
 
@@ -96,6 +98,11 @@ export const statisticsApi = {
   getMonthly: (params?: any) => api.get('/statistics/monthly/', { params }),
   getShopComparison: (params?: any) => api.get('/statistics/shops/comparison/', { params }),
   getTrend: (params?: any) => api.get('/statistics/trend/', { params }),
+}
+
+// 分析API
+export const analyticsApi = {
+  getPaymentCollection: (params?: any) => api.get('/analytics/payment-collection', { params }),
 }
 
 // 数据导入API

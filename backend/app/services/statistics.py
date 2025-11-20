@@ -2,12 +2,13 @@
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, extract
+from sqlalchemy import func, and_, extract, case
 from decimal import Decimal
 import pandas as pd
 
 from app.models.order import Order, OrderStatus
 from app.models.shop import Shop
+from app.utils.currency import CurrencyConverter
 
 
 class StatisticsService:
@@ -52,12 +53,48 @@ class StatisticsService:
         # 执行统计查询
         # 注意：订单数按订单号去重统计（一个订单号可能对应多条记录，每个订单号为一单）
         # GMV、成本、利润按订单记录统计（每个记录都有对应的金额）
+        # 统一转换为CNY：USD按汇率转换，CNY保持不变
+        usd_rate = CurrencyConverter.USD_TO_CNY_RATE
+        
+        # 使用CASE WHEN根据currency字段进行汇率转换
+        gmv_in_cny = func.sum(
+            case(
+                (Order.currency == 'USD', Order.total_price * usd_rate),
+                (Order.currency == 'CNY', Order.total_price),
+                else_=Order.total_price * usd_rate  # 其他货币默认按USD处理
+            )
+        ).label("total_gmv")
+        
+        cost_in_cny = func.sum(
+            case(
+                (Order.currency == 'USD', Order.total_cost * usd_rate),
+                (Order.currency == 'CNY', Order.total_cost),
+                else_=Order.total_cost * usd_rate
+            )
+        ).label("total_cost")
+        
+        profit_in_cny = func.sum(
+            case(
+                (Order.currency == 'USD', Order.profit * usd_rate),
+                (Order.currency == 'CNY', Order.profit),
+                else_=Order.profit * usd_rate
+            )
+        ).label("total_profit")
+        
+        avg_order_value_in_cny = func.avg(
+            case(
+                (Order.currency == 'USD', Order.total_price * usd_rate),
+                (Order.currency == 'CNY', Order.total_price),
+                else_=Order.total_price * usd_rate
+            )
+        ).label("avg_order_value")
+        
         result = db.query(
             func.count(func.distinct(Order.order_sn)).label("total_orders"),  # 按订单号去重统计订单数
-            func.sum(Order.total_price).label("total_gmv"),
-            func.sum(Order.total_cost).label("total_cost"),
-            func.sum(Order.profit).label("total_profit"),
-            func.avg(Order.total_price).label("avg_order_value"),
+            gmv_in_cny,
+            cost_in_cny,
+            profit_in_cny,
+            avg_order_value_in_cny,
         ).filter(and_(*filters)).first()
         
         total_orders = result.total_orders or 0
@@ -116,12 +153,32 @@ class StatisticsService:
         
         # 按日期分组统计
         # 注意：订单数按订单号去重统计（一个订单号可能对应多条记录，每个订单号为一单）
+        # 统一转换为CNY
+        usd_rate = CurrencyConverter.USD_TO_CNY_RATE
         results = db.query(
             func.date(Order.order_time).label("date"),
             func.count(func.distinct(Order.order_sn)).label("orders"),  # 按订单号去重统计订单数
-            func.sum(Order.total_price).label("gmv"),
-            func.sum(Order.total_cost).label("cost"),
-            func.sum(Order.profit).label("profit"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.total_price * usd_rate),
+                    (Order.currency == 'CNY', Order.total_price),
+                    else_=Order.total_price * usd_rate
+                )
+            ).label("gmv"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.total_cost * usd_rate),
+                    (Order.currency == 'CNY', Order.total_cost),
+                    else_=Order.total_cost * usd_rate
+                )
+            ).label("cost"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.profit * usd_rate),
+                    (Order.currency == 'CNY', Order.profit),
+                    else_=Order.profit * usd_rate
+                )
+            ).label("profit"),
         ).filter(and_(*filters)).group_by(
             func.date(Order.order_time)
         ).order_by(func.date(Order.order_time)).all()
@@ -168,14 +225,33 @@ class StatisticsService:
         if shop_ids:
             filters.append(Order.shop_id.in_(shop_ids))
         
-        # 按周分组统计
+        # 按周分组统计，统一转换为CNY
+        usd_rate = CurrencyConverter.USD_TO_CNY_RATE
         results = db.query(
             extract('year', Order.order_time).label("year"),
             extract('week', Order.order_time).label("week"),
             func.count(Order.id).label("orders"),
-            func.sum(Order.total_price).label("gmv"),
-            func.sum(Order.total_cost).label("cost"),
-            func.sum(Order.profit).label("profit"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.total_price * usd_rate),
+                    (Order.currency == 'CNY', Order.total_price),
+                    else_=Order.total_price * usd_rate
+                )
+            ).label("gmv"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.total_cost * usd_rate),
+                    (Order.currency == 'CNY', Order.total_cost),
+                    else_=Order.total_cost * usd_rate
+                )
+            ).label("cost"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.profit * usd_rate),
+                    (Order.currency == 'CNY', Order.profit),
+                    else_=Order.profit * usd_rate
+                )
+            ).label("profit"),
         ).filter(and_(*filters)).group_by(
             extract('year', Order.order_time),
             extract('week', Order.order_time)
@@ -228,14 +304,33 @@ class StatisticsService:
         if shop_ids:
             filters.append(Order.shop_id.in_(shop_ids))
         
-        # 按月分组统计
+        # 按月分组统计，统一转换为CNY
+        usd_rate = CurrencyConverter.USD_TO_CNY_RATE
         results = db.query(
             extract('year', Order.order_time).label("year"),
             extract('month', Order.order_time).label("month"),
             func.count(Order.id).label("orders"),
-            func.sum(Order.total_price).label("gmv"),
-            func.sum(Order.total_cost).label("cost"),
-            func.sum(Order.profit).label("profit"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.total_price * usd_rate),
+                    (Order.currency == 'CNY', Order.total_price),
+                    else_=Order.total_price * usd_rate
+                )
+            ).label("gmv"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.total_cost * usd_rate),
+                    (Order.currency == 'CNY', Order.total_cost),
+                    else_=Order.total_cost * usd_rate
+                )
+            ).label("cost"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.profit * usd_rate),
+                    (Order.currency == 'CNY', Order.profit),
+                    else_=Order.profit * usd_rate
+                )
+            ).label("profit"),
         ).filter(and_(*filters)).group_by(
             extract('year', Order.order_time),
             extract('month', Order.order_time)
@@ -285,15 +380,34 @@ class StatisticsService:
         if end_date:
             filters.append(Order.order_time <= end_date)
         
-        # 按店铺分组统计
+        # 按店铺分组统计，统一转换为CNY
+        usd_rate = CurrencyConverter.USD_TO_CNY_RATE
         results = db.query(
             Shop.id,
             Shop.shop_name,
             Shop.region,
             func.count(Order.id).label("orders"),
-            func.sum(Order.total_price).label("gmv"),
-            func.sum(Order.total_cost).label("cost"),
-            func.sum(Order.profit).label("profit"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.total_price * usd_rate),
+                    (Order.currency == 'CNY', Order.total_price),
+                    else_=Order.total_price * usd_rate
+                )
+            ).label("gmv"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.total_cost * usd_rate),
+                    (Order.currency == 'CNY', Order.total_cost),
+                    else_=Order.total_cost * usd_rate
+                )
+            ).label("cost"),
+            func.sum(
+                case(
+                    (Order.currency == 'USD', Order.profit * usd_rate),
+                    (Order.currency == 'CNY', Order.profit),
+                    else_=Order.profit * usd_rate
+                )
+            ).label("profit"),
         ).join(Order, Shop.id == Order.shop_id).filter(
             and_(*filters)
         ).group_by(

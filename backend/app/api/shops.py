@@ -23,11 +23,11 @@ def get_shops(
 ):
     """获取店铺列表（不返回敏感字段）"""
     try:
-    shops = db.query(Shop).offset(skip).limit(limit).all()
-    # 添加API配置状态
+        shops = db.query(Shop).offset(skip).limit(limit).all()
+        # 添加API配置状态
         result = []
-    for shop in shops:
-        shop.has_api_config = bool(shop.access_token)
+        for shop in shops:
+            shop.has_api_config = bool(shop.access_token)
             # 创建响应对象，排除敏感字段（列表接口不返回 access_token 和 cn_access_token）
             shop_response = ShopResponse.model_validate(shop)
             # 清除敏感字段

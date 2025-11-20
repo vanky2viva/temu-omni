@@ -251,7 +251,7 @@ function HotSellerPage() {
     },
     xAxis: {
       type: 'value',
-      name: 'GMV (USD)',
+      name: 'GMV (CNY)',
     },
     yAxis: {
       type: 'category',
@@ -414,7 +414,7 @@ function HotSellerPage() {
                 value={selectedManager?.gmv || 0}
                 precision={2}
                 prefix={<DollarOutlined />}
-                suffix="USD"
+                suffix="CNY"
               />
             </Card>
           </Col>

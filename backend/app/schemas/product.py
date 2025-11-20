@@ -8,7 +8,7 @@ from decimal import Decimal
 class ProductCostBase(BaseModel):
     """商品成本基础模式"""
     cost_price: Decimal
-    currency: str = "USD"
+    currency: str = "CNY"
     effective_from: datetime
     notes: Optional[str] = None
 
@@ -16,6 +16,12 @@ class ProductCostBase(BaseModel):
 class ProductCostCreate(ProductCostBase):
     """创建商品成本模式"""
     product_id: int
+
+
+class ProductCostUpdate(BaseModel):
+    """快速更新商品成本价格模式"""
+    cost_price: Decimal
+    currency: str = "CNY"
 
 
 class ProductCostResponse(ProductCostBase):
@@ -67,6 +73,8 @@ class ProductResponse(ProductBase):
     skc_id: Optional[str] = None
     spu_id: Optional[str] = None
     price_status: Optional[str] = None
+    current_cost_price: Optional[Decimal] = None  # 当前成本价格
+    cost_currency: Optional[str] = None  # 成本价格货币
     created_at: datetime
     updated_at: datetime
     

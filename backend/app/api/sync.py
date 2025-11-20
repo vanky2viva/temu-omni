@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 import asyncio
 from datetime import datetime
+from loguru import logger
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -189,31 +190,69 @@ async def _sync_shop_with_progress(shop_id: int, full_sync: bool, db: Session):
         })
         try:
             orders_result = await sync_service.sync_orders(full_sync=full_sync)
-            _sync_progress[shop_id]["orders"] = orders_result
+            # 确保返回的结果包含统计信息
+            if isinstance(orders_result, dict):
+                _sync_progress[shop_id]["orders"] = orders_result
+            else:
+                _sync_progress[shop_id]["orders"] = {
+                    "total": 0,
+                    "new": 0,
+                    "updated": 0,
+                    "failed": 0,
+                    "error": "返回格式异常"
+                }
         except Exception as e:
-            _sync_progress[shop_id]["orders"] = {"error": str(e)}
+            import traceback
+            error_msg = str(e)
+            logger.error(f"订单同步失败 - 店铺ID: {shop_id}, 错误: {error_msg}\n{traceback.format_exc()}")
+            _sync_progress[shop_id]["orders"] = {
+                "total": 0,
+                "new": 0,
+                "updated": 0,
+                "failed": 0,
+                "error": error_msg
+            }
         
         # 同步商品
         _sync_progress[shop_id].update({
-            "progress": 60,
+            "progress": 70,
             "current_step": "正在同步商品数据...",
         })
         try:
             products_result = await sync_service.sync_products(full_sync=full_sync)
-            _sync_progress[shop_id]["products"] = products_result
+            # 确保返回的结果包含统计信息
+            if isinstance(products_result, dict):
+                _sync_progress[shop_id]["products"] = products_result
+            else:
+                _sync_progress[shop_id]["products"] = {
+                    "total": 0,
+                    "new": 0,
+                    "updated": 0,
+                    "failed": 0,
+                    "error": "返回格式异常"
+                }
         except Exception as e:
-            _sync_progress[shop_id]["products"] = {"error": str(e)}
+            import traceback
+            error_msg = str(e)
+            logger.error(f"商品同步失败 - 店铺ID: {shop_id}, 错误: {error_msg}\n{traceback.format_exc()}")
+            _sync_progress[shop_id]["products"] = {
+                "total": 0,
+                "new": 0,
+                "updated": 0,
+                "failed": 0,
+                "error": error_msg
+            }
         
-        # 同步分类
-        _sync_progress[shop_id].update({
-            "progress": 90,
-            "current_step": "正在同步分类数据...",
-        })
-        try:
-            categories_result = await sync_service.sync_categories()
-            _sync_progress[shop_id]["categories"] = categories_result
-        except Exception as e:
-            _sync_progress[shop_id]["categories"] = {"error": str(e)}
+        # 同步分类（已禁用，无需获取商品分类）
+        # _sync_progress[shop_id].update({
+        #     "progress": 90,
+        #     "current_step": "正在同步分类数据...",
+        # })
+        # try:
+        #     categories_result = await sync_service.sync_categories()
+        #     _sync_progress[shop_id]["categories"] = categories_result
+        # except Exception as e:
+        #     _sync_progress[shop_id]["categories"] = {"error": str(e)}
         
         await sync_service.temu_service.close()
         
@@ -242,7 +281,7 @@ async def sync_shop_all_data(
     current_user: User = Depends(get_current_user)
 ):
     """
-    同步指定店铺的所有数据（订单+商品+分类）
+    同步指定店铺的所有数据（订单+商品）
     支持实时进度查询
     
     Args:

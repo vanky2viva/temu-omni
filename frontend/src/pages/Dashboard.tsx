@@ -359,7 +359,7 @@ function Dashboard() {
               value={overview?.total_gmv || 0}
               precision={2}
               prefix={<DollarOutlined />}
-              suffix="USD"
+              suffix="CNY"
             />
           </Card>
         </Col>
@@ -370,7 +370,7 @@ function Dashboard() {
               value={overview?.total_profit || 0}
               precision={2}
               prefix={<RiseOutlined />}
-              suffix="USD"
+              suffix="CNY"
             />
           </Card>
         </Col>

@@ -8,7 +8,7 @@ from loguru import logger
 
 from app.models.shop import Shop
 from app.models.order import Order, OrderStatus
-from app.models.product import Product
+from app.models.product import Product, ProductCost
 from app.services.temu_service import TemuService, get_temu_service
 
 
@@ -26,6 +26,110 @@ class SyncService:
         self.db = db
         self.shop = shop
         self.temu_service = get_temu_service(shop)
+    
+    def _get_product_price_by_sku(
+        self, 
+        product_sku: str, 
+        order_time: Optional[datetime] = None,
+        product_sku_id: Optional[str] = None,
+        spu_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        根据productSkuId、extCode或spu_id获取商品的供货价和成本价
+        
+        Args:
+            product_sku: 商品SKU货号（extCode）
+            order_time: 订单时间（用于查找当时有效的成本价）
+            product_sku_id: Temu商品SKU ID（优先使用，对应Product.product_id）
+            spu_id: SPU ID（备选匹配方式）
+            
+        Returns:
+            包含商品信息的字典，如果未找到则返回None
+            {
+                'product_id': 商品ID,
+                'supply_price': 供货价（current_price）,
+                'cost_price': 成本价（order_time时有效的成本）,
+                'currency': 货币
+            }
+        """
+        product = None
+        match_method = None
+        
+        # 优先级1：通过 productSkuId 匹配（对应 Product.product_id）
+        if product_sku_id:
+            product = self.db.query(Product).filter(
+                Product.shop_id == self.shop.id,
+                Product.product_id == str(product_sku_id)
+            ).first()
+            
+            if product:
+                match_method = "productSkuId"
+                logger.debug(f"✅ 通过productSkuId匹配到商品: {product_sku_id} -> {product.sku}")
+        
+        # 优先级2：通过 extCode (SKU货号) 匹配
+        if not product and product_sku:
+            product = self.db.query(Product).filter(
+                Product.shop_id == self.shop.id,
+                Product.sku == product_sku
+            ).first()
+            
+            if product:
+                match_method = "extCode"
+                logger.debug(f"✅ 通过extCode (SKU货号)匹配到商品: {product_sku} -> {product.product_id}")
+        
+        # 优先级3：通过 spu_id 匹配（备用）
+        if not product and spu_id:
+            product = self.db.query(Product).filter(
+                Product.shop_id == self.shop.id,
+                Product.spu_id == spu_id
+            ).first()
+            
+            if product:
+                match_method = "spu_id"
+                logger.debug(f"✅ 通过spu_id匹配到商品: {spu_id} -> {product.sku}")
+        
+        if not product:
+            logger.debug(
+                f"❌ 未找到匹配的商品 - "
+                f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {spu_id}"
+            )
+            return None
+        
+        # 获取供货价
+        supply_price = product.current_price
+        
+        # 获取订单时间有效的成本价
+        cost_price = None
+        if order_time:
+            # 查询在订单时间有效的成本记录
+            # effective_from <= order_time AND (effective_to IS NULL OR effective_to > order_time)
+            cost_record = self.db.query(ProductCost).filter(
+                ProductCost.product_id == product.id,
+                ProductCost.effective_from <= order_time,
+                (ProductCost.effective_to.is_(None)) | (ProductCost.effective_to > order_time)
+            ).order_by(ProductCost.effective_from.desc()).first()
+            
+            if cost_record:
+                cost_price = cost_record.cost_price
+                logger.debug(
+                    f"找到商品 {product.sku} 在 {order_time} 的有效成本价: {cost_price}"
+                )
+        else:
+            # 如果没有订单时间，获取当前有效的成本价
+            cost_record = self.db.query(ProductCost).filter(
+                ProductCost.product_id == product.id,
+                ProductCost.effective_to.is_(None)
+            ).first()
+            
+            if cost_record:
+                cost_price = cost_record.cost_price
+        
+        return {
+            'product_id': product.id,
+            'supply_price': supply_price,
+            'cost_price': cost_price,
+            'currency': product.currency
+        }
     
     async def sync_orders(
         self,
@@ -244,8 +348,19 @@ class SyncService:
             order_item.get('spec') or 
             'Unknown Product'
         )
-        product_sku = order_item.get('spec') or order_item.get('sku') or ''
+        
+        # 从 productList 中提取真正的SKU信息
+        product_list = order_item.get('productList', [])
+        if product_list and len(product_list) > 0:
+            product_info = product_list[0]
+            product_sku_id = product_info.get('productSkuId')  # Temu商品SKU ID
+            product_sku = product_info.get('extCode') or ''  # 真正的SKU货号
+            spu_id = product_info.get('productId') or ''  # 这个实际上是SPU ID
+        else:
+            product_sku_id = None
+            product_sku = order_item.get('spec') or order_item.get('sku') or ''  # 备用（规格描述）
         spu_id = order_item.get('spuId') or order_item.get('spu_id') or ''
+        
         goods_id = order_item.get('goodsId') or order_item.get('goods_id') or ''
         quantity = order_item.get('goodsNumber') or order_item.get('quantity') or 1
         
@@ -280,9 +395,53 @@ class SyncService:
         # 提取客户信息
         customer_id = parent_order.get('customerId') or parent_order.get('buyerId') or ''
         
+        # 根据productSkuId、extCode或spu_id匹配商品，获取供货价和成本价
+        # 注意：同一订单可能包含多个SKU，每个SKU会创建单独的订单记录
+        # 优先级：productSkuId > extCode (SKU货号) > spu_id
+        unit_cost = None
+        total_cost = None
+        profit = None
+        matched_product_id = None
+        
+        # 尝试匹配商品
+        price_info = self._get_product_price_by_sku(
+            product_sku=product_sku,  # extCode (SKU货号)
+            order_time=order_time,
+            product_sku_id=product_sku_id,  # productSkuId (优先级1)
+            spu_id=spu_id  # SPU ID (优先级3)
+        )
+        
+        if price_info:
+            unit_cost = price_info['cost_price']
+            matched_product_id = price_info['product_id']
+            
+            # 计算总成本和利润（基于该SKU的数量）
+            if unit_cost is not None and quantity:
+                total_cost = unit_cost * Decimal(quantity)
+                profit = total_price - total_cost
+                logger.debug(
+                    f"✅ 订单 {order_item.get('orderSn')} 匹配到商品 - "
+                    f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {spu_id}, "
+                    f"数量: {quantity}, 单价: {unit_price}, 总价: {total_price}, "
+                    f"单位成本: {unit_cost}, 总成本: {total_cost}, 利润: {profit}"
+                )
+            else:
+                logger.warning(
+                    f"⚠️  订单 {order_item.get('orderSn')} "
+                    f"(productSkuId: {product_sku_id}, extCode: {product_sku}) "
+                    f"匹配到商品但无成本价，无法计算利润"
+                )
+        else:
+            logger.warning(
+                f"❌ 订单 {order_item.get('orderSn')} "
+                f"(productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {spu_id}) "
+                f"未在商品库中找到匹配商品"
+            )
+        
         # 创建订单对象
         # 注意：temu_order_id 使用子订单号（orderSn），因为子订单号是唯一的
         # parent_order_sn 字段存储父订单号，用于关联同一父订单下的多个子订单
+        # 同一订单号可以包含多个不同的SKU，每个SKU一条记录
         order = Order(
             shop_id=self.shop.id,
             order_sn=order_item.get('orderSn'),
@@ -290,15 +449,21 @@ class SyncService:
             parent_order_sn=parent_order.get('parentOrderSn'),
             
             # 商品信息
+            product_id=matched_product_id,  # 匹配到的商品ID
             product_name=product_name,
             product_sku=product_sku,
             spu_id=spu_id,
-            quantity=quantity,
+            quantity=quantity,  # 该SKU的数量
             
-            # 金额信息
+            # 金额信息（该SKU的金额）
             unit_price=unit_price,
             total_price=total_price,
             currency=currency,
+            
+            # 成本和利润（该SKU的成本和利润）
+            unit_cost=unit_cost,
+            total_cost=total_cost,
+            profit=profit,
             
             # 状态和时间
             status=order_status,
@@ -321,7 +486,10 @@ class SyncService:
         )
         
         self.db.add(order)
-        logger.debug(f"创建新订单: {order.order_sn}, SKU: {product_sku}, SPU: {spu_id}")
+        logger.debug(
+            f"创建新订单: {order.order_sn}, SKU: {product_sku}, SPU: {spu_id}, "
+            f"数量: {quantity}, 总价: {total_price}, 利润: {profit}"
+        )
     
     def _update_order(
         self, 
@@ -413,6 +581,62 @@ class SyncService:
         if total_price and order.total_price != total_price:
             order.total_price = total_price
             updated = True
+        
+        # 更新成本和利润信息（如果尚未设置或需要重新计算）
+        # 如果订单还没有成本信息，或者价格已更新，则重新计算
+        if (order.unit_cost is None or order.total_cost is None or 
+            (updated and (unit_price or total_price))):
+            
+            # 从order_item中提取productSkuId和spu_id用于匹配
+            product_list = order_item.get('productList', [])
+            if product_list and len(product_list) > 0:
+                product_info = product_list[0]
+                product_sku_id = product_info.get('productSkuId')
+                item_spu_id = product_info.get('productId') or order.spu_id
+            else:
+                product_sku_id = None
+                item_spu_id = order.spu_id
+            
+            # 尝试匹配商品
+            price_info = self._get_product_price_by_sku(
+                product_sku=order.product_sku,
+                order_time=order.order_time,
+                product_sku_id=product_sku_id,
+                spu_id=item_spu_id
+            )
+            
+            if price_info:
+                unit_cost = price_info['cost_price']
+                
+                if unit_cost is not None and order.quantity:
+                    # 计算总成本和利润
+                    new_total_cost = unit_cost * Decimal(order.quantity)
+                    new_profit = order.total_price - new_total_cost
+                    
+                    # 更新成本和利润
+                    if order.unit_cost != unit_cost:
+                        order.unit_cost = unit_cost
+                        updated = True
+                    
+                    if order.total_cost != new_total_cost:
+                        order.total_cost = new_total_cost
+                        updated = True
+                    
+                    if order.profit != new_profit:
+                        order.profit = new_profit
+                        updated = True
+                    
+                    # 更新商品关联（如果缺失）
+                    if not order.product_id and price_info['product_id']:
+                        order.product_id = price_info['product_id']
+                        updated = True
+                    
+                    if updated:
+                        logger.debug(
+                            f"✅ 更新订单成本/利润: {order.order_sn}, "
+                            f"productSkuId: {product_sku_id}, spu_id: {item_spu_id}, "
+                            f"单位成本: {unit_cost}, 总成本: {new_total_cost}, 利润: {new_profit}"
+                        )
         
         # 更新原始数据
         new_raw_data = json.dumps(full_order_data, ensure_ascii=False)
@@ -538,17 +762,23 @@ class SyncService:
             
             page_number = 1
             page_size = 100
+            max_pages = 1000  # 设置最大页数限制，防止无限循环
+            total_fetched = 0  # 累计获取的商品数（包括跳过的）
             
-            while True:
+            logger.info(f"开始分页获取商品 - 店铺: {self.shop.shop_name}, 每页: {page_size}")
+            
+            while page_number <= max_pages:
                 # 获取商品列表
+                # 使用 skc_site_status=1 筛选在售商品
                 result = await self.temu_service.get_products(
                     page_number=page_number,
-                    page_size=page_size
+                    page_size=page_size,
+                    skc_site_status=1  # 只获取在售商品
                 )
                 
                 # 处理API返回为null的情况
                 if result is None:
-                    logger.info(f"商品列表为空 - 店铺: {self.shop.shop_name}")
+                    logger.info(f"商品列表为空 - 店铺: {self.shop.shop_name}, 页码: {page_number}")
                     break
                 
                 # 获取商品列表数据（可能的字段名：data, goodsList, productList, pageItems等）
@@ -571,36 +801,143 @@ class SyncService:
                     0
                 )
                 
+                # 记录当前页信息
+                logger.info(
+                    f"获取商品列表 - 店铺: {self.shop.shop_name}, "
+                    f"页码: {page_number}, "
+                    f"当前页商品数: {len(product_list)}, "
+                    f"API返回总数: {total_items if total_items > 0 else '未知'}"
+                )
+                
                 if not product_list:
                     logger.info(f"当前页无商品数据 - 店铺: {self.shop.shop_name}, 页码: {page_number}")
                     break
                 
-                # 处理每个商品
+                # 累计获取的商品数
+                total_fetched += len(product_list)
+                
+                # 处理每个商品（只处理在售商品）
+                page_active_count = 0  # 当前页在售商品数
+                page_sku_count = 0  # 当前页有SKU的商品数
+                page_skipped_count = 0  # 当前页跳过的非在售商品数
+                
                 for product_item in product_list:
                     try:
+                        # 记录商品基本信息（用于调试）
+                        product_id = (
+                            str(product_item.get('productId')) or 
+                            str(product_item.get('goodsId')) or 
+                            str(product_item.get('id')) or 
+                            '未知'
+                        )
+                        product_name = (
+                            product_item.get('productName') or 
+                            product_item.get('goodsName') or 
+                            product_item.get('name') or 
+                            '未知商品'
+                        )
+                        
+                        # 检查商品状态（只处理在售商品）
+                        # CN端点使用 skcSiteStatus 字段：1=在售，0=不在售
+                        # 注意：不能使用 or 操作符，因为0会被当作False
+                        goods_status = None
+                        if 'skcSiteStatus' in product_item:
+                            goods_status = product_item.get('skcSiteStatus')
+                        elif 'goodsStatus' in product_item:
+                            goods_status = product_item.get('goodsStatus')
+                        elif 'status' in product_item:
+                            goods_status = product_item.get('status')
+                        
+                        is_active_status = False
+                        if goods_status is not None:
+                            if isinstance(goods_status, int):
+                                # 只判断是否为1（在售），0表示不在售
+                                is_active_status = goods_status == 1
+                            elif isinstance(goods_status, str):
+                                is_active_status = goods_status.lower() in ['1', 'active', 'on_sale', 'onsale', 'published']
+                        
+                        # 如果商品不在售，跳过处理
+                        if not is_active_status:
+                            page_skipped_count += 1
+                            logger.debug(
+                                f"跳过非在售商品 - 商品ID: {product_id}, "
+                                f"商品名称: {product_name}, "
+                                f"状态: {goods_status}"
+                            )
+                            continue
+                        
+                        page_active_count += 1
+                        
+                        # 检查是否有SKU（仅用于统计，不影响处理）
+                        has_sku = bool(
+                            product_item.get('extCode') or 
+                            product_item.get('outSkuSn') or
+                            product_item.get('productSkuSummaries') or
+                            product_item.get('skuInfoList') or
+                            product_item.get('skuList')
+                        )
+                        if has_sku:
+                            page_sku_count += 1
+                        
                         self._process_product(product_item)
                         # 立即提交每个商品，避免批量插入时的重复键错误
                         self.db.commit()
                         stats["total"] += 1
                     except Exception as e:
-                        logger.error(f"处理商品失败: {e}, 商品数据: {product_item}")
+                        logger.error(f"处理商品失败: {e}, 商品ID: {product_id}, 商品名称: {product_name}")
                         self.db.rollback()  # 回滚失败的商品
                         stats["failed"] += 1
                 
+                # 记录当前页统计
+                logger.info(
+                    f"第 {page_number} 页处理完成 - "
+                    f"获取: {len(product_list)}, "
+                    f"在售(处理): {page_active_count}, "
+                    f"跳过(非在售): {page_skipped_count}, "
+                    f"有SKU: {page_sku_count}, "
+                    f"累计总数: {stats['total']}"
+                )
+                
                 # 检查是否还有更多页
-                if total_items > 0 and page_number * page_size >= total_items:
+                # 如果当前页商品数为0，说明没有更多数据了
+                if len(product_list) == 0:
+                    logger.info(f"已获取所有商品（当前页为空）- 店铺: {self.shop.shop_name}, 总页数: {page_number}")
                     break
                 
-                # 如果没有总数信息，检查当前页是否为空或小于page_size
-                if not total_items and len(product_list) < page_size:
+                # 如果有总数信息，检查是否已经获取完所有商品
+                if total_items > 0:
+                    # 使用累计获取的商品数来判断
+                    if total_fetched >= total_items:
+                        logger.info(f"已获取所有商品（已达到总数）- 店铺: {self.shop.shop_name}, 总页数: {page_number}, 总数: {total_items}, 已获取: {total_fetched}")
+                        break
+                else:
+                    # 如果没有总数信息，检查当前页是否小于page_size（可能是最后一页）
+                    if len(product_list) < page_size:
+                        logger.info(f"已获取所有商品（当前页商品数小于每页数量且无总数信息）- 店铺: {self.shop.shop_name}, 总页数: {page_number}, 当前页商品数: {len(product_list)}")
                     break
                 
                 page_number += 1
             
+            if page_number > max_pages:
+                logger.warning(f"达到最大页数限制 - 店铺: {self.shop.shop_name}, 最大页数: {max_pages}")
+            
+            # 统计同步后的商品状态
+            active_products = self.db.query(Product).filter(
+                Product.shop_id == self.shop.id,
+                Product.is_active == True
+            ).count()
+            
+            products_with_sku = self.db.query(Product).filter(
+                Product.shop_id == self.shop.id,
+                Product.sku.isnot(None),
+                Product.sku != ''
+            ).count()
+            
             logger.info(
                 f"商品同步完成 - 店铺: {self.shop.shop_name}, "
                 f"新增: {stats['new']}, 更新: {stats['updated']}, "
-                f"总数: {stats['total']}, 失败: {stats['failed']}"
+                f"总数: {stats['total']}, 失败: {stats['failed']}, "
+                f"在售商品: {active_products}, 有SKU商品: {products_with_sku}"
             )
             
             return stats
@@ -641,12 +978,25 @@ class SyncService:
         
         # 如果没有 SKU 列表，将整个商品作为一个 SKU 处理
         if not sku_list:
+            logger.debug(f"商品没有SKU列表，作为单个SKU处理 - 商品ID: {goods_id}")
             self._create_or_update_product_from_data(product_data, goods_id)
         else:
+            logger.debug(f"商品有 {len(sku_list)} 个SKU，分别处理 - 商品ID: {goods_id}")
             # 为每个 SKU 创建/更新商品记录
-            for sku_data in sku_list:
-                # 合并商品数据和 SKU 数据
+            for idx, sku_data in enumerate(sku_list):
+                # 合并商品数据和 SKU 数据（SKU数据优先，覆盖商品数据中的同名字段）
+                # 但需要保留商品级别的状态字段（skcSiteStatus），因为SKU数据中可能没有
                 combined_data = {**product_data, **sku_data}
+                # 如果SKU数据中没有状态字段，保留商品级别的状态字段
+                if 'skcSiteStatus' not in sku_data or sku_data.get('skcSiteStatus') is None:
+                    if 'skcSiteStatus' in product_data:
+                        combined_data['skcSiteStatus'] = product_data['skcSiteStatus']
+                if 'goodsStatus' not in sku_data or sku_data.get('goodsStatus') is None:
+                    if 'goodsStatus' in product_data:
+                        combined_data['goodsStatus'] = product_data['goodsStatus']
+                if 'status' not in sku_data or sku_data.get('status') is None:
+                    if 'status' in product_data:
+                        combined_data['status'] = product_data['status']
                 
                 # CN端点：productSkuId 作为 product_id，productId 作为 spu_id
                 # 标准端点：skuId 作为 product_id，goodsId 作为 spu_id
@@ -662,7 +1012,26 @@ class SyncService:
                     combined_data['productId'] = sku_id  # 使用 SKU ID 作为商品 ID
                     combined_data['goodsId'] = sku_id  # 兼容标准端点
                     combined_data['spuId'] = goods_id  # 使用商品 ID 作为 SPU ID
+                    
+                    # 记录SKU信息（包括所有可能的SKU字段）
+                    ext_code = sku_data.get('extCode', '')
+                    out_sku_sn = sku_data.get('outSkuSn', '')
+                    logger.debug(
+                        f"处理第 {idx+1} 个SKU - SKU ID: {sku_id}, "
+                        f"extCode: '{ext_code}', outSkuSn: {out_sku_sn}, "
+                        f"sku: {sku_data.get('sku')}, skuSn: {sku_data.get('skuSn')}"
+                    )
+                    
+                    # 如果extCode是空字符串，记录警告以便调试
+                    if ext_code == '':
+                        logger.debug(
+                            f"SKU extCode为空字符串 - SKU ID: {sku_id}, "
+                            f"将尝试从其他字段获取SKU信息"
+                        )
+                    
                     self._create_or_update_product_from_data(combined_data, sku_id)
+                else:
+                    logger.warning(f"SKU数据缺少ID，跳过 - SKU索引: {idx}, SKU数据: {sku_data}")
     
     def _create_or_update_product_from_data(self, product_data: Dict[str, Any], goods_id: str):
         """
@@ -736,14 +1105,21 @@ class SyncService:
                 )
         
         # 提取SKU（CN端点使用extCode，标准端点可能使用outSkuSn）
-        sku = (
-            product_data.get('extCode') or  # CN端点使用此字段（SKU外部编号）
-            product_data.get('outSkuSn') or  # SKU 外部编号（标准端点）
-            product_data.get('sku') or 
-            product_data.get('goodsSku') or 
-            product_data.get('productSku') or 
-            product_data.get('skuSn') or  # SKU 编号
-            ''
+        # 辅助函数：过滤空字符串和None
+        def get_non_empty_value(*values):
+            for v in values:
+                if v and str(v).strip():  # 过滤None、空字符串和只包含空格的字符串
+                    return str(v).strip()
+            return None
+        
+        sku = get_non_empty_value(
+            product_data.get('extCode'),  # CN端点使用此字段（SKU外部编号）
+            product_data.get('outSkuSn'),  # SKU 外部编号（标准端点）
+            product_data.get('sku'),
+            product_data.get('goodsSku'),
+            product_data.get('productSku'),
+            product_data.get('skuSn'),  # SKU 编号
+            product_data.get('outGoodsSn'),  # 商品外部编号（可能包含SKU信息）
         )
         
         # 如果 SKU 为空，尝试从 SKU 信息列表中获取
@@ -755,14 +1131,36 @@ class SyncService:
                 []
             )
             if sku_info_list and len(sku_info_list) > 0:
-                first_sku = sku_info_list[0]
-                sku = (
-                    first_sku.get('extCode') or  # CN端点使用此字段
-                    first_sku.get('outSkuSn') or
-                    first_sku.get('skuSn') or
-                    first_sku.get('sku') or
-                    ''
-                )
+                # 遍历所有SKU，找到第一个有extCode的
+                for sku_item in sku_info_list:
+                    sku = get_non_empty_value(
+                        sku_item.get('extCode'),  # CN端点使用此字段
+                        sku_item.get('outSkuSn'),
+                        sku_item.get('skuSn'),
+                        sku_item.get('sku'),
+                        sku_item.get('productSkuId'),  # 使用SKU ID作为备选
+                    )
+                    if sku:
+                        break
+        
+        # 如果SKU仍然为空，记录调试信息
+        if not sku:
+            logger.warning(
+                f"商品SKU为空 - 商品ID: {goods_id}, 商品名称: {product_name}, "
+                f"尝试的字段值: extCode={product_data.get('extCode')}, "
+                f"outSkuSn={product_data.get('outSkuSn')}, sku={product_data.get('sku')}, "
+                f"goodsSku={product_data.get('goodsSku')}, productSku={product_data.get('productSku')}, "
+                f"skuSn={product_data.get('skuSn')}, "
+                f"productSkuSummaries存在={bool(product_data.get('productSkuSummaries'))}, "
+                f"skuInfoList存在={bool(product_data.get('skuInfoList'))}, "
+                f"skuList存在={bool(product_data.get('skuList'))}"
+            )
+            # 记录所有可能的SKU相关字段
+            sku_related_keys = [k for k in product_data.keys() if 'sku' in k.lower() or 'code' in k.lower() or 'sn' in k.lower()]
+            if sku_related_keys:
+                logger.debug(f"商品数据中包含的SKU相关字段: {sku_related_keys}")
+                for key in sku_related_keys[:10]:  # 只记录前10个，避免日志过长
+                    logger.debug(f"  {key}: {product_data.get(key)}")
         
         # 提取SPU ID和SKC ID
         # CN端点：如果当前是SKU，spuId已经在_process_product中设置；如果是商品本身，使用productId作为spuId
@@ -804,20 +1202,24 @@ class SyncService:
         
         # 提取状态信息
         # CN端点使用skcSiteStatus，标准端点可能使用goodsStatus
-        goods_status = (
-            product_data.get('skcSiteStatus') or  # CN端点使用此字段
-            product_data.get('goodsStatus') or 
-            product_data.get('status')
-        )
-        is_active = True  # 默认在售
+        # 注意：不能使用 or 操作符，因为0会被当作False
+        goods_status = None
+        if 'skcSiteStatus' in product_data:
+            goods_status = product_data.get('skcSiteStatus')
+        elif 'goodsStatus' in product_data:
+            goods_status = product_data.get('goodsStatus')
+        elif 'status' in product_data:
+            goods_status = product_data.get('status')
+        
+        # 只根据API返回的状态字段判断是否在售，不依赖SKU
+        # CN端点：skcSiteStatus=1 表示在售，0 表示不在售
+        is_active = False
         if goods_status is not None:
-            # 状态可能是数字或字符串
-            # 通常：1=在售，0=下架，或其他状态码
-            # CN端点：skcSiteStatus可能是状态码，需要根据实际值判断
             if isinstance(goods_status, int):
-                is_active = goods_status == 1 or goods_status == 2  # 1或2可能表示在售
+                is_active = goods_status == 1  # 只判断是否为1（在售），0表示不在售
             elif isinstance(goods_status, str):
-                is_active = goods_status.lower() in ['1', '2', 'active', 'on_sale', 'onsale', 'published']
+                is_active = goods_status.lower() in ['1', 'active', 'on_sale', 'onsale', 'published']
+        # 如果API没有返回状态信息，默认为不在售
         
         # 提取其他信息
         description = product_data.get('description') or product_data.get('goodsDesc') or ''
@@ -905,29 +1307,62 @@ class SyncService:
             product.product_name = new_name
             updated = True
         
-        # 更新SKU
-        new_sku = (
-            product_data.get('outSkuSn') or  # SKU 外部编号（优先）
-            product_data.get('sku') or 
-            product_data.get('goodsSku') or 
-            product_data.get('productSku') or
-            product_data.get('skuSn')  # SKU 编号
+        # 更新SKU（与创建逻辑保持一致，包括extCode字段）
+        # 辅助函数：过滤空字符串和None
+        def get_non_empty_value(*values):
+            for v in values:
+                if v and str(v).strip():  # 过滤None、空字符串和只包含空格的字符串
+                    return str(v).strip()
+            return None
+        
+        new_sku = get_non_empty_value(
+            product_data.get('extCode'),  # CN端点使用此字段（SKU外部编号）
+            product_data.get('outSkuSn'),  # SKU 外部编号（标准端点）
+            product_data.get('sku'),
+            product_data.get('goodsSku'),
+            product_data.get('productSku'),
+            product_data.get('skuSn'),  # SKU 编号
+            product_data.get('outGoodsSn'),  # 商品外部编号（可能包含SKU信息）
         )
         
         # 如果 SKU 为空，尝试从 SKU 信息列表中获取
         if not new_sku:
-            sku_info_list = product_data.get('skuInfoList') or product_data.get('skuList') or []
+            sku_info_list = (
+                product_data.get('productSkuSummaries') or  # CN端点使用此字段
+                product_data.get('skuInfoList') or 
+                product_data.get('skuList') or 
+                []
+            )
             if sku_info_list and len(sku_info_list) > 0:
-                first_sku = sku_info_list[0]
-                new_sku = (
-                    first_sku.get('outSkuSn') or
-                    first_sku.get('skuSn') or
-                    first_sku.get('sku') or
-                    new_sku
-                )
+                # 遍历所有SKU，找到第一个有extCode的
+                for sku_item in sku_info_list:
+                    new_sku = get_non_empty_value(
+                        sku_item.get('extCode'),  # CN端点使用此字段
+                        sku_item.get('outSkuSn'),
+                        sku_item.get('skuSn'),
+                        sku_item.get('sku'),
+                        sku_item.get('productSkuId'),  # 使用SKU ID作为备选
+                    )
+                    if new_sku:
+                        break
+        
+        # 如果当前SKU为空且新SKU也为空，记录警告
+        if not product.sku and not new_sku:
+            logger.warning(
+                f"更新商品时SKU仍为空 - 商品ID: {product.product_id}, 商品名称: {product.product_name}, "
+                f"尝试的字段值: extCode={product_data.get('extCode')}, "
+                f"outSkuSn={product_data.get('outSkuSn')}, sku={product_data.get('sku')}, "
+                f"goodsSku={product_data.get('goodsSku')}, productSku={product_data.get('productSku')}, "
+                f"skuSn={product_data.get('skuSn')}"
+            )
+        
+        # 如果找到了新的SKU，且与当前SKU不同，则更新
+        # 如果当前SKU为空（None），且找到了新的SKU，也应该更新
         if new_sku and product.sku != new_sku:
+            logger.info(f"更新商品SKU: {product.product_name} (ID: {product.product_id}), 旧SKU: {product.sku}, 新SKU: {new_sku}")
             product.sku = new_sku
             updated = True
+        # 如果当前SKU为空，但新SKU也为空，不更新（避免将None更新为None）
         
         # 更新价格
         new_price = self._parse_decimal(
@@ -957,14 +1392,20 @@ class SyncService:
                 pass
         
         # 更新状态
-        goods_status = product_data.get('goodsStatus') or product_data.get('status')
+        # 只根据API返回的状态字段判断是否在售，不依赖SKU
+        goods_status = (
+            product_data.get('skcSiteStatus') or  # CN端点使用此字段
+            product_data.get('goodsStatus') or 
+            product_data.get('status')
+        )
+        
+        new_is_active = False
         if goods_status is not None:
             if isinstance(goods_status, int):
-                new_is_active = goods_status == 1
+                new_is_active = goods_status == 1  # 只判断是否为1（在售）
             elif isinstance(goods_status, str):
-                new_is_active = goods_status.lower() in ['1', 'active', 'on_sale', 'onsale']
-            else:
-                new_is_active = product.is_active
+                new_is_active = goods_status.lower() in ['1', 'active', 'on_sale', 'onsale', 'published']
+        # 如果API没有返回状态信息，默认为不在售
             
             if product.is_active != new_is_active:
                 product.is_active = new_is_active
@@ -1072,8 +1513,8 @@ class SyncService:
             # 同步商品
             results['products'] = await self.sync_products(full_sync=full_sync)
             
-            # 同步分类
-            results['categories'] = await self.sync_categories()
+            # 同步分类（已禁用，无需获取商品分类）
+            # results['categories'] = await self.sync_categories()
             
             logger.info(f"全量同步完成 - 店铺: {self.shop.shop_name}")
             

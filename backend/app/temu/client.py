@@ -70,7 +70,8 @@ class TemuAPIClient:
         self,
         api_type: str,
         request_data: Optional[Dict[str, Any]] = None,
-        access_token: Optional[str] = None
+        access_token: Optional[str] = None,
+        flat_params: bool = False
     ) -> Dict[str, Any]:
         """
         通过代理服务器发送API请求（带重试机制）
@@ -79,6 +80,7 @@ class TemuAPIClient:
             api_type: API接口类型（如 bg.order.list.v2.get）
             request_data: 业务请求数据
             access_token: 访问令牌
+            flat_params: 是否将业务参数平铺在顶层（CN端点通常需要True）
             
         Returns:
             API响应数据
@@ -99,7 +101,8 @@ class TemuAPIClient:
             "app_key": self.app_key,
             "app_secret": self.app_secret,
             # 传入 base_url，让代理服务器知道要请求哪个API地址
-            "api_base_url": self.base_url
+            "api_base_url": self.base_url,
+            "flat_params": flat_params
         }
         
         last_exception = None
@@ -182,7 +185,8 @@ class TemuAPIClient:
         self,
         api_type: str,
         request_data: Optional[Dict[str, Any]] = None,
-        access_token: Optional[str] = None
+        access_token: Optional[str] = None,
+        flat_params: bool = False
     ) -> Dict[str, Any]:
         """
         发送API请求（Temu统一路由格式，带重试机制）
@@ -191,13 +195,14 @@ class TemuAPIClient:
             api_type: API接口类型（如 bg.order.list.v2.get）
             request_data: 业务请求数据
             access_token: 访问令牌
+            flat_params: 是否将业务参数平铺在顶层（CN端点通常需要True）
             
         Returns:
             API响应数据
         """
         # 如果配置了代理 URL，通过代理发送请求（重试已在_request_via_proxy中处理）
         if self.proxy_url:
-            return await self._request_via_proxy(api_type, request_data, access_token)
+            return await self._request_via_proxy(api_type, request_data, access_token, flat_params)
         
         max_attempts = settings.API_RETRY_MAX_ATTEMPTS
         initial_delay = settings.API_RETRY_INITIAL_DELAY
@@ -228,8 +233,12 @@ class TemuAPIClient:
                 # 合并所有参数
                 all_params = {**common_params}
                 if request_data:
-                    # 业务参数放在 request 字段中
-                    all_params["request"] = request_data
+                    if flat_params:
+                        # CN端点：将业务参数平铺在顶层
+                        all_params.update(request_data)
+                    else:
+                        # 标准端点：业务参数放在 request 字段中
+                        all_params["request"] = request_data
                 
                 # 生成签名
                 sign = self._generate_sign(all_params)

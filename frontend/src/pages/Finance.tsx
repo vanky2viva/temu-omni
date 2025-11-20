@@ -1,122 +1,166 @@
-import { Table, Tag, Card, Space, Button, Row, Col, Statistic } from 'antd'
-import { DollarOutlined, RiseOutlined, FallOutlined } from '@ant-design/icons'
+import { useQuery } from '@tanstack/react-query'
+import { Table, Card, Row, Col, Statistic, Spin } from 'antd'
+import { DollarOutlined, RiseOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-
-interface FinanceData {
-  key: string
-  date: string
-  orderSn: string
-  amount: number
-  cost: number
-  profit: number
-  status: string
-  paymentMethod: string
-}
+import ReactECharts from 'echarts-for-react'
+import { analyticsApi } from '@/services/api'
+import dayjs from 'dayjs'
 
 function Finance() {
-  const columns: ColumnsType<FinanceData> = [
+  // 获取回款统计数据
+  const { data: collectionData, isLoading: collectionLoading } = useQuery({
+    queryKey: ['payment-collection', 30],
+    queryFn: () => analyticsApi.getPaymentCollection({ days: 30 }),
+    staleTime: 0,
+  })
+
+  // 回款统计表格列
+  const collectionColumns: ColumnsType<any> = [
     {
       title: '日期',
       dataIndex: 'date',
       key: 'date',
-      width: 100,
-    },
-    {
-      title: '订单号',
-      dataIndex: 'orderSn',
-      key: 'orderSn',
       width: 120,
+      fixed: 'left' as const,
     },
+    ...(collectionData?.summary?.shops?.map((shop: string) => ({
+      title: shop,
+      dataIndex: shop,
+      key: shop,
+      width: 150,
+      align: 'right' as const,
+      render: (val: number) => val ? `¥${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-',
+    })) || []),
     {
-      title: '金额',
-      dataIndex: 'amount',
-      key: 'amount',
-      width: 100,
-      render: (amount: number) => `$${amount.toFixed(2)}`,
-    },
-    {
-      title: '成本',
-      dataIndex: 'cost',
-      key: 'cost',
-      width: 100,
-      render: (cost: number) => `$${cost.toFixed(2)}`,
-    },
-    {
-      title: '利润',
-      dataIndex: 'profit',
-      key: 'profit',
-      width: 100,
-      render: (profit: number) => (
-        <span style={{ color: profit > 0 ? '#3fb950' : '#f85149' }}>
-          ${profit.toFixed(2)}
+      title: '总计',
+      dataIndex: 'total',
+      key: 'total',
+      width: 150,
+      align: 'right' as const,
+      render: (val: number) => (
+        <span style={{ fontWeight: 'bold', color: '#1890ff' }}>
+          ¥{val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 80,
-      render: (status: string) => {
-        const colorMap: { [key: string]: string } = {
-          '已结算': 'success',
-          '待结算': 'warning',
-          '已退款': 'error',
-        }
-        return <Tag color={colorMap[status]}>{status}</Tag>
-      },
-    },
-    {
-      title: '支付方式',
-      dataIndex: 'paymentMethod',
-      key: 'paymentMethod',
-      width: 100,
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 120,
-      render: () => (
-        <Space size="small">
-          <Button type="link" size="small">查看</Button>
-          <Button type="link" size="small">导出</Button>
-        </Space>
-      ),
+      fixed: 'right' as const,
     },
   ]
 
-  const data: FinanceData[] = [
-    {
-      key: '1',
-      date: '2024-10-25',
-      orderSn: 'ORD00000001',
-      amount: 58.24,
-      cost: 35.50,
-      profit: 22.74,
-      status: '已结算',
-      paymentMethod: 'Credit Card',
+  // 回款统计折线图配置
+  const collectionChartOption = collectionData ? {
+    backgroundColor: 'transparent',
+    title: {
+      text: '回款趋势',
+      left: 'center',
+      textStyle: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#c9d1d9',
+      },
     },
-    {
-      key: '2',
-      date: '2024-10-25',
-      orderSn: 'ORD00000002',
-      amount: 81.45,
-      cost: 48.20,
-      profit: 33.25,
-      status: '已结算',
-      paymentMethod: 'PayPal',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+        lineStyle: {
+          color: '#58a6ff',
+        },
+      },
+      backgroundColor: '#161b22',
+      borderColor: '#30363d',
+      borderWidth: 1,
+      textStyle: {
+        color: '#c9d1d9',
+        fontSize: 12,
+      },
+      formatter: (params: any) => {
+        let result = `${params[0].axisValue}<br/>`
+        params.forEach((item: any) => {
+          result += `${item.marker}${item.seriesName}: ¥${item.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<br/>`
+        })
+        return result
+      },
     },
-    {
-      key: '3',
-      date: '2024-10-24',
-      orderSn: 'ORD00000003',
-      amount: 63.45,
-      cost: 38.90,
-      profit: 24.55,
-      status: '待结算',
-      paymentMethod: 'Credit Card',
+    legend: {
+      data: collectionData.chart_data.series.map((s: any) => s.name),
+      bottom: 0,
+      textStyle: {
+        fontSize: 12,
+        color: '#8b949e',
+      },
     },
-  ]
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '15%',
+      top: '10%',
+      containLabel: true,
+    },
+    xAxis: {
+      type: 'category',
+      data: collectionData.chart_data.dates,
+      axisLine: {
+        lineStyle: {
+          color: '#30363d',
+        },
+      },
+      axisLabel: {
+        color: '#8b949e',
+        fontSize: 11,
+        rotate: 45,
+        formatter: (value: string) => dayjs(value).format('MM-DD'),
+      },
+    },
+    yAxis: {
+      type: 'value',
+      name: '回款金额 (CNY)',
+      nameTextStyle: {
+        color: '#8b949e',
+        fontSize: 11,
+      },
+      axisLine: {
+        lineStyle: {
+          color: '#30363d',
+        },
+      },
+      axisLabel: {
+        color: '#8b949e',
+        fontSize: 11,
+        formatter: (value: number) => `¥${(value / 1000).toFixed(0)}k`,
+      },
+      splitLine: {
+        lineStyle: {
+          color: '#21262d',
+        },
+      },
+    },
+    series: collectionData.chart_data.series.map((series: any, index: number) => ({
+      name: series.name,
+      type: 'line',
+      data: series.data,
+      smooth: true,
+      lineStyle: {
+        width: series.name === '总计' ? 3 : 2,
+        color: series.name === '总计' ? '#1890ff' : undefined,
+      },
+      itemStyle: {
+        color: series.name === '总计' ? '#1890ff' : undefined,
+      },
+      areaStyle: series.name === '总计' ? {
+        color: {
+          type: 'linear',
+          x: 0,
+          y: 0,
+          x2: 0,
+          y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(24, 144, 255, 0.3)' },
+            { offset: 1, color: 'rgba(24, 144, 255, 0.05)' },
+          ],
+        },
+      } : undefined,
+    })),
+  } : null
 
   return (
     <div>
@@ -137,7 +181,7 @@ function Finance() {
               value={74403.62}
               precision={2}
               prefix={<DollarOutlined />}
-              suffix="USD"
+              suffix="CNY"
             />
           </Card>
         </Col>
@@ -148,7 +192,7 @@ function Finance() {
               value={33502.25}
               precision={2}
               prefix={<RiseOutlined />}
-              suffix="USD"
+              suffix="CNY"
             />
           </Card>
         </Col>
@@ -165,29 +209,61 @@ function Finance() {
         </Col>
       </Row>
 
-      <Card className="chart-card" style={{ marginBottom: 16 }}>
-        <Space style={{ marginBottom: 16 }}>
-          <Button type="primary">财务报表</Button>
-          <Button>导出账单</Button>
-          <Button>结算管理</Button>
-        </Space>
-      </Card>
+      {collectionLoading ? (
+        <Card className="chart-card">
+          <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
+        </Card>
+      ) : (
+        <>
+          {/* 回款统计汇总 */}
+          <Card className="chart-card" style={{ marginBottom: 16 }}>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Statistic
+                  title="总回款金额"
+                  value={collectionData?.summary?.total_amount || 0}
+                  precision={2}
+                  prefix={<DollarOutlined />}
+                  suffix="CNY"
+                  valueStyle={{ color: '#3f8600', fontSize: '24px' }}
+                />
+              </Col>
+              <Col span={12}>
+                <Statistic
+                  title="回款订单数"
+                  value={collectionData?.summary?.total_orders || 0}
+                  suffix="单"
+                  valueStyle={{ fontSize: '24px' }}
+                />
+              </Col>
+            </Row>
+          </Card>
 
-      <Card className="chart-card">
-        <Table 
-          columns={columns} 
-          dataSource={data}
-          pagination={{
-            pageSize: 20,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条`,
-            pageSizeOptions: ['10', '20', '50', '100'],
-          }}
-        />
-      </Card>
+          {/* 回款统计表格 */}
+          <Card className="chart-card" style={{ marginBottom: 16 }}>
+            <Table 
+              columns={collectionColumns} 
+              dataSource={collectionData?.table_data || []}
+              scroll={{ x: 'max-content' }}
+              pagination={{
+                pageSize: 20,
+                showSizeChanger: true,
+                showTotal: (total) => `共 ${total} 条`,
+                pageSizeOptions: ['10', '20', '50', '100'],
+              }}
+            />
+          </Card>
+
+          {/* 回款趋势折线图 */}
+          {collectionChartOption && (
+            <Card className="chart-card">
+              <ReactECharts option={collectionChartOption} style={{ height: 400 }} />
+            </Card>
+          )}
+        </>
+      )}
     </div>
   )
 }
 
 export default Finance
-

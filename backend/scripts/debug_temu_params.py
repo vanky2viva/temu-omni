@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""Debug Temu API Parameters"""
+import asyncio
+import sys
+import json
+import time
+import hashlib
+import httpx
+from pathlib import Path
+from typing import Dict, Any
+
+# 添加项目根目录到路径
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from app.core.database import SessionLocal
+from app.models.shop import Shop
+from app.core.config import settings
+
+class DebugClient:
+    def __init__(self, app_key, app_secret, base_url):
+        self.app_key = app_key
+        self.app_secret = app_secret
+        self.base_url = base_url
+        self.client = httpx.AsyncClient(timeout=30.0)
+
+    def _generate_sign(self, params: Dict[str, Any]) -> str:
+        temp = []
+        sorted_params = sorted(params.items())
+        for key, value in sorted_params:
+            if value is not None:
+                if isinstance(value, (dict, list)):
+                    value = json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+                temp.append(str(key) + str(value).strip('\"'))
+        
+        un_sign = ''.join(temp)
+        un_sign = str(self.app_secret) + un_sign + str(self.app_secret)
+        return hashlib.md5(un_sign.encode('utf-8')).hexdigest().upper()
+
+    async def request_flat(self, api_type, params, access_token):
+        """参数平铺测试"""
+        timestamp = int(time.time())
+        common_params = {
+            "app_key": self.app_key,
+            "data_type": "JSON",
+            "timestamp": timestamp,
+            "type": api_type,
+            "version": "V1",
+            "access_token": access_token
+        }
+        
+        # 混合参数：公共参数 + 业务参数
+        all_params = {**common_params, **params}
+        
+        # 签名
+        sign = self._generate_sign(all_params)
+        request_payload = {**all_params, "sign": sign}
+        
+        print(f"👉 Flat Request Payload: {json.dumps(request_payload, indent=2)}")
+        
+        resp = await self.client.post(self.base_url, json=request_payload)
+        print(f"👈 Response: {resp.text[:500]}...")
+        return resp.json()
+
+async def debug_params():
+    db = SessionLocal()
+    try:
+        shop = db.query(Shop).filter(Shop.shop_name == "festival finds").first()
+        if not shop or not shop.cn_access_token:
+            print("❌ 未找到店铺或Token")
+            return
+
+        cn_app_key = shop.cn_app_key or settings.TEMU_CN_APP_KEY
+        cn_app_secret = shop.cn_app_secret or settings.TEMU_CN_APP_SECRET
+        base_url = shop.cn_api_base_url or 'https://openapi.kuajingmaihuo.com/openapi/router'
+        
+        client = DebugClient(cn_app_key, cn_app_secret, base_url)
+        
+        # 测试 bg.product.search (参数平铺)
+        print("\n🔍 测试 bg.product.search (Flat Params)...")
+        search_params = {
+            "mallId": int(shop.shop_id),
+            "pageNum": 1,
+            "pageSize": 20
+        }
+        await client.request_flat("bg.product.search", search_params, shop.cn_access_token)
+        
+        # 测试 bg.goods.list.get (参数平铺)
+        print("\n🔍 测试 bg.goods.list.get (Flat Params)...")
+        list_params = {
+            "page": 1,
+            "pageSize": 10
+        }
+        # 既然page没用，试试pageNum?
+        # list_params = {"pageNum": 1, "pageSize": 10} 
+        await client.request_flat("bg.goods.list.get", list_params, shop.cn_access_token)
+        
+        await client.client.aclose()
+        
+    finally:
+        db.close()
+
+if __name__ == "__main__":
+    asyncio.run(debug_params())
+

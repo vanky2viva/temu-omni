@@ -117,7 +117,7 @@ function SkuAnalysis() {
     },
     yAxis: {
       type: 'value',
-      name: 'GMV (USD)',
+      name: 'GMV (CNY)',
     },
     series: [
       {

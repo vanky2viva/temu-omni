@@ -68,31 +68,31 @@ function GmvTable() {
       align: 'right' as const,
     },
     {
-      title: 'GMV (USD)',
+      title: 'GMV (CNY)',
       dataIndex: 'gmv',
       key: 'gmv',
       width: 130,
       align: 'right' as const,
-      render: (val: number) => `$${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      render: (val: number) => `¥${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       sorter: (a: any, b: any) => a.gmv - b.gmv,
     },
     {
-      title: '成本 (USD)',
+      title: '成本 (CNY)',
       dataIndex: 'cost',
       key: 'cost',
       width: 130,
       align: 'right' as const,
-      render: (val: number) => `$${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      render: (val: number) => `¥${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
     },
     {
-      title: '利润 (USD)',
+      title: '利润 (CNY)',
       dataIndex: 'profit',
       key: 'profit',
       width: 130,
       align: 'right' as const,
       render: (val: number) => (
         <span style={{ color: val >= 0 ? '#52c41a' : '#ff4d4f', fontWeight: 'bold' }}>
-          ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          ¥{val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       ),
       sorter: (a: any, b: any) => a.profit - b.profit,
@@ -135,7 +135,7 @@ function GmvTable() {
                 value={summary.gmv}
                 precision={2}
                 prefix={<DollarOutlined />}
-                suffix="USD"
+                suffix="CNY"
               />
             </Card>
           </Col>
@@ -146,7 +146,7 @@ function GmvTable() {
                 value={summary.profit}
                 precision={2}
                 prefix={<RiseOutlined />}
-                suffix="USD"
+                suffix="CNY"
                 valueStyle={{ color: '#3f8600' }}
               />
             </Card>

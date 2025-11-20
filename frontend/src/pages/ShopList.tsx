@@ -147,18 +147,61 @@ function ShopList() {
             const productNew = productStats.new || 0
             const productUpdated = productStats.updated || 0
             
-            let successMsg = '数据同步成功！\n'
-            if (orderTotal > 0) {
-              successMsg += `订单：获取 ${orderTotal} 条，新增 ${orderNew} 条，更新 ${orderUpdated} 条`
-              if (orderStats.failed > 0) {
-                successMsg += `，失败 ${orderStats.failed} 条`
+            let successMsg = '数据同步完成！\n\n'
+            
+            // 订单同步结果
+            if (progress.orders) {
+              if (progress.orders.error) {
+                successMsg += `❌ 订单同步失败: ${progress.orders.error}\n`
+              } else {
+                const orderTotal = progress.orders.total || 0
+                const orderNew = progress.orders.new || 0
+                const orderUpdated = progress.orders.updated || 0
+                const orderFailed = progress.orders.failed || 0
+                if (orderTotal > 0 || orderNew > 0 || orderUpdated > 0) {
+                  successMsg += `✅ 订单：获取 ${orderTotal} 条，新增 ${orderNew} 条，更新 ${orderUpdated} 条`
+                  if (orderFailed > 0) {
+                    successMsg += `，失败 ${orderFailed} 条`
               }
               successMsg += '\n'
+                } else {
+                  successMsg += `ℹ️ 订单：无新数据\n`
+                }
+              }
+            } else {
+              successMsg += `ℹ️ 订单：未执行\n`
             }
-            if (productTotal > 0) {
-              successMsg += `商品：获取 ${productTotal} 条，新增 ${productNew} 条，更新 ${productUpdated} 条`
-              if (productStats.failed > 0) {
-                successMsg += `，失败 ${productStats.failed} 条`
+            
+            // 商品同步结果
+            if (progress.products) {
+              if (progress.products.error) {
+                successMsg += `❌ 商品同步失败: ${progress.products.error}\n`
+              } else {
+                const productTotal = progress.products.total || 0
+                const productNew = progress.products.new || 0
+                const productUpdated = progress.products.updated || 0
+                const productFailed = progress.products.failed || 0
+                if (productTotal > 0 || productNew > 0 || productUpdated > 0) {
+                  successMsg += `✅ 商品：获取 ${productTotal} 条，新增 ${productNew} 条，更新 ${productUpdated} 条`
+                  if (productFailed > 0) {
+                    successMsg += `，失败 ${productFailed} 条`
+                  }
+                  successMsg += '\n'
+                } else {
+                  successMsg += `ℹ️ 商品：无新数据\n`
+                }
+              }
+            } else {
+              successMsg += `ℹ️ 商品：未执行\n`
+            }
+            
+            // 分类同步结果
+            if (progress.categories !== undefined) {
+              if (typeof progress.categories === 'object' && progress.categories?.error) {
+                successMsg += `❌ 分类同步失败: ${progress.categories.error}`
+              } else {
+                const categoryCount = typeof progress.categories === 'number' ? progress.categories : 0
+                successMsg += `✅ 分类：同步 ${categoryCount} 个分类`
               }
             }
             
@@ -777,29 +820,51 @@ function ShopList() {
               {syncProgress.status === 'completed' && (
                 <div style={{ marginTop: 16, padding: 12, background: '#f6f8fa', borderRadius: 4 }}>
                   <Descriptions column={1} size="small">
-                    {syncProgress.orders && (
-                      <>
                         <Descriptions.Item label="订单同步">
+                      {syncProgress.orders ? (
+                        syncProgress.orders.error ? (
+                          <span style={{ color: '#ff4d4f' }}>
+                            同步失败: {syncProgress.orders.error}
+                          </span>
+                        ) : (
+                          <>
                           总数: {syncProgress.orders.total || 0}
                           {syncProgress.orders.new > 0 && ` | 新增: ${syncProgress.orders.new}`}
                           {syncProgress.orders.updated > 0 && ` | 更新: ${syncProgress.orders.updated}`}
                           {syncProgress.orders.failed > 0 && ` | 失败: ${syncProgress.orders.failed}`}
-                        </Descriptions.Item>
                       </>
+                        )
+                      ) : (
+                        <span style={{ color: '#999' }}>未执行</span>
                     )}
-                    {syncProgress.products && (
-                      <>
+                    </Descriptions.Item>
                         <Descriptions.Item label="商品同步">
+                      {syncProgress.products ? (
+                        syncProgress.products.error ? (
+                          <span style={{ color: '#ff4d4f' }}>
+                            同步失败: {syncProgress.products.error}
+                          </span>
+                        ) : (
+                          <>
                           总数: {syncProgress.products.total || 0}
                           {syncProgress.products.new > 0 && ` | 新增: ${syncProgress.products.new}`}
                           {syncProgress.products.updated > 0 && ` | 更新: ${syncProgress.products.updated}`}
                           {syncProgress.products.failed > 0 && ` | 失败: ${syncProgress.products.failed}`}
-                        </Descriptions.Item>
                       </>
+                        )
+                      ) : (
+                        <span style={{ color: '#999' }}>未执行</span>
                     )}
+                    </Descriptions.Item>
                     {syncProgress.categories !== undefined && (
                       <Descriptions.Item label="分类同步">
-                        {syncProgress.categories} 个分类
+                        {typeof syncProgress.categories === 'object' && syncProgress.categories?.error ? (
+                          <span style={{ color: '#ff4d4f' }}>
+                            同步失败: {syncProgress.categories.error}
+                          </span>
+                        ) : (
+                          `${syncProgress.categories || 0} 个分类`
+                        )}
                       </Descriptions.Item>
                     )}
                   </Descriptions>

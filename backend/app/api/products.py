@@ -11,7 +11,7 @@ from app.models.shop import Shop
 from app.models.user import User
 from app.schemas.product import (
     ProductCreate, ProductUpdate, ProductResponse,
-    ProductCostCreate, ProductCostResponse
+    ProductCostCreate, ProductCostResponse, ProductCostUpdate
 )
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -54,10 +54,25 @@ def get_products(
     
     products = query.offset(skip).limit(limit).all()
     
-    # 为每个商品填充负责人（如果商品没有负责人，使用店铺的默认负责人）
+    # 为每个商品填充负责人和当前成本价格
     for product in products:
+        # 填充负责人（如果商品没有负责人，使用店铺的默认负责人）
         if not product.manager and product.shop:
             product.manager = product.shop.default_manager or ''
+        
+        # 获取当前有效的成本价格（effective_to为None的记录）
+        current_cost = db.query(ProductCost).filter(
+            ProductCost.product_id == product.id,
+            ProductCost.effective_to.is_(None)
+        ).order_by(ProductCost.effective_from.desc()).first()
+        
+        # 动态添加当前成本价格字段到product对象
+        if current_cost:
+            product.current_cost_price = current_cost.cost_price
+            product.cost_currency = current_cost.currency
+        else:
+            product.current_cost_price = None
+            product.cost_currency = None
     
     return products
 
@@ -71,6 +86,20 @@ def get_product(product_id: int, db: Session = Depends(get_db), current_user: Us
             status_code=status.HTTP_404_NOT_FOUND,
             detail="商品不存在"
         )
+    
+    # 获取当前有效的成本价格
+    current_cost = db.query(ProductCost).filter(
+        ProductCost.product_id == product.id,
+        ProductCost.effective_to.is_(None)
+    ).order_by(ProductCost.effective_from.desc()).first()
+    
+    if current_cost:
+        product.current_cost_price = current_cost.cost_price
+        product.cost_currency = current_cost.currency
+    else:
+        product.current_cost_price = None
+        product.cost_currency = None
+    
     return product
 
 
@@ -106,6 +135,10 @@ def update_product(
         )
     
     update_data = product_update.model_dump(exclude_unset=True)
+    # 如果更新了价格，确保货币为CNY
+    if 'current_price' in update_data:
+        product.currency = 'CNY'
+    
     for field, value in update_data.items():
         setattr(product, field, value)
     
@@ -165,6 +198,51 @@ def create_product_cost(cost: ProductCostCreate, db: Session = Depends(get_db), 
     db.commit()
     db.refresh(db_cost)
     return db_cost
+
+
+@router.put("/{product_id}/cost", response_model=ProductCostResponse)
+def update_product_cost(
+    product_id: int,
+    cost_update: ProductCostUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """快速更新商品成本价格（直接更新或创建新的成本记录）"""
+    # 检查商品是否存在
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="商品不存在"
+        )
+    
+    # 获取当前有效的成本记录
+    current_cost = db.query(ProductCost).filter(
+        ProductCost.product_id == product_id,
+        ProductCost.effective_to.is_(None)
+    ).order_by(ProductCost.effective_from.desc()).first()
+    
+    now = datetime.utcnow()
+    
+    # 如果存在当前成本记录且价格相同，直接返回
+    if current_cost and current_cost.cost_price == cost_update.cost_price and current_cost.currency == cost_update.currency:
+        return current_cost
+    
+    # 将之前的成本记录设置结束时间
+    if current_cost:
+        current_cost.effective_to = now
+    
+    # 创建新的成本记录（确保货币为CNY）
+    new_cost = ProductCost(
+        product_id=product_id,
+        cost_price=cost_update.cost_price,
+        currency=cost_update.currency or "CNY",
+        effective_from=now
+    )
+    db.add(new_cost)
+    db.commit()
+    db.refresh(new_cost)
+    return new_cost
 
 
 @router.delete("/", status_code=status.HTTP_200_OK)

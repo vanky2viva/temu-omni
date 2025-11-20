@@ -233,18 +233,22 @@ class TemuService:
         self,
         page_number: int = 1,
         page_size: int = 100,
-        goods_status: Optional[int] = None
+        goods_status: Optional[int] = None,
+        skc_site_status: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        获取商品列表
+        获取商品列表（使用 bg.goods.list.get 接口）
+        
+        根据API文档：https://agentpartner.temu.com/document?cataId=875198836203&docId=899313688269
         
         如果配置了 CN access_token，使用 CN 端点的 app_key/secret 和 CN access_token
         否则使用标准端点的 app_key/secret 和标准 access_token
         
         Args:
-            page_number: 页码
+            page_number: 页码（从1开始）
             page_size: 每页数量
-            goods_status: 商品状态
+            goods_status: 商品状态（已废弃，使用skc_site_status）
+            skc_site_status: SKC站点状态（0=未加入站点，1=已加入站点/在售）
             
         Returns:
             商品数据
@@ -286,15 +290,23 @@ class TemuService:
                 )
                 
                 # CN 端点使用 bg.goods.list.get API
+                # 根据API文档，参数名是 page 和 pageSize（不是 pageNumber）
                 request_data = {
-                    "pageNumber": page_number,
-                    "pageSize": page_size,
+                    "page": page_number,  # 页码（从1开始）
+                    "pageSize": page_size,  # 页面大小
                 }
                 
+                # 如果指定了skc_site_status，添加筛选参数（1=已加入站点/在售）
+                if skc_site_status is not None:
+                    request_data["skcSiteStatus"] = skc_site_status
+                    logger.debug(f"使用状态筛选参数 - skcSiteStatus: {skc_site_status}")
+                
+                # CN端点使用平铺参数
                 products = await cn_client._request(
                     api_type="bg.goods.list.get",
                     request_data=request_data,
-                    access_token=cn_access_token
+                    access_token=cn_access_token,
+                    flat_params=True
                 )
                 
                 await cn_client.close()
@@ -334,6 +346,174 @@ class TemuService:
             
         except Exception as e:
             logger.error(f"获取商品失败 - 店铺: {self.shop.shop_name}, 错误: {e}")
+            raise
+    
+    async def search_products(
+        self,
+        page_number: int = 1,
+        page_size: int = 100,
+        product_skuld_list: Optional[List[int]] = None
+    ) -> Dict[str, Any]:
+        """
+        查询货品生命周期状态（使用 bg.product.search 接口）
+        
+        根据API文档：https://agentpartner.temu.com/document?cataId=875198836203&docId=877297510235
+        
+        如果配置了 CN access_token，使用 CN 端点的 app_key/secret 和 CN access_token
+        否则使用标准端点的 app_key/secret 和标准 access_token
+        
+        Args:
+            page_number: 页编号（从1开始）
+            page_size: 页大小
+            product_skuld_list: 货品skuld列表（可选）
+            
+        Returns:
+            货品数据，包含：
+            - total: 总数
+            - dataList: 数据列表
+            - skcList: skc列表
+        """
+        try:
+            # 获取mallId（优先从token信息获取，否则尝试从shop_id转换）
+            mall_id = None
+            
+            # 如果配置了 CN access_token，使用 CN 端点
+            if self.shop.cn_access_token:
+                logger.info(f"使用 CN 端点查询货品生命周期状态 - 店铺: {self.shop.shop_name}")
+                
+                # 获取 CN 区域配置
+                from app.core.config import settings
+                cn_api_url = self.shop.cn_api_base_url or 'https://openapi.kuajingmaihuo.com/openapi/router'
+                cn_app_key = self.shop.cn_app_key or settings.TEMU_CN_APP_KEY
+                cn_app_secret = self.shop.cn_app_secret or settings.TEMU_CN_APP_SECRET
+                cn_access_token = self.shop.cn_access_token
+                
+                # 验证 CN 配置完整性
+                if not cn_app_key or not cn_app_secret:
+                    raise ValueError(
+                        "CN 区域配置不完整：必须同时配置 cn_app_key、cn_app_secret 和 cn_access_token"
+                    )
+                
+                # 创建 CN 客户端
+                cn_client = TemuAPIClient(
+                    app_key=cn_app_key,
+                    app_secret=cn_app_secret,
+                    proxy_url=""  # CN端点直接访问
+                )
+                cn_client.base_url = cn_api_url
+                
+                # 尝试从token信息获取mallId
+                try:
+                    token_info = await cn_client.get_token_info(cn_access_token)
+                    mall_id = token_info.get('mallId')
+                    logger.info(f"从CN token信息获取mallId: {mall_id}")
+                except Exception as e:
+                    logger.warning(f"无法从CN token获取mallId: {e}")
+                    # 尝试从shop_id转换
+                    try:
+                        mall_id = int(self.shop.shop_id)
+                    except ValueError:
+                        raise ValueError(
+                            f"无法获取mallId：shop_id ({self.shop.shop_id}) 不是有效的数字，"
+                            f"且无法从token信息获取mallId"
+                        )
+                
+                logger.info(
+                    f"CN 端点配置 - API URL: {cn_api_url}, "
+                    f"App Key: {cn_app_key[:10]}..., "
+                    f"Token: {cn_access_token[:10]}..., "
+                    f"MallId: {mall_id}"
+                )
+                
+                # 构建请求参数
+                # 根据API文档：pageNum和pageSize是必填参数
+                request_data = {
+                    "mallId": int(mall_id),  # 商家Id（必填）
+                    "pageNum": page_number,  # 页编号（从1开始，必填）
+                    "pageSize": page_size,  # 页大小（必填）
+                }
+                
+                # 如果提供了货品skuld列表，添加到请求中
+                if product_skuld_list:
+                    request_data["productSkuldList"] = product_skuld_list
+                
+                # 调用 bg.product.search API (使用平铺参数)
+                result = await cn_client._request(
+                    api_type="bg.product.search",
+                    request_data=request_data,
+                    access_token=cn_access_token,
+                    flat_params=True
+                )
+                
+                await cn_client.close()
+                
+                logger.info(
+                    f"查询货品生命周期状态成功 - 店铺: {self.shop.shop_name}, "
+                    f"页码: {page_number}, 总数: {result.get('total', 0)}"
+                )
+                
+                return result
+            else:
+                # 使用标准端点
+                if not self.shop.access_token:
+                    raise ValueError(
+                        f"店铺 {self.shop.shop_name} 未配置 Access Token。"
+                        f"请配置标准端点的 Access Token 或 CN 端点的 Access Token。"
+                    )
+                
+                # 使用标准端点的客户端
+                standard_client = self._get_standard_client()
+                
+                # 尝试从token信息获取mallId
+                try:
+                    token_info = await standard_client.get_token_info(self.access_token)
+                    mall_id = token_info.get('mallId')
+                    logger.info(f"从标准token信息获取mallId: {mall_id}")
+                except Exception as e:
+                    logger.warning(f"无法从标准token获取mallId: {e}")
+                    # 尝试从shop_id转换
+                    try:
+                        mall_id = int(self.shop.shop_id)
+                    except ValueError:
+                        raise ValueError(
+                            f"无法获取mallId：shop_id ({self.shop.shop_id}) 不是有效的数字，"
+                            f"且无法从token信息获取mallId"
+                        )
+                
+                logger.info(
+                    f"使用标准端点查询货品生命周期状态 - 店铺: {self.shop.shop_name}, "
+                    f"区域: {self.shop.region}, MallId: {mall_id}"
+                )
+                
+                # 构建请求参数
+                # 根据API文档：pageNum和pageSize是必填参数
+                request_data = {
+                    "mallId": int(mall_id),  # 商家Id（必填）
+                    "pageNum": page_number,  # 页编号（从1开始，必填）
+                    "pageSize": page_size,  # 页大小（必填）
+                }
+                
+                if product_skuld_list:
+                    request_data["productSkuldList"] = product_skuld_list
+                
+                # 调用 API
+                result = await standard_client._request(
+                    api_type="bg.product.search",
+                    request_data=request_data,
+                    access_token=self.access_token
+                )
+                
+                await standard_client.close()
+                
+                logger.info(
+                    f"查询货品生命周期状态成功 - 店铺: {self.shop.shop_name}, "
+                    f"页码: {page_number}, 总数: {result.get('total', 0)}"
+                )
+                
+                return result
+                
+        except Exception as e:
+            logger.error(f"查询货品生命周期状态失败 - 店铺: {self.shop.shop_name}, 错误: {e}")
             raise
     
     async def get_product_detail(self, goods_id: int) -> Dict[str, Any]:

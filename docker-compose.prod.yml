@@ -56,6 +56,9 @@ services:
       - TEMU_APP_KEY=${TEMU_APP_KEY}
       - TEMU_APP_SECRET=${TEMU_APP_SECRET}
       - TEMU_API_BASE_URL=https://openapi-b-us.temu.com/openapi/router
+      - TEMU_API_PROXY_URL=${TEMU_API_PROXY_URL:-http://172.236.231.45:8001}
+      - TEMU_CN_APP_KEY=${TEMU_CN_APP_KEY:-}
+      - TEMU_CN_APP_SECRET=${TEMU_CN_APP_SECRET:-}
       - CORS_ORIGINS=["https://echofrog.net","https://www.echofrog.net","http://echofrog.net","http://www.echofrog.net"]
       - AUTO_SYNC_ENABLED=True
       - SYNC_INTERVAL_MINUTES=30

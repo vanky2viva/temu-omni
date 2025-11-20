@@ -855,7 +855,7 @@ function SalesStatistics() {
                 </span>
               }
               value={salesOverview?.total_gmv || '暂无数据'}
-              suffix={salesOverview?.total_gmv ? 'USD' : ''}
+              suffix={salesOverview?.total_gmv ? 'CNY' : ''}
               valueStyle={{ 
                 color: '#faad14',
                 fontSize: '24px',
@@ -895,7 +895,7 @@ function SalesStatistics() {
                 </span>
               }
               value={salesOverview?.total_profit || '暂无数据'}
-              suffix={salesOverview?.total_profit ? 'USD' : ''}
+              suffix={salesOverview?.total_profit ? 'CNY' : ''}
               valueStyle={{ 
                 color: salesOverview?.total_profit 
                   ? (salesOverview.total_profit >= 0 ? '#52c41a' : '#f5222d')

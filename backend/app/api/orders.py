@@ -1,14 +1,16 @@
 """订单管理API"""
 from typing import List, Optional
 from datetime import datetime
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.order import Order, OrderStatus
 from app.models.user import User
-from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse
+from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse, OrderStatistics
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -119,4 +121,91 @@ def delete_order(order_id: int, db: Session = Depends(get_db), current_user: Use
     db.delete(order)
     db.commit()
     return None
+
+
+@router.get("/statistics/summary", response_model=OrderStatistics)
+def get_order_statistics(
+    shop_id: Optional[int] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取订单统计信息（GMV、成本、利润等）
+    
+    Args:
+        shop_id: 店铺ID（可选，不指定则统计所有店铺）
+        start_date: 开始日期（可选）
+        end_date: 结束日期（可选）
+    
+    Returns:
+        订单统计信息，包括GMV、总成本、总利润、利润率等
+    """
+    # 构建查询
+    query = db.query(Order).filter(
+        Order.total_cost.isnot(None),  # 只统计有成本信息的订单
+        Order.profit.isnot(None)
+    )
+    
+    if shop_id:
+        query = query.filter(Order.shop_id == shop_id)
+    
+    if start_date:
+        query = query.filter(Order.order_time >= start_date)
+    
+    if end_date:
+        query = query.filter(Order.order_time <= end_date)
+    
+    # 获取订单列表
+    orders = query.all()
+    
+    if not orders:
+        # 没有订单数据，返回零值
+        return OrderStatistics(
+            total_orders=0,
+            total_gmv=Decimal('0'),
+            total_cost=Decimal('0'),
+            total_profit=Decimal('0'),
+            avg_order_value=Decimal('0'),
+            profit_margin=0.0
+        )
+    
+    # 计算统计数据，统一转换为CNY
+    from app.utils.currency import CurrencyConverter
+    
+    total_orders = len(orders)
+    total_gmv = sum(
+        CurrencyConverter.convert_to_cny(
+            order.total_price or Decimal('0'),
+            order.currency or 'USD'
+        ) for order in orders
+    )
+    total_cost = sum(
+        CurrencyConverter.convert_to_cny(
+            order.total_cost or Decimal('0'),
+            order.currency or 'USD'
+        ) for order in orders if order.total_cost
+    )
+    total_profit = sum(
+        CurrencyConverter.convert_to_cny(
+            order.profit or Decimal('0'),
+            order.currency or 'USD'
+        ) for order in orders if order.profit
+    )
+    
+    # 平均订单价值
+    avg_order_value = total_gmv / Decimal(total_orders) if total_orders > 0 else Decimal('0')
+    
+    # 利润率
+    profit_margin = float(total_profit / total_gmv * 100) if total_gmv > 0 else 0.0
+    
+    return OrderStatistics(
+        total_orders=total_orders,
+        total_gmv=total_gmv,
+        total_cost=total_cost,
+        total_profit=total_profit,
+        avg_order_value=avg_order_value,
+        profit_margin=profit_margin
+    )
 
