@@ -263,11 +263,14 @@ class SyncService:
             if product_list and len(product_list) > 0:
                 product_info = product_list[0]
                 product_sku = product_info.get('extCode') or ''  # 真正的SKU货号
-                spu_id = product_info.get('productId') or ''  # 这个实际上是SPU ID
+                # 将productId转换为字符串，因为数据库中spu_id是String类型
+                product_id_value = product_info.get('productId')
+                spu_id = str(product_id_value) if product_id_value is not None else ''
             else:
                 # 如果没有productList，尝试从order_item中获取extCode（旧格式数据）
                 product_sku = order_item.get('extCode') or ''
-                spu_id = order_item.get('spuId') or order_item.get('spu_id') or ''
+                spu_id_value = order_item.get('spuId') or order_item.get('spu_id')
+                spu_id = str(spu_id_value) if spu_id_value is not None else ''
             
             # 首先尝试精确匹配（order_sn + product_sku + spu_id）
             existing_order = self.db.query(Order).filter(
@@ -276,12 +279,19 @@ class SyncService:
                 Order.spu_id == spu_id
             ).first()
             
-            # 如果精确匹配失败，但product_sku不为空，尝试仅通过order_sn查找
+            # 如果精确匹配失败，尝试仅通过order_sn和spu_id查找
             # 这样即使旧订单的product_sku是错误的（如"1pc"），也能找到并更新
-            if not existing_order and product_sku:
+            if not existing_order and spu_id:
                 existing_order = self.db.query(Order).filter(
                     Order.order_sn == order_sn,
                     Order.spu_id == spu_id
+                ).first()
+            
+            # 如果仍然找不到，尝试仅通过temu_order_id（即order_sn）查找
+            # 因为temu_order_id有唯一约束，如果订单已存在，应该能通过这个找到
+            if not existing_order:
+                existing_order = self.db.query(Order).filter(
+                    Order.temu_order_id == order_sn
                 ).first()
             
             if existing_order:
@@ -291,10 +301,31 @@ class SyncService:
                     stats = getattr(self, '_current_stats', {})
                     stats['updated'] = stats.get('updated', 0) + 1
             else:
-                # 创建新订单
-                self._create_order(order_item, parent_order, order_data)
-                stats = getattr(self, '_current_stats', {})
-                stats['new'] = stats.get('new', 0) + 1
+                # 创建新订单（如果遇到唯一约束错误，可能是并发导致的，尝试查找并更新）
+                try:
+                    self._create_order(order_item, parent_order, order_data)
+                    stats = getattr(self, '_current_stats', {})
+                    stats['new'] = stats.get('new', 0) + 1
+                except Exception as create_error:
+                    # 如果是唯一约束错误，可能是并发创建导致的，尝试查找并更新
+                    error_msg = str(create_error)
+                    if 'UniqueViolation' in error_msg or 'duplicate key' in error_msg.lower():
+                        # 尝试再次查找订单
+                        existing_order = self.db.query(Order).filter(
+                            Order.temu_order_id == order_sn
+                        ).first()
+                        if existing_order:
+                            # 找到订单，更新它
+                            is_updated = self._update_order(existing_order, order_item, parent_order, order_data)
+                            if is_updated:
+                                stats = getattr(self, '_current_stats', {})
+                                stats['updated'] = stats.get('updated', 0) + 1
+                        else:
+                            # 找不到订单，重新抛出异常
+                            raise
+                    else:
+                        # 其他错误，重新抛出
+                        raise
     
     def _create_order(
         self, 
@@ -373,12 +404,15 @@ class SyncService:
             product_sku_id = product_info.get('productSkuId')  # Temu商品SKU ID
             # 优先使用extCode（真正的SKU货号），如果为空则保持为空（不使用spec作为备用）
             product_sku = product_info.get('extCode') or ''
-            spu_id = product_info.get('productId') or ''  # 这个实际上是SPU ID
+            # 将productId转换为字符串，因为数据库中spu_id是String类型
+            product_id_value = product_info.get('productId')
+            spu_id = str(product_id_value) if product_id_value is not None else ''
         else:
             product_sku_id = None
             # 如果没有productList，说明可能是旧格式数据，extCode应该在order_item中
             product_sku = order_item.get('extCode') or ''
-            spu_id = order_item.get('spuId') or order_item.get('spu_id') or ''
+            spu_id_value = order_item.get('spuId') or order_item.get('spu_id')
+            spu_id = str(spu_id_value) if spu_id_value is not None else ''
         
         goods_id = order_item.get('goodsId') or order_item.get('goods_id') or ''
         quantity = order_item.get('goodsNumber') or order_item.get('quantity') or 1
@@ -658,11 +692,13 @@ class SyncService:
                 product_info = product_list[0]
                 product_sku_id = product_info.get('productSkuId')  # 优先级1
                 product_sku = product_info.get('extCode') or order.product_sku or ''  # 优先级2: extCode
-                item_spu_id = product_info.get('productId') or order.spu_id  # 优先级3
+                # 将productId转换为字符串，因为数据库中spu_id是String类型
+                product_id_value = product_info.get('productId')
+                item_spu_id = str(product_id_value) if product_id_value is not None else (order.spu_id or '')  # 优先级3
             else:
                 product_sku_id = None
                 product_sku = order.product_sku or ''  # 使用已有的product_sku
-                item_spu_id = order.spu_id
+                item_spu_id = order.spu_id or ''
             
             # 尝试匹配商品（使用完整的匹配逻辑，优先级：productSkuId > extCode > spu_id）
             price_info = self._get_product_price_by_sku(
@@ -1009,6 +1045,16 @@ class SyncService:
                 f"在售商品: {active_products}, 有SKU商品: {products_with_sku}"
             )
             
+            # 同步完成后，建立成本价格的映射关系
+            # 基于 productSkuId (product_id) 和 extCode (SKU货号) 匹配已有商品的成本价格，
+            # 自动复制到没有成本价格的新商品
+            # 注意：供货价格（current_price）由用户手动录入，不从API获取
+            # 成本价格（ProductCost）由用户手动录入，或通过此映射自动匹配
+            logger.info(f"开始建立成本价格映射关系 - 店铺: {self.shop.shop_name}")
+            mapped_count = self._map_supply_cost_prices()
+            if mapped_count > 0:
+                logger.info(f"成本价格映射完成 - 为 {mapped_count} 个商品自动匹配了成本价格")
+            
             return stats
             
         except Exception as e:
@@ -1111,10 +1157,13 @@ class SyncService:
             goods_id: 商品/SKU ID
         """
         
+        # 确保 goods_id 是字符串类型（数据库中 product_id 是 character varying 类型）
+        goods_id_str = str(goods_id) if goods_id is not None else ''
+        
         # 查找现有商品（根据shop_id + product_id）
         existing_product = self.db.query(Product).filter(
             Product.shop_id == self.shop.id,
-            Product.product_id == goods_id
+            Product.product_id == goods_id_str
         ).first()
         
         if existing_product:
@@ -1233,12 +1282,12 @@ class SyncService:
         
         # 提取SPU ID和SKC ID
         # CN端点：如果当前是SKU，spuId已经在_process_product中设置；如果是商品本身，使用productId作为spuId
-        spu_id = (
-            str(product_data.get('spuId')) or  # 如果是从SKU处理来的，已经有spuId
-            str(product_data.get('spu_id')) or 
-            str(product_data.get('productId')) or  # CN端点：商品ID可以作为SPU ID
-            ''
+        spu_id_value = (
+            product_data.get('spuId') or 
+            product_data.get('spu_id') or 
+            product_data.get('productId')  # CN端点：商品ID可以作为SPU ID
         )
+        spu_id = str(spu_id_value) if spu_id_value is not None else ''
         skc_id = (
             str(product_data.get('productSkcId')) or  # CN端点使用此字段
             str(product_data.get('skcId')) or 
@@ -1246,14 +1295,9 @@ class SyncService:
             ''
         )
         
-        # 提取价格信息
-        current_price = self._parse_decimal(
-            product_data.get('price') or 
-            product_data.get('goodsPrice') or 
-            product_data.get('salePrice') or 
-            product_data.get('currentPrice') or 
-            0
-        )
+        # 价格信息：供货价格（current_price）由用户手动录入，不从API获取
+        # 创建新商品时，current_price 设为 None，等待用户在商品列表中手动录入
+        current_price = None
         currency = product_data.get('currency') or 'USD'
         
         # 提取库存信息
@@ -1316,10 +1360,13 @@ class SyncService:
             ''
         )
         
+        # 确保 goods_id 是字符串类型（数据库中 product_id 是 character varying 类型）
+        goods_id_str = str(goods_id) if goods_id is not None else ''
+        
         # 创建商品对象
         product = Product(
             shop_id=self.shop.id,
-            product_id=goods_id,
+            product_id=goods_id_str,
             product_name=product_name,
             sku=sku if sku else None,
             spu_id=spu_id if spu_id else None,
@@ -1433,16 +1480,10 @@ class SyncService:
             updated = True
         # 如果当前SKU为空，但新SKU也为空，不更新（避免将None更新为None）
         
-        # 更新价格
-        new_price = self._parse_decimal(
-            product_data.get('price') or 
-            product_data.get('goodsPrice') or 
-            product_data.get('salePrice') or 
-            product_data.get('currentPrice')
-        )
-        if new_price and product.current_price != new_price:
-            product.current_price = new_price
-            updated = True
+        # 更新价格：供货价格由用户手动录入，不从API更新
+        # 如果用户已经手动录入了供货价格，则保留用户录入的值，不从API覆盖
+        # 如果当前供货价格为空，也不从API获取（等待用户手动录入）
+        # 因此这里不更新 current_price
         
         # 更新库存
         new_stock = (
@@ -1481,11 +1522,12 @@ class SyncService:
                 updated = True
         
         # 更新SPU ID和SKC ID（如果缺失）
-        spu_id = (
-            str(product_data.get('spuId')) or 
-            str(product_data.get('spu_id')) or 
-            ''
+        spu_id_value = (
+            product_data.get('spuId') or 
+            product_data.get('spu_id') or 
+            product_data.get('productId')
         )
+        spu_id = str(spu_id_value) if spu_id_value is not None else ''
         if spu_id and not product.spu_id:
             product.spu_id = spu_id
             updated = True
@@ -1535,6 +1577,132 @@ class SyncService:
             logger.debug(f"更新商品: {product.product_name}, ID: {product.product_id}")
         
         return updated
+    
+    def _map_supply_cost_prices(self) -> int:
+        """
+        建立成本价格的映射关系
+        
+        基于 productSkuId (product_id) 和 extCode (SKU货号) 匹配已有商品的成本价格，
+        自动复制到没有成本价格的新商品
+        
+        匹配优先级：
+        1. productSkuId (product_id) - 第一优先级
+        2. extCode (SKU货号) - 第二优先级
+        
+        注意：
+        - 供货价格（current_price）由用户手动录入，不从API获取
+        - 成本价格（ProductCost）由用户手动录入，或通过此映射自动匹配
+        
+        参考文档：ORDER_PRODUCT_MATCHING.md
+        
+        Returns:
+            成功建立映射的商品数量
+        """
+        from datetime import datetime
+        
+        mapped_count = 0
+        
+        try:
+            # 查找当前店铺下所有没有成本价格的商品
+            products_without_cost = self.db.query(Product).filter(
+                Product.shop_id == self.shop.id,
+                ~Product.id.in_(
+                    self.db.query(ProductCost.product_id).filter(
+                        ProductCost.effective_to.is_(None)
+                    )
+                )
+            ).all()
+            
+            if not products_without_cost:
+                logger.debug(f"所有商品已有成本价格，无需映射 - 店铺: {self.shop.shop_name}")
+                return 0
+            
+            logger.info(f"找到 {len(products_without_cost)} 个没有成本价格的商品 - 店铺: {self.shop.shop_name}")
+            
+            # 为每个没有成本价格的商品查找匹配的成本价格
+            for product in products_without_cost:
+                matched_cost = None
+                match_method = None
+                
+                # 优先级1: 通过 productSkuId (product_id) 匹配
+                # 对应 ORDER_PRODUCT_MATCHING.md 中的第一优先级
+                if product.product_id:
+                    # 确保 product_id 是字符串类型（数据库中 product_id 是 character varying 类型）
+                    product_id_str = str(product.product_id) if product.product_id is not None else ''
+                    
+                    # 查找相同 product_id 且有效成本价格的商品（可以是其他店铺的）
+                    matched_product = self.db.query(Product).filter(
+                        Product.product_id == product_id_str,
+                        Product.id != product.id,
+                        Product.product_id.isnot(None),
+                        Product.product_id != ''
+                    ).join(ProductCost).filter(
+                        ProductCost.effective_to.is_(None)
+                    ).first()
+                    
+                    if matched_product:
+                        # 获取匹配商品的当前成本价格
+                        matched_cost = self.db.query(ProductCost).filter(
+                            ProductCost.product_id == matched_product.id,
+                            ProductCost.effective_to.is_(None)
+                        ).order_by(ProductCost.effective_from.desc()).first()
+                        if matched_cost:
+                            match_method = "productSkuId (product_id)"
+                
+                # 优先级2: 通过 extCode (SKU货号) 匹配
+                # 对应 ORDER_PRODUCT_MATCHING.md 中的第二优先级
+                if not matched_cost and product.sku:
+                    # 查找相同 SKU 且有效成本价格的商品（可以是其他店铺的）
+                    matched_product = self.db.query(Product).filter(
+                        Product.sku == product.sku,
+                        Product.id != product.id,
+                        Product.sku.isnot(None),
+                        Product.sku != ''
+                    ).join(ProductCost).filter(
+                        ProductCost.effective_to.is_(None)
+                    ).first()
+                    
+                    if matched_product:
+                        # 获取匹配商品的当前成本价格
+                        matched_cost = self.db.query(ProductCost).filter(
+                            ProductCost.product_id == matched_product.id,
+                            ProductCost.effective_to.is_(None)
+                        ).order_by(ProductCost.effective_from.desc()).first()
+                        if matched_cost:
+                            match_method = "extCode (SKU货号)"
+                
+                # 如果找到匹配的成本价格，复制到当前商品
+                if matched_cost:
+                    try:
+                        # 创建新的成本价格记录
+                        new_cost = ProductCost(
+                            product_id=product.id,
+                            cost_price=matched_cost.cost_price,
+                            currency=matched_cost.currency,
+                            effective_from=datetime.utcnow(),
+                            notes=f"自动映射自{matched_cost.product.product_name}（通过{match_method}匹配）"
+                        )
+                        self.db.add(new_cost)
+                        self.db.commit()
+                        
+                        mapped_count += 1
+                        logger.debug(
+                            f"✅ 为商品 {product.product_name} (SKU: {product.sku or 'N/A'}) "
+                            f"自动匹配成本价格 {matched_cost.cost_price} {matched_cost.currency} "
+                            f"（通过{match_method}匹配）"
+                        )
+                    except Exception as e:
+                        self.db.rollback()
+                        logger.warning(f"为商品 {product.id} 创建成本价格记录失败: {e}")
+                        continue
+            
+            return mapped_count
+            
+        except Exception as e:
+            logger.error(f"建立价格映射关系失败 - 店铺: {self.shop.shop_name}, 错误: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return mapped_count
     
     async def sync_categories(self) -> int:
         """

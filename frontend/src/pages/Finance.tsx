@@ -256,11 +256,11 @@ function Finance() {
             <Row gutter={16}>
               <Col span={12}>
                 <Card className="stat-card" bordered={false} style={{ height: '140px', display: 'flex', flexDirection: 'column' }}>
-                  <Statistic
-                    title="总回款金额"
-                    value={collectionData?.summary?.total_amount || 0}
-                    precision={2}
-                    prefix={<DollarOutlined />}
+                <Statistic
+                  title="总回款金额"
+                  value={collectionData?.summary?.total_amount || 0}
+                  precision={2}
+                  prefix={<DollarOutlined />}
                     suffix=" CNY"
                     valueStyle={{ 
                       color: '#3f8600', 
@@ -274,14 +274,14 @@ function Finance() {
                       }
                       return value
                     }}
-                  />
+                />
                 </Card>
               </Col>
               <Col span={12}>
                 <Card className="stat-card" bordered={false} style={{ height: '140px', display: 'flex', flexDirection: 'column' }}>
-                  <Statistic
-                    title="回款订单数"
-                    value={collectionData?.summary?.total_orders || 0}
+                <Statistic
+                  title="回款订单数"
+                  value={collectionData?.summary?.total_orders || 0}
                     suffix=" 单"
                     valueStyle={{ 
                       color: '#58a6ff',
@@ -295,7 +295,7 @@ function Finance() {
                       }
                       return value
                     }}
-                  />
+                />
                 </Card>
               </Col>
             </Row>

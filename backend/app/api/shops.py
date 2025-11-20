@@ -23,7 +23,8 @@ def get_shops(
 ):
     """获取店铺列表（不返回敏感字段）"""
     try:
-        shops = db.query(Shop).offset(skip).limit(limit).all()
+        # 按照ID排序，确保按照添加顺序固定排序
+        shops = db.query(Shop).order_by(Shop.id).offset(skip).limit(limit).all()
         # 添加API配置状态
         result = []
         for shop in shops:

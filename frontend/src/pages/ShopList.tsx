@@ -634,6 +634,11 @@ function ShopList() {
         rowKey="id"
         loading={isLoading}
         scroll={{ x: 1200 }}
+        pagination={{
+          pageSize: 50,
+          showSizeChanger: true,
+          showTotal: (total) => `共 ${total} 条`,
+        }}
       />
 
       <Modal

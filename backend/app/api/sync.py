@@ -339,13 +339,47 @@ async def get_sync_progress(
     Returns:
         同步进度信息
     """
-    if shop_id not in _sync_progress:
+    try:
+        if shop_id not in _sync_progress:
+            return {
+                "status": "not_started",
+                "progress": 0,
+            }
+        
+        progress = _sync_progress[shop_id].copy()
+        
+        # 确保所有值都是可序列化的
+        # 转换datetime对象为字符串
+        import json
+        
+        def make_serializable(obj):
+            """递归地将对象转换为可序列化的格式"""
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            elif isinstance(obj, dict):
+                return {k: make_serializable(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [make_serializable(item) for item in obj]
+            elif hasattr(obj, '__dict__'):
+                return make_serializable(obj.__dict__)
+            else:
+                try:
+                    json.dumps(obj)
+                    return obj
+                except (TypeError, ValueError):
+                    return str(obj)
+        
+        return make_serializable(progress)
+        
+    except Exception as e:
+        logger.error(f"获取同步进度失败 - 店铺ID: {shop_id}, 错误: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return {
-            "status": "not_started",
+            "status": "error",
             "progress": 0,
+            "error": f"获取进度失败: {str(e)}",
         }
-    
-    return _sync_progress[shop_id]
 
 
 @router.post("/all-shops")
