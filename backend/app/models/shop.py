@@ -50,6 +50,12 @@ class Shop(Base):
     # API基础URL（根据区域不同）
     api_base_url = Column(String(200), comment="API基础URL")
     
+    # CN 区域 API 配置（用于商品列表、发品等）
+    cn_access_token = Column(Text, comment="CN区域访问令牌")
+    cn_app_key = Column(String(200), comment="CN区域App Key")
+    cn_app_secret = Column(Text, comment="CN区域App Secret")
+    cn_api_base_url = Column(String(200), comment="CN区域API基础URL", default="https://openapi.kuajingmaihuo.com/openapi/router")
+    
     # 店铺状态
     is_active = Column(Boolean, default=True, comment="是否启用")
     last_sync_at = Column(DateTime, comment="最后同步时间")

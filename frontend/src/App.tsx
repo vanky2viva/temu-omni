@@ -13,7 +13,6 @@ import SalesStatistics from './pages/SalesStatistics'
 import GmvTable from './pages/GmvTable'
 import SkuAnalysis from './pages/SkuAnalysis'
 import HotSellerPage from './pages/HotSellerPage'
-import SystemSettings from './pages/SystemSettings'
 
 function App() {
   return (
@@ -39,7 +38,6 @@ function App() {
           <Route path="gmv-table" element={<GmvTable />} />
           <Route path="sku-analysis" element={<SkuAnalysis />} />
           <Route path="hot-seller" element={<HotSellerPage />} />
-          <Route path="settings" element={<SystemSettings />} />
         </Route>
       </Routes>
     </BrowserRouter>

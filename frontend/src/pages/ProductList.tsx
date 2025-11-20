@@ -13,7 +13,7 @@ import {
   Tag,
   Tooltip,
 } from 'antd'
-import { PlusOutlined, DollarOutlined, SearchOutlined } from '@ant-design/icons'
+import { PlusOutlined, DollarOutlined, SearchOutlined, DeleteOutlined } from '@ant-design/icons'
 import { productApi, shopApi } from '@/services/api'
 import dayjs from 'dayjs'
 
@@ -27,6 +27,7 @@ function ProductList() {
   const { data: shops } = useQuery({
     queryKey: ['shops'],
     queryFn: shopApi.getShops,
+    staleTime: 0,
   })
 
   // 筛选条件
@@ -48,7 +49,10 @@ function ProductList() {
         manager,
         category,
         q: keyword?.trim() || undefined,
+        skip: 0,
+        limit: 10000, // 增加limit以获取更多商品
       }),
+    staleTime: 0,
   })
 
   // 创建成本记录
@@ -76,6 +80,33 @@ function ProductList() {
       message.error('负责人更新失败')
     },
   })
+
+  // 清理商品数据
+  const clearProductsMutation = useMutation({
+    mutationFn: (shopId?: number) => productApi.clearProducts(shopId),
+    onSuccess: (data: any) => {
+      message.success(data.message || '商品数据清理成功')
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+    onError: (error: any) => {
+      message.error(error?.response?.data?.detail || '商品数据清理失败')
+    },
+  })
+
+  const handleClearProducts = () => {
+    Modal.confirm({
+      title: '确认清理商品数据',
+      content: shopId 
+        ? `确定要清理当前店铺的所有商品数据吗？此操作不可恢复！`
+        : '确定要清理所有店铺的商品数据吗？此操作不可恢复！',
+      okText: '确认',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => {
+        clearProductsMutation.mutate(shopId)
+      },
+    })
+  }
 
   const handleUpdateManager = (productId: number, newManager: string) => {
     if (newManager === '-' || newManager === '__custom__') return
@@ -299,7 +330,7 @@ function ProductList() {
 
   return (
     <div>
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Space size="middle" wrap>
           <span>店铺：</span>
           <Select
@@ -353,6 +384,16 @@ function ProductList() {
               { label: '全部', value: 'all' },
             ]}
           />
+        </Space>
+        <Space>
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            onClick={handleClearProducts}
+            loading={clearProductsMutation.isPending}
+          >
+            清理商品数据
+          </Button>
         </Space>
       </div>
 

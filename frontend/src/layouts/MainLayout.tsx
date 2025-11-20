@@ -10,7 +10,6 @@ import {
   TableOutlined,
   FundOutlined,
   CrownOutlined,
-  SettingOutlined,
   CarOutlined,
   WalletOutlined,
   LogoutOutlined,
@@ -71,11 +70,6 @@ const menuItems = [
     icon: <CrownOutlined />,
     label: '爆单榜',
   },
-  {
-    key: '/settings',
-    icon: <SettingOutlined />,
-    label: '系统设置',
-  },
 ]
 
 function MainLayout() {
@@ -118,7 +112,14 @@ function MainLayout() {
     },
   ]
 
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const user = (() => {
+    try {
+      const userStr = localStorage.getItem('user')
+      return userStr ? JSON.parse(userStr) : { username: '用户' }
+    } catch {
+      return { username: '用户' }
+    }
+  })()
 
   return (
     <ConfigProvider theme={{ algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm }}>

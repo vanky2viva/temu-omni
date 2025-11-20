@@ -16,12 +16,16 @@ function Dashboard() {
   const { data: overview, isLoading: overviewLoading } = useQuery({
     queryKey: ['overview'],
     queryFn: () => statisticsApi.getOverview(),
+    staleTime: 0,
+    cacheTime: 0,
   })
 
   // 获取每日趋势数据
   const { data: dailyData, isLoading: dailyLoading } = useQuery({
     queryKey: ['daily', 30],
     queryFn: () => statisticsApi.getDaily({ days: 30 }),
+    staleTime: 0,
+    cacheTime: 0,
   })
 
   // 获取销量总览数据
@@ -31,6 +35,8 @@ function Dashboard() {
       const response = await axios.get('/api/analytics/sales-overview', { params: { days: 30 } })
       return response.data
     },
+    staleTime: 0,
+    cacheTime: 0,
   })
 
   // 趋势图配置 - 每日订单量柱状图和总订单量曲线图

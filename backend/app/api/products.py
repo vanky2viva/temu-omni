@@ -166,3 +166,42 @@ def create_product_cost(cost: ProductCostCreate, db: Session = Depends(get_db), 
     db.refresh(db_cost)
     return db_cost
 
+
+@router.delete("/", status_code=status.HTTP_200_OK)
+def clear_all_products(
+    shop_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """清理商品数据
+    
+    Args:
+        shop_id: 可选，如果提供则只清理指定店铺的商品，否则清理所有商品
+    """
+    try:
+        query = db.query(Product)
+        
+        if shop_id:
+            query = query.filter(Product.shop_id == shop_id)
+            count = query.count()
+            query.delete(synchronize_session=False)
+            message = f"已清理店铺 {shop_id} 的 {count} 条商品数据"
+        else:
+            count = query.count()
+            query.delete(synchronize_session=False)
+            message = f"已清理所有 {count} 条商品数据"
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": message,
+            "deleted_count": count
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"清理商品数据失败: {str(e)}"
+        )
+

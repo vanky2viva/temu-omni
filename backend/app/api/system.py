@@ -69,19 +69,11 @@ def update_app_config(config: AppConfigUpdate, db: Session = Depends(get_db), cu
     return {"message": "应用配置更新成功"}
 
 
-def get_app_credentials(db: Session) -> Dict[str, str]:
-    """获取应用凭证（内部使用）"""
-    app_key = db.query(SystemConfig).filter(SystemConfig.key == "temu_app_key").first()
-    app_secret = db.query(SystemConfig).filter(SystemConfig.key == "temu_app_secret").first()
-    
-    if not app_key or not app_secret:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="请先配置应用的App Key和App Secret"
-        )
-    
+def get_app_credentials(db: Session = None) -> Dict[str, str]:
+    """获取应用凭证（内部使用，现在使用内置配置）"""
+    from app.core.config import settings
     return {
-        "app_key": app_key.value,
-        "app_secret": app_secret.value
+        "app_key": settings.TEMU_APP_KEY,
+        "app_secret": settings.TEMU_APP_SECRET
     }
 

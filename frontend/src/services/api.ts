@@ -61,6 +61,8 @@ export const syncApi = {
     api.post(`/sync/shops/${shopId}/products?full_sync=${fullSync}`, {}, { timeout: 180000 }),
   getSyncStatus: (shopId: number) => 
     api.get(`/sync/shops/${shopId}/status`),
+  getSyncProgress: (shopId: number) => 
+    api.get(`/sync/shops/${shopId}/progress`),
   verifyToken: (shopId: number) => 
     api.post(`/sync/shops/${shopId}/verify-token`),
 }
@@ -83,6 +85,7 @@ export const productApi = {
   deleteProduct: (id: number) => api.delete(`/products/${id}/`),
   getProductCosts: (id: number) => api.get(`/products/${id}/costs/`),
   createProductCost: (data: any) => api.post('/products/costs/', data),
+  clearProducts: (shopId?: number) => api.delete('/products/', { params: { shop_id: shopId } }),
 }
 
 // 统计API

@@ -1,16 +1,20 @@
 """数据同步API"""
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
+import asyncio
+from datetime import datetime
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.shop import Shop
 from app.models.user import User
-from app.services.sync_service import sync_shop_data, sync_all_shops
-from app.services.temu_service import get_temu_service
+from app.services.sync_service import sync_shop_data, sync_all_shops, SyncService
 
 router = APIRouter(prefix="/sync", tags=["sync"])
+
+# 存储同步进度（实际生产环境应使用Redis等）
+_sync_progress: Dict[int, Dict[str, Any]] = {}
 
 
 @router.post("/shops/{shop_id}/verify-token")
@@ -32,7 +36,8 @@ async def verify_shop_token(
         )
     
     try:
-        temu_service = get_temu_service(shop)
+        from app.services.temu_service import TemuService
+        temu_service = TemuService(shop)
         token_info = await temu_service.verify_token()
         await temu_service.close()
         
@@ -83,8 +88,6 @@ async def sync_shop_orders(
         )
     
     try:
-        from app.services.sync_service import SyncService
-        
         sync_service = SyncService(db, shop)
         result = await sync_service.sync_orders(full_sync=full_sync)
         await sync_service.temu_service.close()
@@ -134,8 +137,6 @@ async def sync_shop_products(
         )
     
     try:
-        from app.services.sync_service import SyncService
-        
         sync_service = SyncService(db, shop)
         result = await sync_service.sync_products(full_sync=full_sync)
         await sync_service.temu_service.close()
@@ -157,15 +158,92 @@ async def sync_shop_products(
         )
 
 
+async def _sync_shop_with_progress(shop_id: int, full_sync: bool, db: Session):
+    """执行同步并更新进度"""
+    try:
+        # 初始化进度
+        _sync_progress[shop_id] = {
+            "status": "running",
+            "progress": 0,
+            "current_step": "初始化",
+            "orders": None,
+            "products": None,
+            "error": None,
+            "start_time": datetime.now().isoformat(),
+        }
+        
+        shop = db.query(Shop).filter(Shop.id == shop_id).first()
+        if not shop:
+            _sync_progress[shop_id] = {
+                "status": "error",
+                "error": "店铺不存在",
+            }
+            return
+        
+        sync_service = SyncService(db, shop)
+        
+        # 同步订单
+        _sync_progress[shop_id].update({
+            "progress": 20,
+            "current_step": "正在同步订单数据...",
+        })
+        try:
+            orders_result = await sync_service.sync_orders(full_sync=full_sync)
+            _sync_progress[shop_id]["orders"] = orders_result
+        except Exception as e:
+            _sync_progress[shop_id]["orders"] = {"error": str(e)}
+        
+        # 同步商品
+        _sync_progress[shop_id].update({
+            "progress": 60,
+            "current_step": "正在同步商品数据...",
+        })
+        try:
+            products_result = await sync_service.sync_products(full_sync=full_sync)
+            _sync_progress[shop_id]["products"] = products_result
+        except Exception as e:
+            _sync_progress[shop_id]["products"] = {"error": str(e)}
+        
+        # 同步分类
+        _sync_progress[shop_id].update({
+            "progress": 90,
+            "current_step": "正在同步分类数据...",
+        })
+        try:
+            categories_result = await sync_service.sync_categories()
+            _sync_progress[shop_id]["categories"] = categories_result
+        except Exception as e:
+            _sync_progress[shop_id]["categories"] = {"error": str(e)}
+        
+        await sync_service.temu_service.close()
+        
+        # 完成
+        _sync_progress[shop_id].update({
+            "status": "completed",
+            "progress": 100,
+            "current_step": "同步完成",
+            "end_time": datetime.now().isoformat(),
+        })
+        
+    except Exception as e:
+        _sync_progress[shop_id] = {
+            "status": "error",
+            "error": str(e),
+            "end_time": datetime.now().isoformat(),
+        }
+
+
 @router.post("/shops/{shop_id}/all")
 async def sync_shop_all_data(
     shop_id: int,
     full_sync: bool = False,
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     同步指定店铺的所有数据（订单+商品+分类）
+    支持实时进度查询
     
     Args:
         shop_id: 店铺ID
@@ -184,25 +262,51 @@ async def sync_shop_all_data(
             detail="店铺已禁用"
         )
     
-    try:
-        result = await sync_shop_data(db, shop_id, full_sync=full_sync)
-        
+    # 检查是否已有同步任务在运行
+    if shop_id in _sync_progress and _sync_progress[shop_id].get("status") == "running":
         return {
             "success": True,
-            "message": "数据同步完成",
+            "message": "同步任务已在运行中",
             "data": {
                 "shop_id": shop_id,
                 "shop_name": shop.shop_name,
-                "environment": shop.environment.value,
-                "region": shop.region.value,
-                "results": result
+                "progress": _sync_progress[shop_id],
             }
         }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"数据同步失败: {str(e)}"
-        )
+    
+    # 在后台任务中执行同步
+    background_tasks.add_task(_sync_shop_with_progress, shop_id, full_sync, db)
+    
+    return {
+        "success": True,
+        "message": "同步任务已启动",
+        "data": {
+            "shop_id": shop_id,
+            "shop_name": shop.shop_name,
+            "environment": shop.environment.value,
+            "region": shop.region.value,
+        }
+    }
+
+
+@router.get("/shops/{shop_id}/progress")
+async def get_sync_progress(
+    shop_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取店铺同步进度
+    
+    Returns:
+        同步进度信息
+    """
+    if shop_id not in _sync_progress:
+        return {
+            "status": "not_started",
+            "progress": 0,
+        }
+    
+    return _sync_progress[shop_id]
 
 
 @router.post("/all-shops")

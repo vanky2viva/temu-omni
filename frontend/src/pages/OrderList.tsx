@@ -36,13 +36,18 @@ function OrderList() {
   const { data: shops } = useQuery({
     queryKey: ['shops'],
     queryFn: shopApi.getShops,
+    staleTime: 0,
+    cacheTime: 0,
   })
 
   // 获取订单列表
-  const { data: orders, isLoading } = useQuery({
+  const { data: orders, isLoading, error } = useQuery({
     queryKey: ['orders', shopId, dateRange],
     queryFn: () => {
-      const params: any = {}
+      const params: any = {
+        skip: 0,
+        limit: 10000, // 增加limit以获取更多订单
+      }
       if (shopId) params.shop_id = shopId
       if (dateRange) {
         params.start_date = dateRange[0].toISOString()
@@ -50,7 +55,16 @@ function OrderList() {
       }
       return orderApi.getOrders(params)
     },
+    staleTime: 0,
   })
+
+  // 调试：打印订单数据
+  if (error) {
+    console.error('获取订单列表错误:', error)
+  }
+  if (orders) {
+    console.log('订单列表数据:', orders?.length || 0, '条')
+  }
 
   const columns = [
     {

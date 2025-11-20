@@ -22,30 +22,23 @@ class TemuService:
         """
         初始化Temu服务
         
+        重要：不同端点需要使用不同的 app_key/secret 和 access_token：
+        - 订单API：使用标准端点（US/EU/GLOBAL）的 app_key/secret 和标准 access_token
+        - 商品API：如果配置了 CN access_token，使用 CN 端点的 app_key/secret 和 CN access_token
+                  否则使用标准端点的 app_key/secret 和标准 access_token
+        
         Args:
             shop: 店铺模型实例
         """
         self.shop = shop
         
-        # 获取API基础URL
-        api_base_url = shop.api_base_url or self.REGION_API_URLS.get(
-            shop.region, 
-            self.REGION_API_URLS[ShopRegion.US]
-        )
-        
-        # 创建API客户端
-        self.client = TemuAPIClient(
-            app_key=shop.app_key,
-            app_secret=shop.app_secret
-        )
-        
-        # 覆盖base_url
-        self.client.base_url = api_base_url
+        # 注意：不再在初始化时创建固定的客户端
+        # 而是在需要时根据操作类型（订单/商品）动态创建对应的客户端
+        # 这样可以确保使用正确的 app_key/secret 和 access_token
         
         logger.info(
             f"初始化Temu服务 - 店铺: {shop.shop_name}, "
-            f"区域: {shop.region}, 环境: {shop.environment}, "
-            f"API URL: {api_base_url}"
+            f"区域: {shop.region}, 环境: {shop.environment}"
         )
     
     @property
@@ -65,13 +58,16 @@ class TemuService:
     
     async def verify_token(self) -> Dict[str, Any]:
         """
-        验证Token是否有效
+        验证Token是否有效（验证标准端点的Token）
         
         Returns:
             Token信息
         """
         try:
-            token_info = await self.client.get_token_info(self.access_token)
+            # 使用标准端点的客户端验证Token
+            standard_client = self._get_standard_client()
+            token_info = await standard_client.get_token_info(self.access_token)
+            await standard_client.close()
             
             # 验证Token对应的Mall ID是否匹配
             if str(token_info.get('mallId')) != self.shop.shop_id:
@@ -87,6 +83,52 @@ class TemuService:
             logger.error(f"Token验证失败 - 店铺: {self.shop.shop_name}, 错误: {e}")
             raise
     
+    def _get_standard_client(self) -> TemuAPIClient:
+        """
+        获取标准端点（US/EU/GLOBAL）的客户端
+        
+        用于订单等需要使用标准端点的操作
+        使用 US 端点的 app_key/secret: 798478197604e93f6f2ce4c2e833041u / 776a96163c56c53e237f5456d4e14765301aa8aa
+        """
+        # 获取标准端点的API基础URL（根据店铺区域）
+        api_base_url = self.shop.api_base_url or self.REGION_API_URLS.get(
+            self.shop.region, 
+            self.REGION_API_URLS[ShopRegion.US]
+        )
+        
+        # 优先使用店铺自己的 app_key 和 app_secret（标准端点）
+        # 如果店铺没有配置，则使用全局配置（US端点的app_key/secret）
+        from app.core.config import settings
+        app_key = self.shop.app_key or settings.TEMU_APP_KEY
+        app_secret = self.shop.app_secret or settings.TEMU_APP_SECRET
+        
+        # 获取代理配置（所有请求都必须通过代理）
+        proxy_url = settings.TEMU_API_PROXY_URL
+        
+        if not proxy_url:
+            raise ValueError(
+                "代理服务器未配置。所有 API 请求必须通过代理服务器。"
+                "请在配置中设置 TEMU_API_PROXY_URL。"
+            )
+        
+        # 创建标准端点客户端（必须通过代理）
+        client = TemuAPIClient(
+            app_key=app_key,
+            app_secret=app_secret,
+            proxy_url=proxy_url
+        )
+        client.base_url = api_base_url
+        
+        logger.debug(
+            f"创建标准端点客户端 - 店铺: {self.shop.shop_name}, "
+            f"区域: {self.shop.region}, "
+            f"API URL: {api_base_url}, "
+            f"App Key: {app_key[:10]}..., "
+            f"使用代理: {'是' if proxy_url else '否'}"
+        )
+        
+        return client
+    
     async def get_orders(
         self,
         begin_time: Optional[int] = None,
@@ -97,6 +139,9 @@ class TemuService:
     ) -> Dict[str, Any]:
         """
         获取订单列表
+        
+        注意：订单API必须使用标准端点（US/EU/GLOBAL）的 app_key/secret 和 access_token
+        CN端点仅支持商品列表、发品、库存、备货履约等操作
         
         Args:
             begin_time: 开始时间（Unix时间戳）
@@ -115,7 +160,23 @@ class TemuService:
             begin_time = int((datetime.now() - timedelta(days=30)).timestamp())
         
         try:
-            orders = await self.client.get_orders(
+            # 订单API必须使用标准端点的access_token（不是CN access_token）
+            if not self.shop.access_token:
+                raise ValueError(
+                    f"店铺 {self.shop.shop_name} 未配置标准端点的 Access Token。"
+                    f"订单API需要使用标准端点的 Access Token，不能使用CN端点的 Token。"
+                )
+            
+            # 使用标准端点的客户端（使用标准端点的 app_key/secret）
+            standard_client = self._get_standard_client()
+            
+            logger.info(
+                f"使用标准端点获取订单 - 店铺: {self.shop.shop_name}, "
+                f"区域: {self.shop.region}, "
+                f"API URL: {standard_client.base_url}"
+            )
+            
+            orders = await standard_client.get_orders(
                 access_token=self.access_token,
                 begin_time=begin_time,
                 end_time=end_time,
@@ -123,6 +184,8 @@ class TemuService:
                 page_size=page_size,
                 order_status=order_status
             )
+            
+            await standard_client.close()
             
             logger.info(
                 f"获取订单成功 - 店铺: {self.shop.shop_name}, "
@@ -140,6 +203,8 @@ class TemuService:
         """
         获取订单详情
         
+        使用标准端点的 app_key/secret 和 access_token
+        
         Args:
             order_sn: 订单编号
             
@@ -147,10 +212,13 @@ class TemuService:
             订单详情
         """
         try:
-            order = await self.client.get_order_detail(
+            # 使用标准端点的客户端
+            standard_client = self._get_standard_client()
+            order = await standard_client.get_order_detail(
                 access_token=self.access_token,
                 order_sn=order_sn
             )
+            await standard_client.close()
             
             logger.info(f"获取订单详情成功 - 订单号: {order_sn}")
             return order
@@ -168,6 +236,9 @@ class TemuService:
         """
         获取商品列表
         
+        如果配置了 CN access_token，使用 CN 端点的 app_key/secret 和 CN access_token
+        否则使用标准端点的 app_key/secret 和标准 access_token
+        
         Args:
             page_number: 页码
             page_size: 每页数量
@@ -177,12 +248,78 @@ class TemuService:
             商品数据
         """
         try:
-            products = await self.client.get_products(
-                access_token=self.access_token,
-                page_number=page_number,
-                page_size=page_size,
-                goods_status=goods_status
-            )
+            # 如果配置了 CN access_token，使用 CN 端点
+            # 重要：CN 区域的 app_key、secret、access_token 和接口地址必须都来自 CN 区域
+            if self.shop.cn_access_token:
+                logger.info(f"使用 CN 端点获取商品列表 - 店铺: {self.shop.shop_name}")
+                
+                # 获取 CN 区域配置（必须全部来自 CN 区域）
+                cn_api_url = self.shop.cn_api_base_url or 'https://openapi.kuajingmaihuo.com/openapi/router'
+                cn_app_key = self.shop.cn_app_key or 'af5bcf5d4bd5a492fa09c2ee302d75b9'
+                cn_app_secret = self.shop.cn_app_secret or 'e4f229bb9c4db21daa999e73c8683d42ba0a7094'
+                cn_access_token = self.shop.cn_access_token
+                
+                # 验证 CN 配置完整性
+                if not cn_app_key or not cn_app_secret:
+                    raise ValueError(
+                        "CN 区域配置不完整：必须同时配置 cn_app_key、cn_app_secret 和 cn_access_token"
+                    )
+                
+                # CN端点不需要通过代理，可以直接访问
+                # 创建 CN 客户端（使用 CN 区域的 app_key、secret 和接口地址）
+                # 注意：CN端点不需要通过代理，直接访问
+                cn_client = TemuAPIClient(
+                    app_key=cn_app_key,
+                    app_secret=cn_app_secret,
+                    proxy_url=""  # 空字符串表示不使用代理，CN端点直接访问
+                )
+                cn_client.base_url = cn_api_url
+                
+                logger.info(
+                    f"CN 端点配置 - API URL: {cn_api_url}, "
+                    f"App Key: {cn_app_key[:10]}..., "
+                    f"Token: {cn_access_token[:10]}..."
+                )
+                
+                # CN 端点使用 bg.goods.list.get API
+                request_data = {
+                    "pageNumber": page_number,
+                    "pageSize": page_size,
+                }
+                
+                products = await cn_client._request(
+                    api_type="bg.goods.list.get",
+                    request_data=request_data,
+                    access_token=cn_access_token
+                )
+                
+                await cn_client.close()
+            else:
+                # 使用标准端点（US/EU/GLOBAL）
+                # 使用标准端点的 app_key/secret 和标准 access_token
+                if not self.shop.access_token:
+                    raise ValueError(
+                        f"店铺 {self.shop.shop_name} 未配置 Access Token。"
+                        f"请配置标准端点的 Access Token 或 CN 端点的 Access Token。"
+                    )
+                
+                # 使用标准端点的客户端
+                standard_client = self._get_standard_client()
+                
+                logger.info(
+                    f"使用标准端点获取商品列表 - 店铺: {self.shop.shop_name}, "
+                    f"区域: {self.shop.region}, "
+                    f"API URL: {standard_client.base_url}"
+                )
+                
+                products = await standard_client.get_products(
+                    access_token=self.access_token,
+                    page_number=page_number,
+                    page_size=page_size,
+                    goods_status=goods_status
+                )
+                
+                await standard_client.close()
             
             logger.info(
                 f"获取商品成功 - 店铺: {self.shop.shop_name}, "
@@ -199,6 +336,8 @@ class TemuService:
         """
         获取商品详情
         
+        如果配置了 CN access_token，使用 CN 端点；否则使用标准端点
+        
         Args:
             goods_id: 商品ID
             
@@ -206,10 +345,33 @@ class TemuService:
             商品详情
         """
         try:
-            product = await self.client.get_product_detail(
-                access_token=self.access_token,
-                goods_id=goods_id
-            )
+            # 如果配置了 CN access_token，使用 CN 端点
+            if self.shop.cn_access_token:
+                cn_api_url = self.shop.cn_api_base_url or 'https://openapi.kuajingmaihuo.com/openapi/router'
+                cn_app_key = self.shop.cn_app_key or 'af5bcf5d4bd5a492fa09c2ee302d75b9'
+                cn_app_secret = self.shop.cn_app_secret or 'e4f229bb9c4db21daa999e73c8683d42ba0a7094'
+                
+                cn_client = TemuAPIClient(
+                    app_key=cn_app_key,
+                    app_secret=cn_app_secret
+                )
+                cn_client.base_url = cn_api_url
+                
+                # CN端点可能使用不同的API类型，这里需要根据实际情况调整
+                # 暂时使用标准客户端的方法，如果失败再调整
+                product = await cn_client.get_product_detail(
+                    access_token=self.shop.cn_access_token,
+                    goods_id=goods_id
+                )
+                await cn_client.close()
+            else:
+                # 使用标准端点
+                standard_client = self._get_standard_client()
+                product = await standard_client.get_product_detail(
+                    access_token=self.access_token,
+                    goods_id=goods_id
+                )
+                await standard_client.close()
             
             logger.info(f"获取商品详情成功 - 商品ID: {goods_id}")
             return product
@@ -225,6 +387,8 @@ class TemuService:
         """
         获取商品分类
         
+        使用标准端点的 app_key/secret 和 access_token
+        
         Args:
             parent_cat_id: 父分类ID，0表示查询根分类
             
@@ -232,10 +396,13 @@ class TemuService:
             分类数据
         """
         try:
-            categories = await self.client.get_product_categories(
+            # 使用标准端点的客户端
+            standard_client = self._get_standard_client()
+            categories = await standard_client.get_product_categories(
                 access_token=self.access_token,
                 parent_cat_id=parent_cat_id
             )
+            await standard_client.close()
             
             logger.info(
                 f"获取商品分类成功 - 店铺: {self.shop.shop_name}, "
@@ -252,13 +419,18 @@ class TemuService:
         """
         获取仓库列表
         
+        使用标准端点的 app_key/secret 和 access_token
+        
         Returns:
             仓库数据
         """
         try:
-            warehouses = await self.client.get_warehouses(
+            # 使用标准端点的客户端
+            standard_client = self._get_standard_client()
+            warehouses = await standard_client.get_warehouses(
                 access_token=self.access_token
             )
+            await standard_client.close()
             
             logger.info(f"获取仓库列表成功 - 店铺: {self.shop.shop_name}")
             return warehouses
@@ -268,8 +440,14 @@ class TemuService:
             raise
     
     async def close(self):
-        """关闭客户端连接"""
-        await self.client.close()
+        """
+        关闭客户端连接
+        
+        注意：由于现在使用动态创建的客户端，这个方法可能不再需要
+        但保留以保持向后兼容性
+        """
+        # 不再需要关闭固定的客户端，因为现在使用动态创建的客户端
+        pass
 
 
 def get_temu_service(shop: Shop) -> TemuService:

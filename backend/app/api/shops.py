@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.shop import Shop, ShopRegion
 from app.models.user import User
-from app.schemas.shop import ShopCreate, ShopUpdate, ShopResponse
+from app.schemas.shop import ShopCreate, ShopUpdate, ShopResponse, ShopDetailResponse
 
 router = APIRouter(prefix="/shops", tags=["shops"])
 
@@ -21,17 +21,34 @@ def get_shops(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取店铺列表"""
-    shops = db.query(Shop).offset(skip).limit(limit).all()
-    # 添加API配置状态
-    for shop in shops:
-        shop.has_api_config = bool(shop.access_token)
-    return shops
+    """获取店铺列表（不返回敏感字段）"""
+    try:
+        shops = db.query(Shop).offset(skip).limit(limit).all()
+        # 添加API配置状态
+        result = []
+        for shop in shops:
+            shop.has_api_config = bool(shop.access_token)
+            # 创建响应对象，排除敏感字段（列表接口不返回 access_token 和 cn_access_token）
+            shop_response = ShopResponse.model_validate(shop)
+            # 清除敏感字段
+            shop_response.access_token = None
+            shop_response.cn_access_token = None
+            result.append(shop_response)
+        return result
+    except Exception as e:
+        from loguru import logger
+        logger.error(f"获取店铺列表失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取店铺列表失败: {str(e)}"
+        )
 
 
-@router.get("/{shop_id}", response_model=ShopResponse)
+@router.get("/{shop_id}", response_model=ShopDetailResponse)
 def get_shop(shop_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """获取店铺详情"""
+    """获取店铺详情（包含敏感字段，用于编辑）"""
     shop = db.query(Shop).filter(Shop.id == shop_id).first()
     if not shop:
         raise HTTPException(
@@ -39,6 +56,7 @@ def get_shop(shop_id: int, db: Session = Depends(get_db), current_user: User = D
             detail="店铺不存在"
         )
     shop.has_api_config = bool(shop.access_token)
+    # 返回包含敏感字段的完整信息
     return shop
 
 
@@ -66,9 +84,30 @@ def create_shop(shop: ShopCreate, db: Session = Depends(get_db), current_user: U
             detail="地区(region)无效，可选值: us / eu / global"
         )
     
+    # 根据区域设置 API 基础 URL
+    region_urls = {
+        'us': 'https://openapi-b-us.temu.com/openapi/router',
+        'eu': 'https://openapi-b-eu.temu.com/openapi/router',
+        'global': 'https://openapi-b-global.temu.com/openapi/router',
+    }
+    api_base_url = region_urls.get(region_value, region_urls['us'])
+    
     data = shop.model_dump()
     data['region'] = ShopRegion(region_value)
     data['shop_id'] = shop_id_value
+    data['api_base_url'] = api_base_url
+    
+    # 设置 CN API 默认值（如果用户没有填写）
+    # 重要：CN 区域的 app_key、secret、access_token 和接口地址必须都来自 CN 区域
+    if not data.get('cn_api_base_url'):
+        data['cn_api_base_url'] = 'https://openapi.kuajingmaihuo.com/openapi/router'
+    if not data.get('cn_app_key'):
+        data['cn_app_key'] = 'af5bcf5d4bd5a492fa09c2ee302d75b9'
+    if not data.get('cn_app_secret'):
+        data['cn_app_secret'] = 'e4f229bb9c4db21daa999e73c8683d42ba0a7094'
+    
+    # 验证：如果填写了 cn_access_token，建议同时填写 cn_app_key 和 cn_app_secret
+    # 但为了兼容性，如果没有填写，会使用默认值
 
     db_shop = Shop(**data)
     db.add(db_shop)
@@ -102,6 +141,16 @@ def authorize_shop(
 
     # 保存 Token（如需可在此加入实际的Temu API验证）
     shop.access_token = token
+    
+    # 根据区域设置 API 基础 URL（如果还没有设置）
+    if not shop.api_base_url:
+        region_urls = {
+            ShopRegion.US: 'https://openapi-b-us.temu.com/openapi/router',
+            ShopRegion.EU: 'https://openapi-b-eu.temu.com/openapi/router',
+            ShopRegion.GLOBAL: 'https://openapi-b-global.temu.com/openapi/router',
+        }
+        shop.api_base_url = region_urls.get(shop.region, region_urls[ShopRegion.US])
+    
     # 如传入shop_id则同时更新（并校验唯一）
     if body.shop_id:
         new_shop_id = body.shop_id.strip()
@@ -220,15 +269,23 @@ def sync_manager_to_products(
 
 @router.delete("/{shop_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_shop(shop_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """删除店铺"""
-    shop = db.query(Shop).filter(Shop.id == shop_id).first()
-    if not shop:
+    """删除店铺（会级联删除相关的订单和商品）"""
+    try:
+        shop = db.query(Shop).filter(Shop.id == shop_id).first()
+        if not shop:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="店铺不存在"
+            )
+        
+        # 删除店铺（会级联删除关联的订单和商品，因为外键设置了 ondelete="CASCADE"）
+        db.delete(shop)
+        db.commit()
+        return None
+    except Exception as e:
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="店铺不存在"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"删除店铺失败: {str(e)}"
         )
-    
-    db.delete(shop)
-    db.commit()
-    return None
 

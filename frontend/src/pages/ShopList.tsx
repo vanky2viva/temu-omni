@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Table, Button, Space, Modal, Form, Input, Switch, message, Tag, Tooltip, Select } from 'antd'
+import { Table, Button, Space, Modal, Form, Input, Switch, message, Tag, Tooltip, Select, Progress, Descriptions } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ApiOutlined, CheckCircleOutlined, WarningOutlined, SyncOutlined, UploadOutlined } from '@ant-design/icons'
 import { shopApi, syncApi } from '@/services/api'
 import ImportDataModal from '@/components/ImportDataModal'
@@ -17,14 +17,20 @@ function ShopList() {
   const [importingShop, setImportingShop] = useState<any>(null)
 
   // 获取店铺列表
-  const { data: shops, isLoading } = useQuery({
+  const { data: shops, isLoading, error: shopsError } = useQuery({
     queryKey: ['shops'],
     queryFn: shopApi.getShops,
-    onError: (error: any) => {
+    staleTime: 0, // 禁用缓存，总是获取最新数据
+  })
+  
+  // 处理错误
+  useEffect(() => {
+    if (shopsError) {
+      const error: any = shopsError
       const msg = error?.response?.data?.detail || error?.message || '店铺列表加载失败'
       message.error(msg)
-    },
-  })
+    }
+  }, [shopsError])
 
   // 创建店铺
   const createMutation = useMutation({
@@ -59,64 +65,34 @@ function ShopList() {
     mutationFn: shopApi.deleteShop,
     onSuccess: () => {
       message.success('店铺删除成功')
+      // 清除所有相关查询缓存并重新获取
       queryClient.invalidateQueries({ queryKey: ['shops'] })
+      queryClient.invalidateQueries({ queryKey: ['orders'] })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['statistics'] })
     },
-    onError: () => {
-      message.error('店铺删除失败')
+    onError: (error: any) => {
+      const msg = error?.response?.data?.detail || error?.message || '店铺删除失败'
+      message.error(msg)
+      console.error('删除店铺错误:', error)
     },
   })
 
-  // 行级同步loading
+  // 行级同步loading和进度
   const [syncingShopId, setSyncingShopId] = useState<number | null>(null)
+  const [syncProgress, setSyncProgress] = useState<any>(null)
+  const [syncProgressModalVisible, setSyncProgressModalVisible] = useState(false)
+  const progressIntervalRef = useRef<number | null>(null)
 
   // 同步数据
   const syncMutation = useMutation({
     mutationFn: ({ shopId, fullSync }: { shopId: number; fullSync: boolean }) =>
       syncApi.syncShopAll(shopId, fullSync),
-    onSuccess: (response: any, variables) => {
-      message.destroy('sync')
-      message.success('数据同步成功！')
-      queryClient.invalidateQueries({ queryKey: ['shops'] })
-      queryClient.invalidateQueries({ queryKey: ['statistics'] })
-      queryClient.invalidateQueries({ queryKey: ['orders'] })
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      
-      console.log('同步响应:', response)
-      
-      // 显示同步结果详情
-      const results = response?.data?.results || response?.results
-      Modal.success({
-        title: '✅ 同步完成',
-        content: (
-          <div>
-            <p>店铺数据已同步成功！</p>
-            {results && (
-              <div style={{ marginTop: 12, padding: 12, background: '#f6f8fa', borderRadius: 4 }}>
-                <p style={{ fontWeight: 'bold', marginBottom: 8 }}>同步统计：</p>
-                <ul style={{ fontSize: 12, margin: 0, paddingLeft: 20 }}>
-                  {results.orders && (
-                    <li>
-                      订单: 已有 <strong>{results.orders.total || 0}</strong> 条
-                      {results.orders.new > 0 && ` (新增 ${results.orders.new} 条)`}
-                      {results.orders.updated > 0 && ` (更新 ${results.orders.updated} 条)`}
-                    </li>
-                  )}
-                  {results.products && (
-                    <li>
-                      商品: 已有 <strong>{results.products.total || 0}</strong> 条
-                      {results.products.new > 0 && ` (新增 ${results.products.new} 条)`}
-                      {results.products.updated > 0 && ` (更新 ${results.products.updated} 条)`}
-                    </li>
-                  )}
-                  {results.categories !== undefined && (
-                    <li>分类: <strong>{results.categories}</strong> 个</li>
-                  )}
-                </ul>
-              </div>
-            )}
-          </div>
-        ),
-      })
+    onSuccess: (response: any) => {
+      // 启动进度轮询
+      setSyncingShopId(response?.data?.shop_id)
+      setSyncProgressModalVisible(true)
+      startProgressPolling(response?.data?.shop_id)
     },
     onError: (error: any) => {
       message.destroy('sync')
@@ -127,11 +103,59 @@ function ShopList() {
         title: '❌ 同步失败',
         content: errorMsg,
       })
-    },
-    onSettled: () => {
       setSyncingShopId(null)
     },
   })
+
+  // 轮询同步进度
+  const startProgressPolling = (shopId: number) => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
+    }
+    
+    progressIntervalRef.current = window.setInterval(async () => {
+      try {
+        const response: any = await syncApi.getSyncProgress(shopId)
+        const progress = response?.data || response
+        setSyncProgress(progress)
+        
+        // 如果同步完成或失败，停止轮询
+        const status = progress?.status
+        if (status === 'completed' || status === 'error') {
+          if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current)
+            progressIntervalRef.current = null
+          }
+          
+          // 刷新数据
+          queryClient.invalidateQueries({ queryKey: ['shops'] })
+          queryClient.invalidateQueries({ queryKey: ['statistics'] })
+          queryClient.invalidateQueries({ queryKey: ['orders'] })
+          queryClient.invalidateQueries({ queryKey: ['products'] })
+          
+          setSyncingShopId(null)
+          
+          // 显示结果
+          if (status === 'completed') {
+            message.success('数据同步成功！')
+          } else {
+            message.error(`同步失败: ${progress?.error || '未知错误'}`)
+          }
+        }
+      } catch (error) {
+        console.error('获取进度失败:', error)
+      }
+    }, 1000) // 每秒轮询一次
+  }
+
+  // 清理轮询
+  useEffect(() => {
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+      }
+    }
+  }, [])
 
   // 授权（设置Access Token）
   const [authModalShop, setAuthModalShop] = useState<any>(null)
@@ -149,10 +173,39 @@ function ShopList() {
     },
   })
 
-  const handleOpenModal = (shop?: any) => {
+  const handleOpenModal = async (shop?: any) => {
     setEditingShop(shop)
     if (shop) {
-      form.setFieldsValue(shop)
+      // 编辑时，获取完整的店铺信息（包含 access_token 等敏感字段）
+      try {
+        const shopDetail: any = await shopApi.getShop(shop.id)
+        // 保存原始值，用于判断是否修改
+        const originalValues = {
+          access_token: shopDetail.access_token || '',
+          cn_access_token: shopDetail.cn_access_token || '',
+        }
+        // 将原始值存储到表单的隐藏字段中，用于后续比较
+        form.setFieldsValue({
+          ...shopDetail,
+          access_token: originalValues.access_token,
+          cn_access_token: originalValues.cn_access_token,
+          _original_access_token: originalValues.access_token, // 保存原始值用于比较
+          _original_cn_access_token: originalValues.cn_access_token, // 保存原始值用于比较
+        })
+      } catch (error) {
+        // 如果获取详情失败，使用列表中的数据
+        const originalValues = {
+          access_token: shop.access_token || '',
+          cn_access_token: shop.cn_access_token || '',
+        }
+        form.setFieldsValue({
+          ...shop,
+          access_token: originalValues.access_token,
+          cn_access_token: originalValues.cn_access_token,
+          _original_access_token: originalValues.access_token,
+          _original_cn_access_token: originalValues.cn_access_token,
+        })
+      }
     } else {
       form.resetFields()
     }
@@ -168,7 +221,31 @@ function ShopList() {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
+      
+      // 处理敏感字段：如果值没有变化，不更新该字段
       if (editingShop) {
+        const originalAccessToken = values._original_access_token || ''
+        const originalCnAccessToken = values._original_cn_access_token || ''
+        
+        // 如果值没有变化，删除该字段（不更新）
+        if (values.access_token === originalAccessToken) {
+          delete values.access_token
+        } else if (values.access_token === '') {
+          // 如果是空字符串，表示用户要清空该字段
+          values.access_token = null
+        }
+        
+        if (values.cn_access_token === originalCnAccessToken) {
+          delete values.cn_access_token
+        } else if (values.cn_access_token === '') {
+          // 如果是空字符串，表示用户要清空该字段
+          values.cn_access_token = null
+        }
+        
+        // 删除用于比较的隐藏字段
+        delete values._original_access_token
+        delete values._original_cn_access_token
+        
         updateMutation.mutate({ id: editingShop.id, data: values })
       } else {
         createMutation.mutate(values)
@@ -190,26 +267,64 @@ function ShopList() {
   }
 
   const handleSync = (shop: any) => {
+    if (!shop.has_api_config) {
+      message.warning('请先配置店铺的 Access Token')
+      return
+    }
+    
+    // 检查是否有历史数据，决定同步模式
+    const hasHistoryData = shop.last_sync_at
+    
     Modal.confirm({
       title: '同步店铺数据',
       content: (
         <div>
           <p>确定要同步店铺 <strong>{shop.shop_name}</strong> 的数据吗？</p>
           <p style={{ fontSize: 12, color: '#666', marginTop: 8 }}>
-            将同步最近30天的订单、商品和分类数据。
+            {hasHistoryData ? (
+              <>
+                <strong>全量同步模式：</strong>将同步所有订单和商品数据。
+                <br />
+                系统会自动识别新增和更新的数据。
+              </>
+            ) : (
+              <>
+                <strong>首次同步：</strong>将同步所有订单和商品数据。
+                <br />
+                后续同步将自动进行增量更新。
+              </>
+            )}
             <br />
-            首次同步可能需要2-5分钟，请耐心等待。
+            <span style={{ color: '#ff4d4f' }}>同步过程可能需要几分钟，请耐心等待。</span>
           </p>
         </div>
       ),
       okText: '开始同步',
       cancelText: '取消',
       onOk: () => {
-        message.loading({ content: '正在同步数据...', key: 'sync', duration: 0 })
-        setSyncingShopId(shop.id)
+        setSyncProgress(null)
+        // 始终使用全量同步，系统会自动处理增量逻辑
         syncMutation.mutate({ shopId: shop.id, fullSync: true })
       },
     })
+  }
+
+  const handleCloseProgressModal = () => {
+    if (syncProgress?.status === 'running') {
+      Modal.confirm({
+        title: '确认关闭',
+        content: '同步仍在进行中，关闭后仍可在后台继续。是否确认关闭？',
+        onOk: () => {
+          setSyncProgressModalVisible(false)
+        },
+      })
+    } else {
+      setSyncProgressModalVisible(false)
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+        progressIntervalRef.current = null
+      }
+    }
   }
 
   const handleOpenImportModal = (shop: any) => {
@@ -277,7 +392,7 @@ function ShopList() {
     {
       title: '操作',
       key: 'action',
-      fixed: 'right',
+      fixed: 'right' as const,
       width: 460,
       render: (_: any, record: any) => (
         <Space size="small">
@@ -350,7 +465,7 @@ function ShopList() {
 
       <Table
         columns={columns}
-        dataSource={shops}
+        dataSource={Array.isArray(shops) ? shops : []}
         rowKey="id"
         loading={isLoading}
         scroll={{ x: 1200 }}
@@ -383,6 +498,49 @@ function ShopList() {
               <Select.Option value="global">GLOBAL（全球）</Select.Option>
             </Select>
           </Form.Item>
+          <Form.Item
+            label="Access Token"
+            name="access_token"
+            rules={[{ required: !editingShop, message: '请输入 Access Token' }]}
+            extra={editingShop ? "如需更新Token，请通过「授权/更新授权」按钮设置；此处留空表示不修改。已有值已隐藏显示。" : "店铺授权所需的访问令牌，从 Temu 卖家中心获取"}
+          >
+            <Input.Password 
+              style={{ fontFamily: 'monospace' }}
+              placeholder={editingShop ? "（已有值已隐藏，输入新值可更新）" : "粘贴该店铺的 Access Token"} 
+              visibilityToggle={true}
+            />
+          </Form.Item>
+          
+          <Form.Item
+            label="CN 区域配置（商品列表、发品等）"
+            name="cn_access_token"
+            extra={
+              <div>
+                <div style={{ marginBottom: 4, color: '#ff4d4f', fontWeight: 'bold' }}>
+                  ⚠️ 重要：CN 区域的 app_key、secret、access_token 和接口地址必须都来自 CN 区域，不能混用！
+                </div>
+                <div>
+                  请从{' '}
+                  <a 
+                    href="https://agentpartner.temu.com/document?cataId=875196199516&docId=909799935182" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                  >
+                    指定地址
+                  </a>
+                  {' '}获取授权。
+                  {editingShop ? '留空表示不修改。已有值已隐藏显示。' : '如果填写了 CN Access Token，系统会自动使用 CN 区域的配置。'}
+                </div>
+              </div>
+            }
+          >
+            <Input.Password 
+              style={{ fontFamily: 'monospace' }}
+              placeholder={editingShop ? "（已有值已隐藏，输入新值可更新）" : "粘贴 CN 区域的 Access Token（可选）"} 
+              visibilityToggle={true}
+            />
+          </Form.Item>
+          
           <Form.Item label="经营主体" name="entity">
             <Input />
           </Form.Item>
@@ -393,25 +551,14 @@ function ShopList() {
             <Input.TextArea rows={3} />
           </Form.Item>
           
-          {/* 新增店铺时Access Token不再必填，移除必填校验并默认隐藏 */}
-          
           {editingShop && (
-            <>
-              <Form.Item
-                label="Access Token"
-                name="access_token"
-                extra="如需更新Token，请通过“授权/更新授权”按钮设置；此处留空表示不修改"
-              >
-                <Input.TextArea rows={3} placeholder="（建议使用授权按钮设置）" />
-              </Form.Item>
-              <Form.Item
-                label="启用状态"
-                name="is_active"
-                valuePropName="checked"
-              >
-                <Switch />
-              </Form.Item>
-            </>
+            <Form.Item
+              label="启用状态"
+              name="is_active"
+              valuePropName="checked"
+            >
+              <Switch />
+            </Form.Item>
           )}
         </Form>
         
@@ -422,19 +569,17 @@ function ShopList() {
           borderRadius: 4 
         }}>
           <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
-            💡 提示：App Key和App Secret已在系统设置中全局配置。
+            💡 提示：App Key 和 App Secret 已内置在系统中。
             <br />
-            添加店铺时无需填写 Access Token，可在列表中点击“授权”按钮后设置。
             {!editingShop && (
               <>
-                <br />
-                如果还没有获取Token，请访问{' '}
+                添加店铺时需要填写 Access Token。如果还没有获取 Token，请访问{' '}
                 <a 
-                  href="https://agentpartner.temu.com/" 
+                  href="https://seller.temu.com/open-platform/client-manage" 
                   target="_blank" 
                   rel="noopener noreferrer"
                 >
-                  Temu开放平台
+                  Temu 卖家中心
                 </a>
                 {' '}进行店铺授权。
               </>
@@ -452,6 +597,72 @@ function ShopList() {
           onClose={handleCloseImportModal}
         />
       )}
+
+      {/* 同步进度模态框 */}
+      <Modal
+        title="同步进度"
+        open={syncProgressModalVisible}
+        onCancel={handleCloseProgressModal}
+        footer={[
+          <Button key="close" onClick={handleCloseProgressModal}>
+            {syncProgress?.status === 'running' ? '后台运行' : '关闭'}
+          </Button>
+        ]}
+        closable={syncProgress?.status !== 'running'}
+        maskClosable={false}
+      >
+        {syncProgress && (
+          <div>
+            <Progress
+              percent={syncProgress.progress || 0}
+              status={syncProgress.status === 'error' ? 'exception' : syncProgress.status === 'completed' ? 'success' : 'active'}
+              strokeColor={syncProgress.status === 'completed' ? '#52c41a' : undefined}
+            />
+            <div style={{ marginTop: 16 }}>
+              <p><strong>当前状态：</strong>{syncProgress.current_step || '准备中...'}</p>
+              
+              {syncProgress.status === 'completed' && (
+                <div style={{ marginTop: 16, padding: 12, background: '#f6f8fa', borderRadius: 4 }}>
+                  <Descriptions column={1} size="small">
+                    {syncProgress.orders && (
+                      <>
+                        <Descriptions.Item label="订单同步">
+                          总数: {syncProgress.orders.total || 0}
+                          {syncProgress.orders.new > 0 && ` | 新增: ${syncProgress.orders.new}`}
+                          {syncProgress.orders.updated > 0 && ` | 更新: ${syncProgress.orders.updated}`}
+                          {syncProgress.orders.failed > 0 && ` | 失败: ${syncProgress.orders.failed}`}
+                        </Descriptions.Item>
+                      </>
+                    )}
+                    {syncProgress.products && (
+                      <>
+                        <Descriptions.Item label="商品同步">
+                          总数: {syncProgress.products.total || 0}
+                          {syncProgress.products.new > 0 && ` | 新增: ${syncProgress.products.new}`}
+                          {syncProgress.products.updated > 0 && ` | 更新: ${syncProgress.products.updated}`}
+                          {syncProgress.products.failed > 0 && ` | 失败: ${syncProgress.products.failed}`}
+                        </Descriptions.Item>
+                      </>
+                    )}
+                    {syncProgress.categories !== undefined && (
+                      <Descriptions.Item label="分类同步">
+                        {syncProgress.categories} 个分类
+                      </Descriptions.Item>
+                    )}
+                  </Descriptions>
+                </div>
+              )}
+              
+              {syncProgress.status === 'error' && (
+                <div style={{ marginTop: 16, padding: 12, background: '#fff2f0', borderRadius: 4, color: '#ff4d4f' }}>
+                  <p><strong>错误信息：</strong></p>
+                  <p>{syncProgress.error || '未知错误'}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* 授权模态框 */}
       <Modal

@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  # Temu API 代理服务器
+  temu-api-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: temu-api-proxy
+    ports:
+      - "8001:8001"
+    environment:
+      # Temu API 凭证（默认值，如果客户端未提供则使用此配置）
+      - TEMU_APP_KEY=${TEMU_APP_KEY:-798478197604e93f6f2ce4c2e833041u}
+      - TEMU_APP_SECRET=${TEMU_APP_SECRET:-776a96163c56c53e237f5456d4e14765301aa8aa}
+    restart: unless-stopped
+    networks:
+      - proxy-network
+
+networks:
+  proxy-network:
+    driver: bridge
+

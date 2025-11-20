@@ -30,6 +30,7 @@ class Order(Base):
     # 订单基本信息
     order_sn = Column(String(100), index=True, nullable=False, comment="订单编号")
     temu_order_id = Column(String(100), unique=True, index=True, comment="Temu订单ID")
+    parent_order_sn = Column(String(100), index=True, comment="父订单编号（用于关联同一父订单下的多个子订单）")
     
     # 商品信息
     product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"), index=True)
