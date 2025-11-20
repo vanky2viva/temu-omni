@@ -88,7 +88,7 @@ class TemuService:
         获取标准端点（US/EU/GLOBAL）的客户端
         
         用于订单等需要使用标准端点的操作
-        使用 US 端点的 app_key/secret: 798478197604e93f6f2ce4c2e833041u / 776a96163c56c53e237f5456d4e14765301aa8aa
+        使用标准端点的 app_key/secret（从环境变量或店铺配置读取）
         """
         # 获取标准端点的API基础URL（根据店铺区域）
         api_base_url = self.shop.api_base_url or self.REGION_API_URLS.get(
@@ -254,9 +254,11 @@ class TemuService:
                 logger.info(f"使用 CN 端点获取商品列表 - 店铺: {self.shop.shop_name}")
                 
                 # 获取 CN 区域配置（必须全部来自 CN 区域）
+                from app.core.config import settings
                 cn_api_url = self.shop.cn_api_base_url or 'https://openapi.kuajingmaihuo.com/openapi/router'
-                cn_app_key = self.shop.cn_app_key or 'af5bcf5d4bd5a492fa09c2ee302d75b9'
-                cn_app_secret = self.shop.cn_app_secret or 'e4f229bb9c4db21daa999e73c8683d42ba0a7094'
+                # CN App Key和Secret必须从环境变量或店铺配置中获取，不能硬编码
+                cn_app_key = self.shop.cn_app_key or settings.TEMU_CN_APP_KEY
+                cn_app_secret = self.shop.cn_app_secret or settings.TEMU_CN_APP_SECRET
                 cn_access_token = self.shop.cn_access_token
                 
                 # 验证 CN 配置完整性
@@ -348,8 +350,10 @@ class TemuService:
             # 如果配置了 CN access_token，使用 CN 端点
             if self.shop.cn_access_token:
                 cn_api_url = self.shop.cn_api_base_url or 'https://openapi.kuajingmaihuo.com/openapi/router'
-                cn_app_key = self.shop.cn_app_key or 'af5bcf5d4bd5a492fa09c2ee302d75b9'
-                cn_app_secret = self.shop.cn_app_secret or 'e4f229bb9c4db21daa999e73c8683d42ba0a7094'
+                # CN App Key和Secret必须从环境变量或店铺配置中获取，不能硬编码
+                from app.core.config import settings
+                cn_app_key = self.shop.cn_app_key or settings.TEMU_CN_APP_KEY
+                cn_app_secret = self.shop.cn_app_secret or settings.TEMU_CN_APP_SECRET
                 
                 cn_client = TemuAPIClient(
                     app_key=cn_app_key,

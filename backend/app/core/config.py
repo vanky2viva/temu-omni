@@ -16,13 +16,17 @@ class Settings(BaseSettings):
     # 数据库配置
     DATABASE_URL: str
     
-    # Temu API配置（内置）
-    TEMU_APP_KEY: str = "798478197604e93f6f2ce4c2e833041u"
-    TEMU_APP_SECRET: str = "776a96163c56c53e237f5456d4e14765301aa8aa"
+    # Temu API配置（从环境变量读取）
+    TEMU_APP_KEY: str = ""  # 标准端点App Key，必须通过环境变量设置
+    TEMU_APP_SECRET: str = ""  # 标准端点App Secret，必须通过环境变量设置
     TEMU_API_BASE_URL: str = "https://agentpartner.temu.com/api"
     
+    # Temu CN API配置（从环境变量读取）
+    TEMU_CN_APP_KEY: str = ""  # CN端点App Key，必须通过环境变量设置
+    TEMU_CN_APP_SECRET: str = ""  # CN端点App Secret，必须通过环境变量设置
+    
     # Temu API 代理配置（必须）
-    TEMU_API_PROXY_URL: str = "http://172.236.231.45:8001"  # 代理服务器地址，所有 API 请求必须通过此代理服务器
+    TEMU_API_PROXY_URL: str = ""  # 代理服务器地址，必须通过环境变量设置
     
     # Redis配置
     REDIS_URL: str = "redis://localhost:6379/0"

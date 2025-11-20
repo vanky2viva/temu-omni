@@ -1,0 +1,5 @@
+# 确保敏感文件不会被意外提交
+*.env filter=git-crypt diff=git-crypt
+*.env.* filter=git-crypt diff=git-crypt
+**/secrets/** filter=git-crypt diff=git-crypt
+

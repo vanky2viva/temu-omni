@@ -42,6 +42,7 @@ class OrderResponse(OrderBase):
     id: int
     shop_id: int
     temu_order_id: Optional[str] = None
+    parent_order_sn: Optional[str] = None
     product_id: Optional[int] = None
     unit_cost: Optional[Decimal] = None
     total_cost: Optional[Decimal] = None

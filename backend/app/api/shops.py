@@ -101,10 +101,12 @@ def create_shop(shop: ShopCreate, db: Session = Depends(get_db), current_user: U
     # 重要：CN 区域的 app_key、secret、access_token 和接口地址必须都来自 CN 区域
     if not data.get('cn_api_base_url'):
         data['cn_api_base_url'] = 'https://openapi.kuajingmaihuo.com/openapi/router'
+    # CN App Key和Secret从环境变量读取，不硬编码
+    from app.core.config import settings
     if not data.get('cn_app_key'):
-        data['cn_app_key'] = 'af5bcf5d4bd5a492fa09c2ee302d75b9'
+        data['cn_app_key'] = settings.TEMU_CN_APP_KEY or ''
     if not data.get('cn_app_secret'):
-        data['cn_app_secret'] = 'e4f229bb9c4db21daa999e73c8683d42ba0a7094'
+        data['cn_app_secret'] = settings.TEMU_CN_APP_SECRET or ''
     
     # 验证：如果填写了 cn_access_token，建议同时填写 cn_app_key 和 cn_app_secret
     # 但为了兼容性，如果没有填写，会使用默认值
