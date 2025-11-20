@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator
+from loguru import logger
+import traceback
 
 from app.core.database import get_db
 from app.core.security import (
@@ -99,43 +101,58 @@ def login(
     db: Session = Depends(get_db)
 ):
     """用户登录"""
-    # 查找用户（支持用户名或邮箱登录）
-    user = db.query(User).filter(
-        (User.username == form_data.username) | (User.email == form_data.username)
-    ).first()
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+    try:
+        # 查找用户（支持用户名或邮箱登录）
+        user = db.query(User).filter(
+            (User.username == form_data.username) | (User.email == form_data.username)
+        ).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        if not verify_password(form_data.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is inactive"
+            )
+        
+        # 创建访问令牌
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.username},
+            expires_delta=access_token_expires
         )
-    
-    if not verify_password(form_data.password, user.hashed_password):
+        
+        # 将 User 对象转换为 UserResponse
+        user_response = UserResponse.model_validate(user)
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": user_response
+        }
+    except HTTPException:
+        # 重新抛出 HTTP 异常
+        raise
+    except Exception as e:
+        # 记录其他异常并返回 500 错误
+        logger.error(f"登录失败: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"登录失败: {str(e)}"
         )
-    
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User is inactive"
-        )
-    
-    # 创建访问令牌
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username},
-        expires_delta=access_token_expires
-    )
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": user
-    }
 
 
 @router.get("/me", response_model=UserResponse)

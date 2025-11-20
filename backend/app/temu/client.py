@@ -387,19 +387,21 @@ class TemuAPIClient:
     async def get_order_detail(
         self,
         access_token: str,
-        order_sn: str
+        parent_order_sn: str
     ) -> Dict[str, Any]:
         """
         获取订单详情（V2版本）
         
+        注意：此接口需要父订单号（parentOrderSn），不是子订单号
+        
         Args:
             access_token: 访问令牌
-            order_sn: 订单编号
+            parent_order_sn: 父订单编号（必填）
             
         Returns:
             订单详情数据
         """
-        data = {"orderSn": order_sn}
+        data = {"parentOrderSn": parent_order_sn}
         return await self._request("bg.order.detail.v2.get", data, access_token)
     
     async def get_products(
@@ -498,6 +500,26 @@ class TemuAPIClient:
         """
         data = {}
         return await self._request("bg.open.accesstoken.info.get", data, access_token)
+    
+    async def get_order_amount(
+        self,
+        access_token: str,
+        order_sn: str
+    ) -> Dict[str, Any]:
+        """
+        查询订单金额（成交金额）
+        
+        参考文档: https://partner-us.temu.com/documentation?menu_code=fb16b05f7a904765aac4af3a24b87d4a&sub_menu_code=ba20da993f7d4605909dd49a5c186c21
+        
+        Args:
+            access_token: 访问令牌
+            order_sn: 订单编号（父订单号或子订单号）
+            
+        Returns:
+            订单金额信息
+        """
+        data = {"orderSn": order_sn}
+        return await self._request("bg.order.amount.query", data, access_token)
     
     async def close(self):
         """关闭HTTP客户端"""

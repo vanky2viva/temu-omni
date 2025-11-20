@@ -283,8 +283,8 @@ async def sync_shop_all_data(
         "data": {
             "shop_id": shop_id,
             "shop_name": shop.shop_name,
-            "environment": shop.environment.value,
-            "region": shop.region.value,
+                "environment": shop.environment.value,
+                "region": shop.region.value,
         }
     }
 

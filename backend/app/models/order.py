@@ -62,6 +62,7 @@ class Order(Base):
     order_time = Column(DateTime, nullable=False, index=True, comment="下单时间")
     payment_time = Column(DateTime, comment="支付时间")
     shipping_time = Column(DateTime, comment="发货时间")
+    expect_ship_latest_time = Column(DateTime, comment="预期最晚发货时间")
     delivery_time = Column(DateTime, comment="送达时间")
     
     # 客户信息（可选）

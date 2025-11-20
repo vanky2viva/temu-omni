@@ -199,14 +199,16 @@ class TemuService:
             logger.error(f"获取订单失败 - 店铺: {self.shop.shop_name}, 错误: {e}")
             raise
     
-    async def get_order_detail(self, order_sn: str) -> Dict[str, Any]:
+    async def get_order_detail(self, parent_order_sn: str) -> Dict[str, Any]:
         """
         获取订单详情
         
         使用标准端点的 app_key/secret 和 access_token
         
+        注意：此接口需要父订单号（parentOrderSn），不是子订单号
+        
         Args:
-            order_sn: 订单编号
+            parent_order_sn: 父订单编号（必填）
             
         Returns:
             订单详情
@@ -216,15 +218,15 @@ class TemuService:
             standard_client = self._get_standard_client()
             order = await standard_client.get_order_detail(
                 access_token=self.access_token,
-                order_sn=order_sn
+                parent_order_sn=parent_order_sn
             )
             await standard_client.close()
             
-            logger.info(f"获取订单详情成功 - 订单号: {order_sn}")
+            logger.info(f"获取订单详情成功 - 父订单号: {parent_order_sn}")
             return order
             
         except Exception as e:
-            logger.error(f"获取订单详情失败 - 订单号: {order_sn}, 错误: {e}")
+            logger.error(f"获取订单详情失败 - 父订单号: {parent_order_sn}, 错误: {e}")
             raise
     
     async def get_products(
@@ -417,6 +419,52 @@ class TemuService:
             
         except Exception as e:
             logger.error(f"获取商品分类失败 - 店铺: {self.shop.shop_name}, 错误: {e}")
+            raise
+    
+    async def get_order_amount(self, order_sn: str) -> Dict[str, Any]:
+        """
+        查询订单金额（成交金额）
+        
+        参考文档: https://partner-us.temu.com/documentation?menu_code=fb16b05f7a904765aac4af3a24b87d4a&sub_menu_code=ba20da993f7d4605909dd49a5c186c21
+        
+        Args:
+            order_sn: 订单编号（父订单号或子订单号）
+            
+        Returns:
+            订单金额信息
+        """
+        try:
+            # 订单金额查询使用标准端点
+            if not self.shop.access_token:
+                raise ValueError(
+                    f"店铺 {self.shop.shop_name} 未配置标准端点的 Access Token。"
+                    f"订单金额查询需要使用标准端点的 Access Token。"
+                )
+            
+            # 使用标准端点的客户端
+            standard_client = self._get_standard_client()
+            
+            logger.info(
+                f"查询订单金额 - 店铺: {self.shop.shop_name}, "
+                f"订单号: {order_sn}"
+            )
+            
+            amount_info = await standard_client.get_order_amount(
+                access_token=self.access_token,
+                order_sn=order_sn
+            )
+            
+            await standard_client.close()
+            
+            logger.info(
+                f"查询订单金额成功 - 店铺: {self.shop.shop_name}, "
+                f"订单号: {order_sn}"
+            )
+            
+            return amount_info
+            
+        except Exception as e:
+            logger.error(f"查询订单金额失败 - 店铺: {self.shop.shop_name}, 订单号: {order_sn}, 错误: {e}")
             raise
     
     async def get_warehouses(self) -> Dict[str, Any]:

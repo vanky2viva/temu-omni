@@ -51,6 +51,7 @@ class OrderResponse(OrderBase):
     order_time: datetime
     payment_time: Optional[datetime] = None
     shipping_time: Optional[datetime] = None
+    expect_ship_latest_time: Optional[datetime] = None
     delivery_time: Optional[datetime] = None
     customer_id: Optional[str] = None
     shipping_country: Optional[str] = None

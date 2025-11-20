@@ -1,7 +1,7 @@
 """数据同步服务 - 从Temu API同步数据到数据库"""
 import json
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from loguru import logger
@@ -202,12 +202,20 @@ class SyncService:
             parent_order.get('shippingTime') or 
             parent_order.get('shipTime')
         )
-        # 送达时间在 parentOrderMap 中（latestDeliveryTime）
-        delivery_time = self._parse_timestamp(
-            parent_order.get('latestDeliveryTime') or
-            parent_order.get('deliveryTime') or 
-            parent_order.get('deliverTime')
-        )
+        # 预期最晚发货时间
+        expect_ship_latest_time = self._parse_timestamp(parent_order.get('expectShipLatestTime'))
+        # 签收时间：如果订单状态为已收货（status=5），使用updateTime；否则使用latestDeliveryTime
+        parent_order_status = parent_order.get('parentOrderStatus')
+        if parent_order_status == 5:  # RECEIPTED（已收货）
+            # 使用updateTime作为签收时间（更准确）
+            delivery_time = self._parse_timestamp(parent_order.get('updateTime'))
+        else:
+            # 使用latestDeliveryTime作为最晚送达时间
+            delivery_time = self._parse_timestamp(
+                parent_order.get('latestDeliveryTime') or
+                parent_order.get('deliveryTime') or 
+                parent_order.get('deliverTime')
+            )
         # 支付时间可能在 parentOrderMap 中
         payment_time = self._parse_timestamp(parent_order.get('paymentTime') or parent_order.get('payTime'))
         
@@ -273,10 +281,12 @@ class SyncService:
         customer_id = parent_order.get('customerId') or parent_order.get('buyerId') or ''
         
         # 创建订单对象
+        # 注意：temu_order_id 使用子订单号（orderSn），因为子订单号是唯一的
+        # parent_order_sn 字段存储父订单号，用于关联同一父订单下的多个子订单
         order = Order(
             shop_id=self.shop.id,
             order_sn=order_item.get('orderSn'),
-            temu_order_id=parent_order.get('parentOrderSn'),
+            temu_order_id=order_item.get('orderSn'),  # 使用子订单号作为唯一标识
             parent_order_sn=parent_order.get('parentOrderSn'),
             
             # 商品信息
@@ -295,6 +305,7 @@ class SyncService:
             order_time=order_time or datetime.now(),
             payment_time=payment_time,
             shipping_time=shipping_time,
+            expect_ship_latest_time=expect_ship_latest_time,
             delivery_time=delivery_time,
             
             # 客户和地址信息
@@ -346,15 +357,40 @@ class SyncService:
             order.payment_time = payment_time
             updated = True
         
-        shipping_time = self._parse_timestamp(parent_order.get('shippingTime') or parent_order.get('shipTime'))
+        shipping_time = self._parse_timestamp(
+            parent_order.get('parentShippingTime') or 
+            order_item.get('orderShippingTime') or
+            parent_order.get('shippingTime') or 
+            parent_order.get('shipTime')
+        )
         if shipping_time and order.shipping_time != shipping_time:
             order.shipping_time = shipping_time
             updated = True
         
-        delivery_time = self._parse_timestamp(parent_order.get('deliveryTime') or parent_order.get('deliverTime'))
-        if delivery_time and order.delivery_time != delivery_time:
-            order.delivery_time = delivery_time
+        # 更新预期最晚发货时间
+        expect_ship_latest_time = self._parse_timestamp(parent_order.get('expectShipLatestTime'))
+        if expect_ship_latest_time and order.expect_ship_latest_time != expect_ship_latest_time:
+            order.expect_ship_latest_time = expect_ship_latest_time
             updated = True
+        
+        # 签收时间：仅当订单状态为5（已送达）时，使用updateTime作为签收时间
+        # 其他状态不设置签收时间（因为未签收），如果之前有值则清空
+        parent_order_status = parent_order.get('parentOrderStatus')
+        delivery_time = None
+        if parent_order_status == 5:  # 已送达（状态码5）
+            # 使用updateTime作为签收时间（更准确）
+            delivery_time = self._parse_timestamp(parent_order.get('updateTime'))
+        
+        # 更新签收时间：如果状态为5且有签收时间，则更新；如果状态不是5，则清空
+        if parent_order_status == 5:
+            if delivery_time and order.delivery_time != delivery_time:
+                order.delivery_time = delivery_time
+                updated = True
+        else:
+            # 状态不是5，清空签收时间
+            if order.delivery_time is not None:
+                order.delivery_time = None
+                updated = True
         
         # 更新价格信息（如果价格发生变化）
         unit_price = self._parse_decimal(
@@ -396,15 +432,14 @@ class SyncService:
         """
         映射Temu订单状态到系统订单状态
         
-        根据 Temu API 文档：
-        - 0: 全部
-        - 1: PENDING（待处理）
-        - 2: UN_SHIPPING（待发货）
-        - 3: CANCELED（订单已取消）
-        - 4: SHIPPED（订单已发货）
-        - 5: RECEIPTED（订单已收货）
-        - 41: 部分发货（仅本地店铺）
-        - 51: 部分收货（仅本地店铺）
+        根据 Temu API 状态码对应关系：
+        - 1: 待处理 (PENDING)
+        - 2: 未发货 (UN_SHIPPING) -> PROCESSING
+        - 3: 已取消 (CANCELLED)
+        - 4: 已发货 (SHIPPED)
+        - 4: 部分发货 (SHIPPED) - 也是状态码4
+        - 5: 已送达 (DELIVERED)
+        - 5: 部分送达 (DELIVERED) - 也是状态码5
         
         Args:
             temu_status: Temu订单状态码
@@ -414,25 +449,25 @@ class SyncService:
         """
         order_status_map = {
             0: OrderStatus.PENDING,      # 全部（默认待处理）
-            1: OrderStatus.PENDING,      # PENDING（待处理）
-            2: OrderStatus.PROCESSING,   # UN_SHIPPING（待发货）
-            3: OrderStatus.CANCELLED,    # CANCELED（订单已取消）
-            4: OrderStatus.SHIPPED,      # SHIPPED（订单已发货）
-            5: OrderStatus.DELIVERED,    # RECEIPTED（订单已收货）
+            1: OrderStatus.PENDING,      # 待处理
+            2: OrderStatus.PROCESSING,   # 未发货
+            3: OrderStatus.CANCELLED,    # 已取消
+            4: OrderStatus.SHIPPED,      # 已发货 / 部分发货
+            5: OrderStatus.DELIVERED,    # 已送达 / 部分送达
             41: OrderStatus.SHIPPED,     # 部分发货（视为已发货）
-            51: OrderStatus.DELIVERED,   # 部分收货（视为已收货）
+            51: OrderStatus.DELIVERED,   # 部分送达（视为已送达）
         }
         return order_status_map.get(temu_status, OrderStatus.PENDING)
     
     def _parse_timestamp(self, timestamp: Any) -> Optional[datetime]:
         """
-        解析时间戳（支持秒和毫秒）
+        解析时间戳（支持秒和毫秒），并转换为北京时间（UTC+8）
         
         Args:
             timestamp: 时间戳（秒或毫秒）
             
         Returns:
-            datetime对象或None
+            datetime对象（北京时间，UTC+8）或None
         """
         if timestamp is None:
             return None
@@ -445,7 +480,16 @@ class SyncService:
             if ts > 9999999999:
                 ts = ts / 1000
             
-            return datetime.fromtimestamp(ts)
+            # 从UTC时间戳创建datetime对象（UTC时区）
+            utc_dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            
+            # 转换为北京时间（UTC+8）
+            beijing_tz = timezone(timedelta(hours=8))
+            beijing_dt = utc_dt.astimezone(beijing_tz)
+            
+            # 返回naive datetime（不带时区信息），但已经是北京时间
+            # 这样存储到数据库时不会有时区问题
+            return beijing_dt.replace(tzinfo=None)
         except (ValueError, TypeError, OSError) as e:
             logger.warning(f"解析时间戳失败: {timestamp}, 错误: {e}")
             return None

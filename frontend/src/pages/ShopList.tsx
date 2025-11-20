@@ -137,9 +137,84 @@ function ShopList() {
           
           // 显示结果
           if (status === 'completed') {
-            message.success('数据同步成功！')
+            // 构建详细的成功消息
+            const orderStats = progress?.orders || {}
+            const productStats = progress?.products || {}
+            const orderTotal = orderStats.total || 0
+            const orderNew = orderStats.new || 0
+            const orderUpdated = orderStats.updated || 0
+            const productTotal = productStats.total || 0
+            const productNew = productStats.new || 0
+            const productUpdated = productStats.updated || 0
+            
+            let successMsg = '数据同步成功！\n'
+            if (orderTotal > 0) {
+              successMsg += `订单：获取 ${orderTotal} 条，新增 ${orderNew} 条，更新 ${orderUpdated} 条`
+              if (orderStats.failed > 0) {
+                successMsg += `，失败 ${orderStats.failed} 条`
+              }
+              successMsg += '\n'
+            }
+            if (productTotal > 0) {
+              successMsg += `商品：获取 ${productTotal} 条，新增 ${productNew} 条，更新 ${productUpdated} 条`
+              if (productStats.failed > 0) {
+                successMsg += `，失败 ${productStats.failed} 条`
+              }
+            }
+            
+            message.success({
+              content: successMsg,
+              duration: 5, // 显示5秒
+            })
+            
+            // 延迟关闭模态框，让用户看到完成状态
+            setTimeout(() => {
+              setSyncProgressModalVisible(false)
+              setSyncProgress(null)
+              // 强制清除所有遮罩层
+              setTimeout(() => {
+                // 清除所有残留的遮罩层
+                const masks = document.querySelectorAll('.ant-modal-mask')
+                masks.forEach((mask) => {
+                  mask.remove()
+                })
+                // 清除可能残留的模态框容器
+                const wrappers = document.querySelectorAll('.ant-modal-wrap')
+                wrappers.forEach((wrapper) => {
+                  if (!wrapper.querySelector('.ant-modal')) {
+                    wrapper.remove()
+                  }
+                })
+                // 清除body上的样式
+                document.body.style.overflow = ''
+                document.body.style.paddingRight = ''
+              }, 200)
+            }, 3000) // 3秒后自动关闭，给用户更多时间查看统计信息
           } else {
-            message.error(`同步失败: ${progress?.error || '未知错误'}`)
+            message.error({
+              content: `同步失败: ${progress?.error || '未知错误'}`,
+              duration: 5,
+            })
+            // 错误时也延迟关闭，让用户看到错误信息
+            setTimeout(() => {
+              setSyncProgressModalVisible(false)
+              setSyncProgress(null)
+              // 强制清除所有遮罩层
+              setTimeout(() => {
+                const masks = document.querySelectorAll('.ant-modal-mask')
+                masks.forEach((mask) => {
+                  mask.remove()
+                })
+                const wrappers = document.querySelectorAll('.ant-modal-wrap')
+                wrappers.forEach((wrapper) => {
+                  if (!wrapper.querySelector('.ant-modal')) {
+                    wrapper.remove()
+                  }
+                })
+                document.body.style.overflow = ''
+                document.body.style.paddingRight = ''
+              }, 200)
+            }, 3000) // 3秒后自动关闭
           }
         }
       } catch (error) {
@@ -156,6 +231,31 @@ function ShopList() {
       }
     }
   }, [])
+
+  // 监听模态框关闭，清除残留的遮罩层
+  useEffect(() => {
+    if (!syncProgressModalVisible) {
+      // 模态框关闭后，清除可能残留的遮罩层
+      const timer = setTimeout(() => {
+        // 清除所有残留的遮罩层
+        const masks = document.querySelectorAll('.ant-modal-mask')
+        masks.forEach((mask) => {
+          mask.remove()
+        })
+        // 清除可能残留的模态框容器
+        const wrappers = document.querySelectorAll('.ant-modal-wrap')
+        wrappers.forEach((wrapper) => {
+          if (!wrapper.querySelector('.ant-modal')) {
+            wrapper.remove()
+          }
+        })
+        // 清除body上的样式
+        document.body.style.overflow = ''
+        document.body.style.paddingRight = ''
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [syncProgressModalVisible])
 
   // 授权（设置Access Token）
   const [authModalShop, setAuthModalShop] = useState<any>(null)
@@ -310,20 +410,42 @@ function ShopList() {
   }
 
   const handleCloseProgressModal = () => {
-    if (syncProgress?.status === 'running') {
-      Modal.confirm({
-        title: '确认关闭',
-        content: '同步仍在进行中，关闭后仍可在后台继续。是否确认关闭？',
-        onOk: () => {
-          setSyncProgressModalVisible(false)
-        },
-      })
-    } else {
+    const cleanup = () => {
       setSyncProgressModalVisible(false)
+      setSyncProgress(null)
+      setSyncingShopId(null)
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current)
         progressIntervalRef.current = null
       }
+      // 强制清除所有遮罩层和残留元素
+      setTimeout(() => {
+        // 清除所有残留的遮罩层
+        const masks = document.querySelectorAll('.ant-modal-mask')
+        masks.forEach((mask) => {
+          mask.remove()
+        })
+        // 清除可能残留的模态框容器
+        const wrappers = document.querySelectorAll('.ant-modal-wrap')
+        wrappers.forEach((wrapper) => {
+          if (!wrapper.querySelector('.ant-modal')) {
+            wrapper.remove()
+          }
+        })
+        // 清除body上的样式
+        document.body.style.overflow = ''
+        document.body.style.paddingRight = ''
+      }, 200)
+    }
+    
+    if (syncProgress?.status === 'running') {
+      Modal.confirm({
+        title: '确认关闭',
+        content: '同步仍在进行中，关闭后仍可在后台继续。是否确认关闭？',
+        onOk: cleanup,
+      })
+    } else {
+      cleanup()
     }
   }
 
@@ -609,7 +731,38 @@ function ShopList() {
           </Button>
         ]}
         closable={syncProgress?.status !== 'running'}
-        maskClosable={false}
+        maskClosable={syncProgress?.status !== 'running'}
+        mask={true}
+        destroyOnClose={true}
+        forceRender={false}
+        getContainer={false}
+        afterClose={() => {
+          // 确保清理所有状态
+          setSyncProgress(null)
+          setSyncingShopId(null)
+          if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current)
+            progressIntervalRef.current = null
+          }
+          // 强制清除所有遮罩层和残留元素
+          setTimeout(() => {
+            // 清除所有残留的遮罩层
+            const masks = document.querySelectorAll('.ant-modal-mask')
+            masks.forEach((mask) => {
+              mask.remove()
+            })
+            // 清除可能残留的模态框容器
+            const wrappers = document.querySelectorAll('.ant-modal-wrap')
+            wrappers.forEach((wrapper) => {
+              if (!wrapper.querySelector('.ant-modal')) {
+                wrapper.remove()
+              }
+            })
+            // 清除body上的样式
+            document.body.style.overflow = ''
+            document.body.style.paddingRight = ''
+          }, 200)
+        }}
       >
         {syncProgress && (
           <div>
