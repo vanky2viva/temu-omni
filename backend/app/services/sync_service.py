@@ -258,14 +258,31 @@ class SyncService:
                 continue
             
             # 查找现有订单（使用唯一约束：order_sn + product_sku + spu_id）
-            product_sku = order_item.get('spec') or order_item.get('sku') or ''
-            spu_id = order_item.get('spuId') or order_item.get('spu_id') or ''
+            # 从 productList 中提取真正的SKU信息（extCode字段）
+            product_list = order_item.get('productList', [])
+            if product_list and len(product_list) > 0:
+                product_info = product_list[0]
+                product_sku = product_info.get('extCode') or ''  # 真正的SKU货号
+                spu_id = product_info.get('productId') or ''  # 这个实际上是SPU ID
+            else:
+                # 如果没有productList，尝试从order_item中获取extCode（旧格式数据）
+                product_sku = order_item.get('extCode') or ''
+                spu_id = order_item.get('spuId') or order_item.get('spu_id') or ''
             
+            # 首先尝试精确匹配（order_sn + product_sku + spu_id）
             existing_order = self.db.query(Order).filter(
                 Order.order_sn == order_sn,
                 Order.product_sku == product_sku,
                 Order.spu_id == spu_id
             ).first()
+            
+            # 如果精确匹配失败，但product_sku不为空，尝试仅通过order_sn查找
+            # 这样即使旧订单的product_sku是错误的（如"1pc"），也能找到并更新
+            if not existing_order and product_sku:
+                existing_order = self.db.query(Order).filter(
+                    Order.order_sn == order_sn,
+                    Order.spu_id == spu_id
+                ).first()
             
             if existing_order:
                 # 更新现有订单
@@ -354,12 +371,14 @@ class SyncService:
         if product_list and len(product_list) > 0:
             product_info = product_list[0]
             product_sku_id = product_info.get('productSkuId')  # Temu商品SKU ID
-            product_sku = product_info.get('extCode') or ''  # 真正的SKU货号
+            # 优先使用extCode（真正的SKU货号），如果为空则保持为空（不使用spec作为备用）
+            product_sku = product_info.get('extCode') or ''
             spu_id = product_info.get('productId') or ''  # 这个实际上是SPU ID
         else:
             product_sku_id = None
-            product_sku = order_item.get('spec') or order_item.get('sku') or ''  # 备用（规格描述）
-        spu_id = order_item.get('spuId') or order_item.get('spu_id') or ''
+            # 如果没有productList，说明可能是旧格式数据，extCode应该在order_item中
+            product_sku = order_item.get('extCode') or ''
+            spu_id = order_item.get('spuId') or order_item.get('spu_id') or ''
         
         goods_id = order_item.get('goodsId') or order_item.get('goods_id') or ''
         quantity = order_item.get('goodsNumber') or order_item.get('quantity') or 1
@@ -419,8 +438,8 @@ class SyncService:
             if unit_cost is not None and quantity:
                 total_cost = unit_cost * Decimal(quantity)
                 profit = total_price - total_cost
-                logger.debug(
-                    f"✅ 订单 {order_item.get('orderSn')} 匹配到商品 - "
+                logger.info(
+                    f"✅ 订单 {order_item.get('orderSn')} 成功匹配商品并计算成本 - "
                     f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {spu_id}, "
                     f"数量: {quantity}, 单价: {unit_price}, 总价: {total_price}, "
                     f"单位成本: {unit_cost}, 总成本: {total_cost}, 利润: {profit}"
@@ -429,13 +448,13 @@ class SyncService:
                 logger.warning(
                     f"⚠️  订单 {order_item.get('orderSn')} "
                     f"(productSkuId: {product_sku_id}, extCode: {product_sku}) "
-                    f"匹配到商品但无成本价，无法计算利润"
+                    f"匹配到商品但无成本价或数量为0，无法计算利润"
                 )
         else:
             logger.warning(
-                f"❌ 订单 {order_item.get('orderSn')} "
-                f"(productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {spu_id}) "
-                f"未在商品库中找到匹配商品"
+                f"❌ 订单 {order_item.get('orderSn')} 未找到匹配商品 - "
+                f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {spu_id}。"
+                f"请检查商品列表中是否已添加对应的商品和成本价"
             )
         
         # 创建订单对象
@@ -582,27 +601,75 @@ class SyncService:
             order.total_price = total_price
             updated = True
         
-        # 更新成本和利润信息（如果尚未设置或需要重新计算）
-        # 如果订单还没有成本信息，或者价格已更新，则重新计算
-        if (order.unit_cost is None or order.total_cost is None or 
-            (updated and (unit_price or total_price))):
-            
-            # 从order_item中提取productSkuId和spu_id用于匹配
+        # 更新SKU货号（如果API中有extCode，优先使用extCode修正）
+        product_list = order_item.get('productList', [])
+        if product_list and len(product_list) > 0:
+            product_info = product_list[0]
+            new_product_sku = product_info.get('extCode') or ''
+            # 如果新的extCode不为空，则更新（无论当前值是什么）
+            if new_product_sku and new_product_sku.strip():
+                new_product_sku = new_product_sku.strip()
+                old_sku = order.product_sku or ''
+                
+                # 定义无效的SKU值（这些不是真正的extCode格式）
+                invalid_sku_patterns = [
+                    '1', '1pc', 'Random 1PCS', 'random 1pcs', 
+                    'RANDOM 1PCS', '1PCS', '1pcs', 'random',
+                    'Random', 'RANDOM'
+                ]
+                
+                # 判断是否需要更新
+                should_update = False
+                
+                if not old_sku or old_sku == '':
+                    # 当前SKU为空，应该更新
+                    should_update = True
+                elif old_sku in invalid_sku_patterns:
+                    # 当前SKU是无效格式，应该更新
+                    should_update = True
+                elif old_sku.isdigit():
+                    # 当前SKU是纯数字，应该更新
+                    should_update = True
+                elif old_sku != new_product_sku:
+                    # 当前SKU与新值不同，且新值看起来是有效的extCode格式（包含字母），应该更新
+                    if any(c.isalpha() for c in new_product_sku):
+                        should_update = True
+                
+                if should_update:
+                    order.product_sku = new_product_sku
+                    updated = True
+                    logger.info(f"更新订单SKU货号: {order.order_sn} -> {old_sku} -> {new_product_sku}")
+        
+        # 更新成本和利润信息
+        # 每次同步时都尝试重新匹配商品并计算成本（如果之前没有成本或商品已更新）
+        # 这样可以确保即使之前没有匹配到商品，在商品添加后也能自动计算成本
+        should_recalculate_cost = (
+            order.unit_cost is None or 
+            order.total_cost is None or 
+            order.profit is None or
+            not order.product_id or  # 如果没有关联商品，尝试重新匹配
+            (updated and (unit_price or total_price))  # 价格更新时重新计算
+        )
+        
+        if should_recalculate_cost:
+            # 从order_item中提取productSkuId、extCode和spu_id用于匹配（使用完整匹配逻辑）
             product_list = order_item.get('productList', [])
             if product_list and len(product_list) > 0:
                 product_info = product_list[0]
-                product_sku_id = product_info.get('productSkuId')
-                item_spu_id = product_info.get('productId') or order.spu_id
+                product_sku_id = product_info.get('productSkuId')  # 优先级1
+                product_sku = product_info.get('extCode') or order.product_sku or ''  # 优先级2: extCode
+                item_spu_id = product_info.get('productId') or order.spu_id  # 优先级3
             else:
                 product_sku_id = None
+                product_sku = order.product_sku or ''  # 使用已有的product_sku
                 item_spu_id = order.spu_id
             
-            # 尝试匹配商品
+            # 尝试匹配商品（使用完整的匹配逻辑，优先级：productSkuId > extCode > spu_id）
             price_info = self._get_product_price_by_sku(
-                product_sku=order.product_sku,
+                product_sku=product_sku,  # extCode (SKU货号) - 优先级2
                 order_time=order.order_time,
-                product_sku_id=product_sku_id,
-                spu_id=item_spu_id
+                product_sku_id=product_sku_id,  # productSkuId (优先级1)
+                spu_id=item_spu_id  # SPU ID (优先级3)
             )
             
             if price_info:
@@ -613,30 +680,32 @@ class SyncService:
                     new_total_cost = unit_cost * Decimal(order.quantity)
                     new_profit = order.total_price - new_total_cost
                     
-                    # 更新成本和利润
-                    if order.unit_cost != unit_cost:
-                        order.unit_cost = unit_cost
-                        updated = True
+                    # 更新成本和利润（无论是否变化都更新，确保数据准确）
+                    order.unit_cost = unit_cost
+                    order.total_cost = new_total_cost
+                    order.profit = new_profit
+                    updated = True
                     
-                    if order.total_cost != new_total_cost:
-                        order.total_cost = new_total_cost
-                        updated = True
-                    
-                    if order.profit != new_profit:
-                        order.profit = new_profit
-                        updated = True
-                    
-                    # 更新商品关联（如果缺失）
-                    if not order.product_id and price_info['product_id']:
+                    # 更新商品关联（如果缺失或需要更新）
+                    if not order.product_id or order.product_id != price_info['product_id']:
                         order.product_id = price_info['product_id']
                         updated = True
                     
-                    if updated:
-                        logger.debug(
-                            f"✅ 更新订单成本/利润: {order.order_sn}, "
-                            f"productSkuId: {product_sku_id}, spu_id: {item_spu_id}, "
-                            f"单位成本: {unit_cost}, 总成本: {new_total_cost}, 利润: {new_profit}"
-                        )
+                    logger.info(
+                        f"✅ 订单 {order.order_sn} 成功计算成本和利润 - "
+                        f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {item_spu_id}, "
+                        f"单位成本: {unit_cost}, 总成本: {new_total_cost}, 利润: {new_profit}"
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️  订单 {order.order_sn} 匹配到商品但无成本价或数量为0 - "
+                        f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {item_spu_id}"
+                    )
+            else:
+                logger.debug(
+                    f"❌ 订单 {order.order_sn} 未找到匹配商品 - "
+                    f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {item_spu_id}"
+                )
         
         # 更新原始数据
         new_raw_data = json.dumps(full_order_data, ensure_ascii=False)

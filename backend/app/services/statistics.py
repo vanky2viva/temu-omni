@@ -50,6 +50,14 @@ class StatisticsService:
         if status:
             filters.append(Order.status == status)
         
+        # 排除已取消和已退款的订单（这些订单不应计入销售统计）
+        if not status:  # 如果没有指定状态筛选，则排除取消和退款订单
+            filters.append(Order.status != OrderStatus.CANCELLED)
+            filters.append(Order.status != OrderStatus.REFUNDED)
+        
+        # 只统计有有效金额的订单（total_price > 0）
+        filters.append(Order.total_price > 0)
+        
         # 执行统计查询
         # 注意：订单数按订单号去重统计（一个订单号可能对应多条记录，每个订单号为一单）
         # GMV、成本、利润按订单记录统计（每个记录都有对应的金额）
@@ -151,6 +159,13 @@ class StatisticsService:
         if shop_ids:
             filters.append(Order.shop_id.in_(shop_ids))
         
+        # 排除已取消和已退款的订单（这些订单不应计入销售统计）
+        filters.append(Order.status != OrderStatus.CANCELLED)
+        filters.append(Order.status != OrderStatus.REFUNDED)
+        
+        # 只统计有有效金额的订单（total_price > 0）
+        filters.append(Order.total_price > 0)
+        
         # 按日期分组统计
         # 注意：订单数按订单号去重统计（一个订单号可能对应多条记录，每个订单号为一单）
         # 统一转换为CNY
@@ -224,6 +239,13 @@ class StatisticsService:
         
         if shop_ids:
             filters.append(Order.shop_id.in_(shop_ids))
+        
+        # 排除已取消和已退款的订单（这些订单不应计入销售统计）
+        filters.append(Order.status != OrderStatus.CANCELLED)
+        filters.append(Order.status != OrderStatus.REFUNDED)
+        
+        # 只统计有有效金额的订单（total_price > 0）
+        filters.append(Order.total_price > 0)
         
         # 按周分组统计，统一转换为CNY
         usd_rate = CurrencyConverter.USD_TO_CNY_RATE
@@ -304,6 +326,13 @@ class StatisticsService:
         if shop_ids:
             filters.append(Order.shop_id.in_(shop_ids))
         
+        # 排除已取消和已退款的订单（这些订单不应计入销售统计）
+        filters.append(Order.status != OrderStatus.CANCELLED)
+        filters.append(Order.status != OrderStatus.REFUNDED)
+        
+        # 只统计有有效金额的订单（total_price > 0）
+        filters.append(Order.total_price > 0)
+        
         # 按月分组统计，统一转换为CNY
         usd_rate = CurrencyConverter.USD_TO_CNY_RATE
         results = db.query(
@@ -379,6 +408,13 @@ class StatisticsService:
         
         if end_date:
             filters.append(Order.order_time <= end_date)
+        
+        # 排除已取消和已退款的订单（这些订单不应计入销售统计）
+        filters.append(Order.status != OrderStatus.CANCELLED)
+        filters.append(Order.status != OrderStatus.REFUNDED)
+        
+        # 只统计有有效金额的订单（total_price > 0）
+        filters.append(Order.total_price > 0)
         
         # 按店铺分组统计，统一转换为CNY
         usd_rate = CurrencyConverter.USD_TO_CNY_RATE

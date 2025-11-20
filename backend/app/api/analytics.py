@@ -1067,29 +1067,25 @@ def get_payment_collection(
             daily_data[date_str] = {}
         daily_data[date_str][shop_name] = amount
     
-    # 生成日期列表（填充缺失的日期）
-    date_list = []
-    current_date = start_date.date()
-    end_date_only = end_date.date()
+    # 只使用有回款数据的日期（不填充缺失的日期）
+    date_list = sorted(daily_data.keys())  # 按日期排序
     
-    while current_date <= end_date_only:
-        date_str = current_date.strftime("%Y-%m-%d")
-        date_list.append(date_str)
-        current_date += timedelta(days=1)
-    
-    # 生成表格数据：每日回款金额（按店铺），按日期倒序排序
+    # 生成表格数据：只显示有回款金额的日期，按日期倒序排序
     table_data = []
     for date_str in reversed(date_list):  # 倒序排列
-        row_data: dict = {
-            "date": date_str,
-            "total": 0.0
-        }
         date_amounts = daily_data.get(date_str, {})
-        for shop_name in sorted(shop_list):
-            amount = date_amounts.get(shop_name, 0.0)
-            row_data[shop_name] = amount
-            row_data["total"] += amount
-        table_data.append(row_data)
+        total = sum(date_amounts.values())
+        
+        # 只添加有回款金额的日期（total > 0）
+        if total > 0:
+            row_data: dict = {
+                "date": date_str,
+                "total": total
+            }
+            for shop_name in sorted(shop_list):
+                amount = date_amounts.get(shop_name, 0.0)
+                row_data[shop_name] = amount
+            table_data.append(row_data)
     
     # 生成图表数据：每个店铺的折线图数据
     chart_series = []

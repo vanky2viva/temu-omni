@@ -136,3 +136,4 @@ python backend/scripts/clear_all_data.py --shops-only
 - [ ] 添加错误处理和重试机制
 
 
+

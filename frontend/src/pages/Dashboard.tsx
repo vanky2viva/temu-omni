@@ -11,28 +11,45 @@ import { statisticsApi } from '@/services/api'
 import dayjs from 'dayjs'
 import axios from 'axios'
 
+// 格式化数字，添加千分位分隔符
+const formatNumber = (value: number | undefined, precision: number = 0): string => {
+  if (value === undefined || value === null) return '0'
+  return value.toLocaleString('zh-CN', {
+    minimumFractionDigits: precision,
+    maximumFractionDigits: precision,
+  })
+}
+
 function Dashboard() {
-  // 获取总览数据
+  // 统一使用30天作为趋势统计时间范围
+  const days = 30
+  
+  // 计算时间范围（最近30天，用于订单量和趋势图表）
+  const endDate = new Date()
+  const startDate = new Date()
+  startDate.setDate(startDate.getDate() - days)
+  
+  // 获取总览数据（所有历史订单 - 用于总订单量、总GMV、总利润、利润率）
   const { data: overview, isLoading: overviewLoading } = useQuery({
-    queryKey: ['overview'],
-    queryFn: () => statisticsApi.getOverview(),
+    queryKey: ['overview-all'],
+    queryFn: () => statisticsApi.getOverview(), // 不传时间参数，统计所有订单
     staleTime: 0,
     cacheTime: 0,
   })
 
   // 获取每日趋势数据
   const { data: dailyData, isLoading: dailyLoading } = useQuery({
-    queryKey: ['daily', 30],
-    queryFn: () => statisticsApi.getDaily({ days: 30 }),
+    queryKey: ['daily', days],
+    queryFn: () => statisticsApi.getDaily({ days }),
     staleTime: 0,
     cacheTime: 0,
   })
 
   // 获取销量总览数据
   const { data: salesOverview, isLoading: salesLoading } = useQuery({
-    queryKey: ['sales-overview', 30],
+    queryKey: ['sales-overview', days],
     queryFn: async () => {
-      const response = await axios.get('/api/analytics/sales-overview', { params: { days: 30 } })
+      const response = await axios.get('/api/analytics/sales-overview', { params: { days } })
       return response.data
     },
     staleTime: 0,
@@ -344,43 +361,64 @@ function Dashboard() {
       {/* 核心指标卡片 */}
       <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
         <Col span={6}>
-          <Card className="stat-card" bordered={false}>
+          <Card className="stat-card" bordered={false} style={{ height: '140px', display: 'flex', flexDirection: 'column' }}>
             <Statistic
-              title="总订单量"
-              value={salesOverview?.total_orders || 0}
+              title="总订单量（累计）"
+              value={overview?.total_orders || 0}
               prefix={<ShoppingOutlined />}
+              formatter={(value) => formatNumber(Number(value), 0)}
+              valueStyle={{ 
+                color: '#58a6ff',
+                fontSize: '20px',
+                fontWeight: 700,
+                lineHeight: '1.4'
+              }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card className="stat-card" bordered={false}>
+          <Card className="stat-card" bordered={false} style={{ height: '140px', display: 'flex', flexDirection: 'column' }}>
             <Statistic
-              title="总GMV"
+              title="总GMV（累计）"
               value={overview?.total_gmv || 0}
               precision={2}
               prefix={<DollarOutlined />}
-              suffix="CNY"
+              suffix=" CNY"
+              formatter={(value) => formatNumber(Number(value), 2)}
+              valueStyle={{ 
+                color: '#58a6ff',
+                fontSize: '18px',
+                fontWeight: 700,
+                lineHeight: '1.4'
+              }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card className="stat-card" bordered={false}>
+          <Card className="stat-card" bordered={false} style={{ height: '140px', display: 'flex', flexDirection: 'column' }}>
             <Statistic
-              title="总利润"
+              title="总利润（累计）"
               value={overview?.total_profit || 0}
               precision={2}
               prefix={<RiseOutlined />}
-              suffix="CNY"
+              suffix=" CNY"
+              formatter={(value) => formatNumber(Number(value), 2)}
+              valueStyle={{ 
+                color: '#58a6ff',
+                fontSize: '18px',
+                fontWeight: 700,
+                lineHeight: '1.4'
+              }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card className="stat-card" bordered={false}>
+          <Card className="stat-card" bordered={false} style={{ height: '140px', display: 'flex', flexDirection: 'column' }}>
             <Statistic
-              title="利润率"
+              title="利润率（累计）"
               value={overview?.profit_margin || 0}
               precision={2}
-              suffix="%"
+              suffix=" %"
               prefix={
                 (overview?.profit_margin || 0) >= 0 ? (
                   <RiseOutlined />
@@ -388,6 +426,13 @@ function Dashboard() {
                   <FallOutlined />
                 )
               }
+              formatter={(value) => formatNumber(Number(value), 2)}
+              valueStyle={{ 
+                color: '#58a6ff',
+                fontSize: '18px',
+                fontWeight: 700,
+                lineHeight: '1.4'
+              }}
             />
           </Card>
         </Col>

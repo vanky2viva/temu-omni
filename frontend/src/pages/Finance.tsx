@@ -175,35 +175,71 @@ function Finance() {
       {/* 财务统计卡片 */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col span={8}>
-          <Card className="stat-card" bordered={false}>
+          <Card className="stat-card" bordered={false} style={{ height: '140px', display: 'flex', flexDirection: 'column' }}>
             <Statistic
               title="本月总收入"
               value={74403.62}
               precision={2}
               prefix={<DollarOutlined />}
-              suffix="CNY"
+              suffix=" CNY"
+              valueStyle={{ 
+                color: '#58a6ff',
+                fontSize: '18px',
+                fontWeight: 700,
+                lineHeight: '1.4'
+              }}
+              formatter={(value) => {
+                if (typeof value === 'number') {
+                  return value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                }
+                return value
+              }}
             />
           </Card>
         </Col>
         <Col span={8}>
-          <Card className="stat-card" bordered={false}>
+          <Card className="stat-card" bordered={false} style={{ height: '140px', display: 'flex', flexDirection: 'column' }}>
             <Statistic
               title="本月总利润"
               value={33502.25}
               precision={2}
               prefix={<RiseOutlined />}
-              suffix="CNY"
+              suffix=" CNY"
+              valueStyle={{ 
+                color: '#58a6ff',
+                fontSize: '18px',
+                fontWeight: 700,
+                lineHeight: '1.4'
+              }}
+              formatter={(value) => {
+                if (typeof value === 'number') {
+                  return value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                }
+                return value
+              }}
             />
           </Card>
         </Col>
         <Col span={8}>
-          <Card className="stat-card" bordered={false}>
+          <Card className="stat-card" bordered={false} style={{ height: '140px', display: 'flex', flexDirection: 'column' }}>
             <Statistic
               title="利润率"
               value={45.03}
               precision={2}
-              suffix="%"
+              suffix=" %"
               prefix={<RiseOutlined />}
+              valueStyle={{ 
+                color: '#58a6ff',
+                fontSize: '18px',
+                fontWeight: 700,
+                lineHeight: '1.4'
+              }}
+              formatter={(value) => {
+                if (typeof value === 'number') {
+                  return value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                }
+                return value
+              }}
             />
           </Card>
         </Col>
@@ -219,22 +255,48 @@ function Finance() {
           <Card className="chart-card" style={{ marginBottom: 16 }}>
             <Row gutter={16}>
               <Col span={12}>
-                <Statistic
-                  title="总回款金额"
-                  value={collectionData?.summary?.total_amount || 0}
-                  precision={2}
-                  prefix={<DollarOutlined />}
-                  suffix="CNY"
-                  valueStyle={{ color: '#3f8600', fontSize: '24px' }}
-                />
+                <Card className="stat-card" bordered={false} style={{ height: '140px', display: 'flex', flexDirection: 'column' }}>
+                  <Statistic
+                    title="总回款金额"
+                    value={collectionData?.summary?.total_amount || 0}
+                    precision={2}
+                    prefix={<DollarOutlined />}
+                    suffix=" CNY"
+                    valueStyle={{ 
+                      color: '#3f8600', 
+                      fontSize: '18px',
+                      fontWeight: 700,
+                      lineHeight: '1.4'
+                    }}
+                    formatter={(value) => {
+                      if (typeof value === 'number') {
+                        return value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                      }
+                      return value
+                    }}
+                  />
+                </Card>
               </Col>
               <Col span={12}>
-                <Statistic
-                  title="回款订单数"
-                  value={collectionData?.summary?.total_orders || 0}
-                  suffix="单"
-                  valueStyle={{ fontSize: '24px' }}
-                />
+                <Card className="stat-card" bordered={false} style={{ height: '140px', display: 'flex', flexDirection: 'column' }}>
+                  <Statistic
+                    title="回款订单数"
+                    value={collectionData?.summary?.total_orders || 0}
+                    suffix=" 单"
+                    valueStyle={{ 
+                      color: '#58a6ff',
+                      fontSize: '20px',
+                      fontWeight: 700,
+                      lineHeight: '1.4'
+                    }}
+                    formatter={(value) => {
+                      if (typeof value === 'number') {
+                        return value.toLocaleString('zh-CN', 0)
+                      }
+                      return value
+                    }}
+                  />
+                </Card>
               </Col>
             </Row>
           </Card>
