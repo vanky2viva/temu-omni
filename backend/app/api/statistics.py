@@ -16,8 +16,8 @@ router = APIRouter(prefix="/statistics", tags=["statistics"])
 @router.get("/overview/")
 def get_overview_statistics(
     shop_ids: Optional[List[int]] = Query(None),
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
+    end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
     status: Optional[OrderStatus] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -27,11 +27,27 @@ def get_overview_statistics(
     
     返回订单总数、GMV、成本、利润等核心指标
     """
+    # 解析日期字符串
+    start_dt = None
+    end_dt = None
+    if start_date:
+        try:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        except ValueError:
+            # 如果是日期格式，添加时间部分
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    if end_date:
+        try:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        except ValueError:
+            # 如果是日期格式，添加时间部分
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    
     return StatisticsService.get_order_statistics(
         db=db,
         shop_ids=shop_ids,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=start_dt,
+        end_date=end_dt,
         status=status
     )
 
@@ -39,8 +55,8 @@ def get_overview_statistics(
 @router.get("/daily/")
 def get_daily_statistics(
     shop_ids: Optional[List[int]] = Query(None),
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
     days: int = 30,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -50,11 +66,25 @@ def get_daily_statistics(
     
     返回指定时间范围内的每日订单、GMV、利润等数据
     """
+    # 解析日期字符串
+    start_dt = None
+    end_dt = None
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        except ValueError:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        except ValueError:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    
     return StatisticsService.get_daily_statistics(
         db=db,
         shop_ids=shop_ids,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=start_dt,
+        end_date=end_dt,
         days=days
     )
 
@@ -99,8 +129,8 @@ def get_monthly_statistics(
 
 @router.get("/shops/comparison/")
 def get_shop_comparison(
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -109,10 +139,24 @@ def get_shop_comparison(
     
     返回各店铺的订单、GMV、利润等数据，用于店铺间对比分析
     """
+    # 解析日期字符串
+    start_dt = None
+    end_dt = None
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        except ValueError:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        except ValueError:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    
     return StatisticsService.get_shop_comparison(
         db=db,
-        start_date=start_date,
-        end_date=end_date
+        start_date=start_dt,
+        end_date=end_dt
     )
 
 
