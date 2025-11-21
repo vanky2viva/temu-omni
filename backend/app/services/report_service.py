@@ -282,4 +282,318 @@ class ReportService:
         }
         
         return comparison
+    
+    def generate_weekly_metrics(
+        self,
+        shop_id: int,
+        start_date: date,
+        end_date: date
+    ) -> Dict[str, Any]:
+        """
+        生成周报指标
+        
+        Args:
+            shop_id: 店铺ID
+            start_date: 周开始日期
+            end_date: 周结束日期
+            
+        Returns:
+            周报指标数据
+        """
+        # 计算日期范围
+        start_datetime = datetime.combine(start_date, datetime.min.time())
+        end_datetime = datetime.combine(end_date, datetime.max.time())
+        
+        # 查询订单
+        orders = self.db.query(Order).filter(
+            and_(
+                Order.shop_id == shop_id,
+                Order.order_time >= start_datetime,
+                Order.order_time <= end_datetime
+            )
+        ).all()
+        
+        # 计算指标（与日报类似，但按周汇总）
+        total_orders = len(orders)
+        gmv = sum(float(order.total_price) for order in orders)
+        
+        # 按状态统计
+        status_counts = {}
+        for status in OrderStatus:
+            status_counts[status.value] = sum(1 for o in orders if o.status == status)
+        
+        # 退款订单
+        refunded_orders = [o for o in orders if o.status == OrderStatus.REFUNDED]
+        refund_count = len(refunded_orders)
+        refund_rate = refund_count / total_orders if total_orders > 0 else 0
+        refund_amount = sum(float(o.total_price) for o in refunded_orders)
+        
+        # 成本和利润
+        total_cost = sum(float(o.total_cost or 0) for o in orders)
+        total_profit = sum(float(o.profit or 0) for o in orders)
+        profit_rate = total_profit / gmv if gmv > 0 else 0
+        
+        # 按日期统计（每日GMV）
+        daily_stats = {}
+        for order in orders:
+            order_date = order.order_time.date()
+            if order_date not in daily_stats:
+                daily_stats[order_date] = {
+                    'date': order_date.isoformat(),
+                    'orders': 0,
+                    'gmv': 0,
+                    'profit': 0
+                }
+            daily_stats[order_date]['orders'] += 1
+            daily_stats[order_date]['gmv'] += float(order.total_price)
+            daily_stats[order_date]['profit'] += float(order.profit or 0)
+        
+        # Top商品（按数量）
+        product_sales = {}
+        for order in orders:
+            key = order.product_sku or order.product_name or 'Unknown'
+            if key not in product_sales:
+                product_sales[key] = {
+                    'product_name': order.product_name,
+                    'product_sku': order.product_sku,
+                    'quantity': 0,
+                    'amount': 0
+                }
+            product_sales[key]['quantity'] += order.quantity
+            product_sales[key]['amount'] += float(order.total_price)
+        
+        top_products = sorted(
+            product_sales.values(),
+            key=lambda x: x['quantity'],
+            reverse=True
+        )[:10]
+        
+        # 构建指标数据
+        metrics = {
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'total_orders': total_orders,
+            'gmv': gmv,
+            'refund_count': refund_count,
+            'refund_rate': refund_rate,
+            'refund_amount': refund_amount,
+            'total_cost': total_cost,
+            'total_profit': total_profit,
+            'profit_rate': profit_rate,
+            'status_counts': status_counts,
+            'daily_stats': list(daily_stats.values()),
+            'top_products': top_products,
+        }
+        
+        return metrics
+    
+    def save_weekly_report(
+        self,
+        shop_id: int,
+        week_start_date: date,
+        metrics: Dict[str, Any],
+        ai_summary: Optional[str] = None
+    ) -> ReportSnapshot:
+        """
+        保存周报快照
+        
+        Args:
+            shop_id: 店铺ID
+            week_start_date: 周开始日期（作为报表日期）
+            metrics: 指标数据
+            ai_summary: AI生成的总结（可选）
+            
+        Returns:
+            保存的报表快照对象
+        """
+        # 查找或创建报表快照
+        snapshot = self.db.query(ReportSnapshot).filter(
+            and_(
+                ReportSnapshot.shop_id == shop_id,
+                ReportSnapshot.date == week_start_date,
+                ReportSnapshot.type == ReportType.WEEKLY.value
+            )
+        ).first()
+        
+        if snapshot:
+            # 更新现有快照
+            snapshot.metrics = metrics
+            if ai_summary:
+                snapshot.ai_summary = ai_summary
+            snapshot.updated_at = datetime.utcnow()
+        else:
+            # 创建新快照
+            snapshot = ReportSnapshot(
+                shop_id=shop_id,
+                date=week_start_date,
+                type=ReportType.WEEKLY.value,
+                metrics=metrics,
+                ai_summary=ai_summary
+            )
+            self.db.add(snapshot)
+        
+        self.db.flush()
+        
+        logger.info(f"保存周报快照: shop_id={shop_id}, week_start={week_start_date}")
+        
+        return snapshot
+    
+    def generate_monthly_metrics(
+        self,
+        shop_id: int,
+        start_date: date,
+        end_date: date
+    ) -> Dict[str, Any]:
+        """
+        生成月报指标
+        
+        Args:
+            shop_id: 店铺ID
+            start_date: 月开始日期
+            end_date: 月结束日期
+            
+        Returns:
+            月报指标数据
+        """
+        # 计算日期范围
+        start_datetime = datetime.combine(start_date, datetime.min.time())
+        end_datetime = datetime.combine(end_date, datetime.max.time())
+        
+        # 查询订单
+        orders = self.db.query(Order).filter(
+            and_(
+                Order.shop_id == shop_id,
+                Order.order_time >= start_datetime,
+                Order.order_time <= end_datetime
+            )
+        ).all()
+        
+        # 计算指标（与周报类似，但按月汇总）
+        total_orders = len(orders)
+        gmv = sum(float(order.total_price) for order in orders)
+        
+        # 按状态统计
+        status_counts = {}
+        for status in OrderStatus:
+            status_counts[status.value] = sum(1 for o in orders if o.status == status)
+        
+        # 退款订单
+        refunded_orders = [o for o in orders if o.status == OrderStatus.REFUNDED]
+        refund_count = len(refunded_orders)
+        refund_rate = refund_count / total_orders if total_orders > 0 else 0
+        refund_amount = sum(float(o.total_price) for o in refunded_orders)
+        
+        # 成本和利润
+        total_cost = sum(float(o.total_cost or 0) for o in orders)
+        total_profit = sum(float(o.profit or 0) for o in orders)
+        profit_rate = total_profit / gmv if gmv > 0 else 0
+        
+        # 按周统计（每周GMV）
+        weekly_stats = {}
+        for order in orders:
+            order_date = order.order_time.date()
+            # 计算该日期所在周的周一
+            days_since_monday = order_date.weekday()
+            week_start = order_date - timedelta(days=days_since_monday)
+            
+            if week_start not in weekly_stats:
+                weekly_stats[week_start] = {
+                    'week_start': week_start.isoformat(),
+                    'orders': 0,
+                    'gmv': 0,
+                    'profit': 0
+                }
+            weekly_stats[week_start]['orders'] += 1
+            weekly_stats[week_start]['gmv'] += float(order.total_price)
+            weekly_stats[week_start]['profit'] += float(order.profit or 0)
+        
+        # Top商品（按数量）
+        product_sales = {}
+        for order in orders:
+            key = order.product_sku or order.product_name or 'Unknown'
+            if key not in product_sales:
+                product_sales[key] = {
+                    'product_name': order.product_name,
+                    'product_sku': order.product_sku,
+                    'quantity': 0,
+                    'amount': 0
+                }
+            product_sales[key]['quantity'] += order.quantity
+            product_sales[key]['amount'] += float(order.total_price)
+        
+        top_products = sorted(
+            product_sales.values(),
+            key=lambda x: x['quantity'],
+            reverse=True
+        )[:20]  # 月报显示Top 20商品
+        
+        # 构建指标数据
+        metrics = {
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'total_orders': total_orders,
+            'gmv': gmv,
+            'refund_count': refund_count,
+            'refund_rate': refund_rate,
+            'refund_amount': refund_amount,
+            'total_cost': total_cost,
+            'total_profit': total_profit,
+            'profit_rate': profit_rate,
+            'status_counts': status_counts,
+            'weekly_stats': list(weekly_stats.values()),
+            'top_products': top_products,
+        }
+        
+        return metrics
+    
+    def save_monthly_report(
+        self,
+        shop_id: int,
+        month_start_date: date,
+        metrics: Dict[str, Any],
+        ai_summary: Optional[str] = None
+    ) -> ReportSnapshot:
+        """
+        保存月报快照
+        
+        Args:
+            shop_id: 店铺ID
+            month_start_date: 月开始日期（作为报表日期）
+            metrics: 指标数据
+            ai_summary: AI生成的总结（可选）
+            
+        Returns:
+            保存的报表快照对象
+        """
+        # 查找或创建报表快照
+        snapshot = self.db.query(ReportSnapshot).filter(
+            and_(
+                ReportSnapshot.shop_id == shop_id,
+                ReportSnapshot.date == month_start_date,
+                ReportSnapshot.type == 'monthly'  # 注意：ReportType枚举中没有MONTHLY，需要添加或使用字符串
+            )
+        ).first()
+        
+        if snapshot:
+            # 更新现有快照
+            snapshot.metrics = metrics
+            if ai_summary:
+                snapshot.ai_summary = ai_summary
+            snapshot.updated_at = datetime.utcnow()
+        else:
+            # 创建新快照（使用字符串类型，因为ReportType枚举中没有MONTHLY）
+            snapshot = ReportSnapshot(
+                shop_id=shop_id,
+                date=month_start_date,
+                type='monthly',
+                metrics=metrics,
+                ai_summary=ai_summary
+            )
+            self.db.add(snapshot)
+        
+        self.db.flush()
+        
+        logger.info(f"保存月报快照: shop_id={shop_id}, month_start={month_start_date}")
+        
+        return snapshot
 

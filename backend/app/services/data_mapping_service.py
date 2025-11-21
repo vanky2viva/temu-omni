@@ -38,6 +38,13 @@ class DataMappingService:
         """
         从原始订单数据映射到业务订单数据
         
+        注意：raw_json的结构是：
+        {
+            'parentOrderMap': {...},  # 父订单信息
+            'orderItem': {...},       # 子订单信息
+            'fullOrderData': {...}    # 完整订单数据
+        }
+        
         Args:
             raw_order: 原始订单数据
             
@@ -50,46 +57,106 @@ class DataMappingService:
         try:
             raw_json = raw_order.raw_json
             
-            # 提取订单基本信息
-            # 注意：这里的字段路径需要根据实际Temu API响应格式调整
-            order_sn = self._get_nested_value(raw_json, ['orderSn', 'order_sn', 'orderSn'])
-            temu_order_id = self._get_nested_value(raw_json, ['orderId', 'order_id', 'orderId'])
-            parent_order_sn = self._get_nested_value(raw_json, ['parentOrderSn', 'parent_order_sn'], default=None)
+            # 从嵌套结构中提取数据
+            parent_order = raw_json.get('parentOrderMap', {})
+            order_item = raw_json.get('orderItem', {})
             
-            # 提取价格信息
-            total_price = self._parse_decimal(self._get_nested_value(raw_json, ['totalAmount', 'total_amount', 'totalPrice', 'total_price']))
-            unit_price = self._parse_decimal(self._get_nested_value(raw_json, ['unitPrice', 'unit_price', 'price']))
-            currency = self._get_nested_value(raw_json, ['currency', 'currencyCode'], default='USD')
+            # 如果结构不同，尝试直接从raw_json获取
+            if not parent_order and not order_item:
+                parent_order = raw_json
+                order_item = raw_json
             
-            # 提取时间信息
-            order_time = self._parse_datetime(self._get_nested_value(raw_json, ['orderTime', 'order_time', 'createTime', 'create_time']))
-            payment_time = self._parse_datetime(self._get_nested_value(raw_json, ['paymentTime', 'payment_time'], default=None))
-            shipping_time = self._parse_datetime(self._get_nested_value(raw_json, ['shippingTime', 'shipping_time', 'shipTime'], default=None))
-            delivery_time = self._parse_datetime(self._get_nested_value(raw_json, ['deliveryTime', 'delivery_time', 'deliveredTime'], default=None))
-            expect_ship_latest_time = self._parse_datetime(self._get_nested_value(raw_json, ['expectShipLatestTime', 'expect_ship_latest_time', 'shipDeadline'], default=None))
+            # 提取订单基本信息（优先从orderItem，其次从parentOrderMap）
+            order_sn = (
+                order_item.get('orderSn') or
+                parent_order.get('orderSn') or
+                raw_json.get('orderSn')
+            )
+            temu_order_id = order_sn  # Temu订单ID就是订单号
+            parent_order_sn = parent_order.get('parentOrderSn')
             
-            # 提取订单状态（需要映射到本地枚举）
-            status_str = self._get_nested_value(raw_json, ['status', 'orderStatus', 'order_status'], default='PENDING')
-            status = self._map_order_status(status_str)
+            # 提取价格信息（优先从orderItem）
+            total_price = self._parse_decimal(
+                order_item.get('goodsTotalPrice') or
+                order_item.get('totalPrice') or
+                order_item.get('amount') or
+                parent_order.get('totalPrice')
+            )
+            unit_price = self._parse_decimal(
+                order_item.get('goodsPrice') or
+                order_item.get('unitPrice') or
+                order_item.get('price') or
+                parent_order.get('unitPrice')
+            )
+            currency = order_item.get('currency') or parent_order.get('currency') or 'USD'
+            
+            # 提取时间信息（主要在parentOrderMap中）
+            order_time = self._parse_datetime(
+                parent_order.get('parentOrderTime') or
+                parent_order.get('orderTime') or
+                parent_order.get('createTime')
+            )
+            payment_time = self._parse_datetime(
+                parent_order.get('paymentTime') or
+                parent_order.get('payTime')
+            )
+            shipping_time = self._parse_datetime(
+                parent_order.get('parentShippingTime') or
+                order_item.get('orderShippingTime') or
+                parent_order.get('shippingTime') or
+                parent_order.get('shipTime')
+            )
+            delivery_time = self._parse_datetime(
+                parent_order.get('updateTime') if parent_order.get('parentOrderStatus') == 5 else None or
+                parent_order.get('latestDeliveryTime') or
+                parent_order.get('deliveryTime')
+            )
+            expect_ship_latest_time = self._parse_datetime(
+                parent_order.get('expectShipLatestTime')
+            )
+            
+            # 提取订单状态（从parentOrderMap）
+            parent_order_status = parent_order.get('parentOrderStatus', 0)
+            status = self._map_order_status_from_code(parent_order_status)
             
             # 提取客户信息
-            customer_id = self._get_nested_value(raw_json, ['customerId', 'customer_id', 'buyerId'], default=None)
-            shipping_country = self._get_nested_value(raw_json, ['shippingCountry', 'shipping_country', 'country'], default=None)
-            shipping_city = self._get_nested_value(raw_json, ['shippingCity', 'shipping_city', 'city'], default=None)
-            shipping_province = self._get_nested_value(raw_json, ['shippingProvince', 'shipping_province', 'province', 'state'], default=None)
-            shipping_postal_code = self._get_nested_value(raw_json, ['shippingPostalCode', 'shipping_postal_code', 'postalCode', 'zipCode'], default=None)
+            customer_id = parent_order.get('customerId') or parent_order.get('buyerId')
             
-            # 提取商品信息（订单可能包含多个商品）
-            order_items_data = self._extract_order_items(raw_json)
+            # 提取地址信息
+            shipping_info = parent_order.get('shippingInfo') or parent_order.get('address') or {}
+            shipping_country = (
+                shipping_info.get('country') or
+                shipping_info.get('countryName') or
+                parent_order.get('shippingCountry')
+            )
+            shipping_city = (
+                shipping_info.get('city') or
+                shipping_info.get('cityName') or
+                parent_order.get('shippingCity')
+            )
+            shipping_province = (
+                shipping_info.get('province') or
+                shipping_info.get('provinceName') or
+                shipping_info.get('state') or
+                parent_order.get('shippingProvince')
+            )
+            shipping_postal_code = (
+                shipping_info.get('postalCode') or
+                shipping_info.get('zipCode') or
+                parent_order.get('shippingPostalCode')
+            )
+            
+            # 提取商品信息（从orderItem的productList）
+            order_items_data = self._extract_order_items_from_structure(order_item, parent_order)
             
             # 构建订单数据
             order_data = {
                 'shop_id': raw_order.shop_id,
-                'order_sn': order_sn or temu_order_id,
+                'order_sn': order_sn,
                 'temu_order_id': temu_order_id,
                 'parent_order_sn': parent_order_sn,
-                'total_price': total_price,
-                'unit_price': unit_price or total_price,  # 如果没有单价，使用总价
+                'total_price': total_price or Decimal('0'),
+                'unit_price': unit_price or total_price or Decimal('0'),
                 'currency': currency,
                 'status': status,
                 'order_time': order_time or datetime.utcnow(),
@@ -120,6 +187,8 @@ class DataMappingService:
             
         except Exception as e:
             logger.error(f"映射订单数据失败 (raw_id={raw_order.id}): {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             raise DataMappingError(f"映射订单数据失败: {e}")
     
     def map_product_from_raw(self, raw_product: TemuProductsRaw) -> Dict[str, Any]:
@@ -349,6 +418,135 @@ class DataMappingService:
         
         status_str_upper = str(status_str).upper()
         return status_map.get(status_str_upper, status_map.get(status_str, OrderStatus.PENDING))
+    
+    def _map_order_status_from_code(self, status_code: int) -> OrderStatus:
+        """
+        将Temu订单状态码映射到本地枚举
+        
+        根据 Temu API 状态码对应关系：
+        - 0: 全部（默认待处理）
+        - 1: 待处理 (PENDING)
+        - 2: 未发货 (PROCESSING)
+        - 3: 已取消 (CANCELLED)
+        - 4: 已发货 (SHIPPED)
+        - 5: 已送达 (DELIVERED)
+        - 41: 部分发货 (SHIPPED)
+        - 51: 部分送达 (DELIVERED)
+        
+        Args:
+            status_code: Temu订单状态码
+            
+        Returns:
+            本地订单状态枚举
+        """
+        order_status_map = {
+            0: OrderStatus.PENDING,      # 全部（默认待处理）
+            1: OrderStatus.PENDING,      # 待处理
+            2: OrderStatus.PROCESSING,   # 未发货
+            3: OrderStatus.CANCELLED,    # 已取消
+            4: OrderStatus.SHIPPED,      # 已发货 / 部分发货
+            5: OrderStatus.DELIVERED,    # 已送达 / 部分送达
+            41: OrderStatus.SHIPPED,     # 部分发货（视为已发货）
+            51: OrderStatus.DELIVERED,   # 部分送达（视为已送达）
+        }
+        return order_status_map.get(status_code, OrderStatus.PENDING)
+    
+    def _extract_order_items_from_structure(
+        self, 
+        order_item: Dict[str, Any], 
+        parent_order: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        从orderItem和parentOrderMap结构中提取订单商品明细
+        
+        Args:
+            order_item: 子订单数据
+            parent_order: 父订单数据
+            
+        Returns:
+            订单明细列表
+        """
+        items = []
+        
+        # 从orderItem的productList中提取商品信息
+        product_list = order_item.get('productList', [])
+        
+        if product_list and len(product_list) > 0:
+            # 有productList，提取每个商品
+            for product_info in product_list:
+                product_sku_id = product_info.get('productSkuId')
+                product_sku = product_info.get('extCode') or ''
+                product_id_value = product_info.get('productId')
+                spu_id = str(product_id_value) if product_id_value is not None else ''
+                
+                product_name = (
+                    order_item.get('goodsName') or
+                    order_item.get('productName') or
+                    order_item.get('spec') or
+                    'Unknown Product'
+                )
+                
+                quantity = order_item.get('goodsNumber') or order_item.get('quantity') or 1
+                unit_price = self._parse_decimal(
+                    order_item.get('goodsPrice') or
+                    order_item.get('unitPrice') or
+                    order_item.get('price')
+                )
+                total_price = self._parse_decimal(
+                    order_item.get('goodsTotalPrice') or
+                    order_item.get('totalPrice') or
+                    order_item.get('amount')
+                )
+                currency = order_item.get('currency') or parent_order.get('currency') or 'USD'
+                
+                items.append({
+                    'sku_id': str(product_sku_id) if product_sku_id else None,
+                    'product_name': product_name,
+                    'product_sku': product_sku,
+                    'spu_id': spu_id,
+                    'quantity': quantity,
+                    'price': unit_price or Decimal('0'),
+                    'total_price': total_price or (unit_price * quantity if unit_price else Decimal('0')),
+                    'currency': currency,
+                })
+        else:
+            # 没有productList，将orderItem作为一个商品
+            product_sku = order_item.get('extCode') or ''
+            spu_id_value = order_item.get('spuId') or order_item.get('spu_id')
+            spu_id = str(spu_id_value) if spu_id_value is not None else ''
+            
+            product_name = (
+                order_item.get('goodsName') or
+                order_item.get('productName') or
+                order_item.get('spec') or
+                'Unknown Product'
+            )
+            
+            quantity = order_item.get('goodsNumber') or order_item.get('quantity') or 1
+            unit_price = self._parse_decimal(
+                order_item.get('goodsPrice') or
+                order_item.get('unitPrice') or
+                order_item.get('price')
+            )
+            total_price = self._parse_decimal(
+                order_item.get('goodsTotalPrice') or
+                order_item.get('totalPrice') or
+                order_item.get('amount')
+            )
+            currency = order_item.get('currency') or parent_order.get('currency') or 'USD'
+            
+            items.append({
+                'sku_id': None,
+                'product_name': product_name,
+                'product_sku': product_sku,
+                'spu_id': spu_id,
+                'quantity': quantity,
+                'price': unit_price or Decimal('0'),
+                'total_price': total_price or (unit_price * quantity if unit_price else Decimal('0')),
+                'currency': currency,
+            })
+        
+        return items
     
     def save_mapped_order(self, order_data: Dict[str, Any], raw_order: TemuOrdersRaw) -> Order:
         """

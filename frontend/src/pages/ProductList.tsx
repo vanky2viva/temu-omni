@@ -273,30 +273,6 @@ function ProductList() {
       },
     },
     {
-      title: 'SPU ID',
-      dataIndex: 'spu_id',
-      key: 'spu_id',
-      width: 140,
-      render: (_: any, record: any) => {
-        // 从description中提取SPU ID
-        if (record.description) {
-          // 支持多种格式：SPU: xxx 或 SPU:xxx
-          const match = record.description.match(/SPU:\s*([^\s\n]+)/i)
-          if (match && match[1]) return match[1]
-        }
-        // 如果直接有spu_id字段，也支持
-        if (record.spu_id) return record.spu_id
-        return '-'
-      },
-    },
-    {
-      title: 'SKC ID',
-      dataIndex: 'skc_id',
-      key: 'skc_id',
-      width: 140,
-      render: (skc_id: string) => skc_id || '-',
-    },
-    {
       title: 'SKU ID',
       dataIndex: 'product_id',
       key: 'product_id',
@@ -308,6 +284,18 @@ function ProductList() {
       key: 'sku',
       width: 150,
       render: (sku: string) => sku || '-',
+    },
+    {
+      title: '累计销量',
+      dataIndex: 'total_sales',
+      key: 'total_sales',
+      width: 100,
+      align: 'right' as const,
+      sorter: (a: any, b: any) => (a.total_sales || 0) - (b.total_sales || 0),
+      defaultSortOrder: 'descend' as const,
+      render: (totalSales: number) => {
+        return totalSales || 0
+      },
     },
     {
       title: '供货价',
@@ -504,20 +492,9 @@ function ProductList() {
         const dateB = b.listed_at || b.created_at
         return new Date(dateA).getTime() - new Date(dateB).getTime()
       },
-      defaultSortOrder: 'descend' as const,
       render: (listedAt: string, record: any) => {
         const date = listedAt || record.created_at
         return date ? dayjs(date).format('YYYY-MM-DD') : '-'
-      },
-    },
-    {
-      title: '累计销量',
-      dataIndex: 'total_sales',
-      key: 'total_sales',
-      width: 100,
-      sorter: (a: any, b: any) => (a.total_sales || 0) - (b.total_sales || 0),
-      render: (totalSales: number) => {
-        return totalSales || 0
       },
     },
     {

@@ -17,7 +17,7 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 # 最大查询限制
 MAX_LIMIT = 1000
-DEFAULT_LIMIT = 50
+DEFAULT_LIMIT = 20
 
 
 class PaginatedResponse(BaseModel):

@@ -1,18 +1,69 @@
 """统计分析服务"""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, extract, case
 from decimal import Decimal
 import pandas as pd
+import json
+from loguru import logger
 
 from app.models.order import Order, OrderStatus
 from app.models.shop import Shop
 from app.utils.currency import CurrencyConverter
+from app.core.redis_client import RedisClient
 
 
 class StatisticsService:
     """统计分析服务类"""
+    
+    @staticmethod
+    def get_order_statistics_cached(
+        db: Session,
+        shop_ids: Optional[List[int]] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        status: Optional[OrderStatus] = None,
+        cache_ttl: int = 300  # 默认5分钟缓存
+    ) -> Dict[str, Any]:
+        """
+        获取订单统计数据（带缓存）
+        
+        Args:
+            db: 数据库会话
+            shop_ids: 店铺ID列表，None表示所有店铺
+            start_date: 开始日期
+            end_date: 结束日期
+            status: 订单状态筛选
+            cache_ttl: 缓存过期时间（秒），默认5分钟
+            
+        Returns:
+            统计数据字典
+        """
+        # 生成缓存键
+        shop_ids_str = ','.join(map(str, sorted(shop_ids or [])))
+        start_str = start_date.isoformat() if start_date else 'none'
+        end_str = end_date.isoformat() if end_date else 'none'
+        status_str = status.value if status else 'none'
+        
+        cache_key = f"stats:order:shops:{shop_ids_str}:start:{start_str}:end:{end_str}:status:{status_str}"
+        
+        # 尝试从缓存获取
+        cached = RedisClient.get(cache_key)
+        if cached:
+            logger.debug(f"从缓存获取统计数据: {cache_key}")
+            return cached
+        
+        # 计算统计数据
+        stats = StatisticsService.get_order_statistics(
+            db, shop_ids, start_date, end_date, status
+        )
+        
+        # 存入缓存
+        RedisClient.set(cache_key, stats, ttl=cache_ttl)
+        logger.debug(f"统计数据已缓存: {cache_key}, TTL={cache_ttl}秒")
+        
+        return stats
     
     @staticmethod
     def get_order_statistics(

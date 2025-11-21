@@ -3,10 +3,12 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.product import Product, ProductCost
+from app.models.order import Order, OrderStatus
 from app.models.shop import Shop
 from app.models.user import User
 from app.schemas.product import (
@@ -57,7 +59,26 @@ def get_products(
     
     products = query.offset(skip).limit(limit).all()
     
-    # 为每个商品填充负责人和当前成本价格
+    # 获取所有商品ID，用于批量查询销量
+    product_ids = [p.id for p in products]
+    
+    # 批量查询每个商品的累计销量（从订单表统计）
+    # 统计该商品在所有订单中的quantity总和（排除已取消和已退款的订单）
+    sales_stats = {}
+    if product_ids:
+        sales_results = db.query(
+            Order.product_id,
+            func.sum(Order.quantity).label('total_quantity')
+        ).filter(
+            Order.product_id.in_(product_ids),
+            Order.status != OrderStatus.CANCELLED,
+            Order.status != OrderStatus.REFUNDED
+        ).group_by(Order.product_id).all()
+        
+        for row in sales_results:
+            sales_stats[row.product_id] = int(row.total_quantity or 0)
+    
+    # 为每个商品填充负责人、当前成本价格和累计销量
     for product in products:
         # 填充负责人（如果商品没有负责人，使用店铺的默认负责人）
         if not product.manager and product.shop:
@@ -76,6 +97,9 @@ def get_products(
         else:
             product.current_cost_price = None
             product.cost_currency = None
+        
+        # 添加累计销量（从订单表统计）
+        product.total_sales = sales_stats.get(product.id, 0)
     
     return products
 

@@ -10,9 +10,6 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'optimize_orders_indexes'
-# 注意：这里需要根据实际情况调整，如果有多个迁移链，需要合并
-# 暂时设置为add_raw_tables_optimize，如果add_raw_tables_optimize和add_default_manager_to_shops都基于add_cn_api_fields
-# 那么optimize_orders_indexes应该基于它们中的一个
 down_revision = 'add_raw_tables_optimize'
 branch_labels = None
 depends_on = None

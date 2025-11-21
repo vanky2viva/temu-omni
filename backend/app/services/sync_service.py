@@ -1,7 +1,7 @@
 """数据同步服务 - 从Temu API同步数据到数据库"""
 import json
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from loguru import logger
@@ -9,7 +9,11 @@ from loguru import logger
 from app.models.shop import Shop
 from app.models.order import Order, OrderStatus
 from app.models.product import Product, ProductCost
+from app.models.temu_orders_raw import TemuOrdersRaw
+from app.models.temu_products_raw import TemuProductsRaw
 from app.services.temu_service import TemuService, get_temu_service
+from app.services.data_mapping_service import DataMappingService, DataMappingError
+from app.core.redis_client import RedisClient
 
 
 class SyncService:
@@ -26,6 +30,7 @@ class SyncService:
         self.db = db
         self.shop = shop
         self.temu_service = get_temu_service(shop)
+        self.mapping_service = DataMappingService(db)
     
     def _get_product_price_by_sku(
         self, 
@@ -258,7 +263,7 @@ class SyncService:
     
     def _process_order(self, order_data: Dict[str, Any]):
         """
-        处理单个订单数据
+        处理单个订单数据（三层架构：先存raw表，再映射到业务表）
         
         Args:
             order_data: 订单数据（包含parentOrderMap和orderList）
@@ -279,75 +284,205 @@ class SyncService:
                 logger.warning(f"子订单缺少orderSn: {order_item}")
                 continue
             
-            # 查找现有订单（使用唯一约束：order_sn + product_sku + spu_id）
-            # 从 productList 中提取真正的SKU信息（extCode字段）
-            product_list = order_item.get('productList', [])
-            if product_list and len(product_list) > 0:
-                product_info = product_list[0]
-                product_sku = product_info.get('extCode') or ''  # 真正的SKU货号
-                # 将productId转换为字符串，因为数据库中spu_id是String类型
-                product_id_value = product_info.get('productId')
-                spu_id = str(product_id_value) if product_id_value is not None else ''
-            else:
-                # 如果没有productList，尝试从order_item中获取extCode（旧格式数据）
-                product_sku = order_item.get('extCode') or ''
-                spu_id_value = order_item.get('spuId') or order_item.get('spu_id')
-                spu_id = str(spu_id_value) if spu_id_value is not None else ''
+            # 步骤1: 先保存原始数据到raw表
+            raw_order = self._save_order_to_raw(order_sn, order_data, order_item, parent_order)
+            if not raw_order:
+                logger.error(f"保存订单原始数据失败: {order_sn}")
+                continue
             
-            # 首先尝试精确匹配（order_sn + product_sku + spu_id）
-            existing_order = self.db.query(Order).filter(
-                Order.order_sn == order_sn,
-                Order.product_sku == product_sku,
-                Order.spu_id == spu_id
+            # 步骤2: 使用原有逻辑处理订单（保持稳定性），但关联raw_data_id
+            self._process_order_legacy(order_item, parent_order, order_data, raw_order)
+    
+    def _save_order_to_raw(
+        self, 
+        order_sn: str, 
+        full_order_data: Dict[str, Any],
+        order_item: Dict[str, Any],
+        parent_order: Dict[str, Any]
+    ) -> Optional[TemuOrdersRaw]:
+        """
+        保存订单原始数据到raw表
+        
+        Args:
+            order_sn: 订单号
+            full_order_data: 完整订单数据
+            order_item: 子订单数据
+            parent_order: 父订单数据
+            
+        Returns:
+            保存的raw订单对象，失败返回None
+        """
+        try:
+            # 构建包含子订单和父订单信息的完整原始数据
+            raw_json = {
+                'parentOrderMap': parent_order,
+                'orderItem': order_item,
+                'fullOrderData': full_order_data
+            }
+            
+            # 检查是否已存在
+            existing_raw = self.db.query(TemuOrdersRaw).filter(
+                TemuOrdersRaw.external_order_id == order_sn,
+                TemuOrdersRaw.shop_id == self.shop.id
             ).first()
             
-            # 如果精确匹配失败，尝试仅通过order_sn和spu_id查找
-            # 这样即使旧订单的product_sku是错误的（如"1pc"），也能找到并更新
-            if not existing_order and spu_id:
-                existing_order = self.db.query(Order).filter(
-                    Order.order_sn == order_sn,
-                    Order.spu_id == spu_id
-                ).first()
-            
-            # 如果仍然找不到，尝试仅通过temu_order_id（即order_sn）查找
-            # 因为temu_order_id有唯一约束，如果订单已存在，应该能通过这个找到
-            if not existing_order:
-                existing_order = self.db.query(Order).filter(
-                    Order.temu_order_id == order_sn
-                ).first()
-            
-            if existing_order:
-                # 更新现有订单
-                is_updated = self._update_order(existing_order, order_item, parent_order, order_data)
-                if is_updated:
-                    stats = getattr(self, '_current_stats', {})
-                    stats['updated'] = stats.get('updated', 0) + 1
+            if existing_raw:
+                # 更新现有记录
+                existing_raw.raw_json = raw_json
+                existing_raw.fetched_at = datetime.now()
+                return existing_raw
             else:
-                # 创建新订单（如果遇到唯一约束错误，可能是并发导致的，尝试查找并更新）
-                try:
-                    self._create_order(order_item, parent_order, order_data)
-                    stats = getattr(self, '_current_stats', {})
-                    stats['new'] = stats.get('new', 0) + 1
-                except Exception as create_error:
-                    # 如果是唯一约束错误，可能是并发创建导致的，尝试查找并更新
-                    error_msg = str(create_error)
-                    if 'UniqueViolation' in error_msg or 'duplicate key' in error_msg.lower():
-                        # 尝试再次查找订单
-                        existing_order = self.db.query(Order).filter(
-                            Order.temu_order_id == order_sn
-                        ).first()
-                        if existing_order:
-                            # 找到订单，更新它
-                            is_updated = self._update_order(existing_order, order_item, parent_order, order_data)
-                            if is_updated:
-                                stats = getattr(self, '_current_stats', {})
-                                stats['updated'] = stats.get('updated', 0) + 1
-                        else:
-                            # 找不到订单，重新抛出异常
-                            raise
-                    else:
-                        # 其他错误，重新抛出
-                        raise
+                # 创建新记录
+                raw_order = TemuOrdersRaw(
+                    shop_id=self.shop.id,
+                    external_order_id=order_sn,
+                    raw_json=raw_json,
+                    fetched_at=datetime.now()
+                )
+                self.db.add(raw_order)
+                self.db.flush()  # 获取ID
+                return raw_order
+                
+        except Exception as e:
+            logger.error(f"保存订单原始数据失败: {order_sn}, 错误: {e}")
+            return None
+    
+    def _map_and_save_order(
+        self,
+        raw_order: TemuOrdersRaw,
+        order_item: Dict[str, Any],
+        parent_order: Dict[str, Any]
+    ):
+        """
+        使用映射服务将raw订单映射到业务表
+        
+        Args:
+            raw_order: 原始订单数据
+            order_item: 子订单数据
+            parent_order: 父订单数据
+        """
+        # 由于DataMappingService期望的格式可能与实际API格式不完全匹配，
+        # 我们需要先调整raw_json格式，或者直接使用现有的处理逻辑
+        # 这里先尝试使用映射服务，如果失败则回退
+        
+        # 调整raw_json格式以匹配映射服务的期望
+        # 将order_item和parent_order合并为一个订单对象
+        adjusted_raw_json = {
+            **order_item,
+            **parent_order,
+            'orderSn': order_item.get('orderSn'),
+            'orderId': order_item.get('orderSn'),
+            'parentOrderSn': parent_order.get('parentOrderSn'),
+        }
+        
+        # 临时更新raw_json以进行映射（映射后可以恢复）
+        original_raw_json = raw_order.raw_json
+        raw_order.raw_json = adjusted_raw_json
+        
+        try:
+            # 使用映射服务映射
+            order_data = self.mapping_service.map_order_from_raw(raw_order)
+            
+            # 保存映射后的订单
+            order = self.mapping_service.save_mapped_order(order_data, raw_order)
+            
+            # 恢复原始raw_json
+            raw_order.raw_json = original_raw_json
+            
+            # 更新统计
+            stats = getattr(self, '_current_stats', {})
+            if order.id:  # 如果是新创建的订单
+                stats['new'] = stats.get('new', 0) + 1
+            else:
+                stats['updated'] = stats.get('updated', 0) + 1
+                
+        except Exception as e:
+            # 恢复原始raw_json
+            raw_order.raw_json = original_raw_json
+            raise DataMappingError(f"映射订单失败: {e}")
+    
+    def _process_order_legacy(
+        self,
+        order_item: Dict[str, Any], 
+        parent_order: Dict[str, Any],
+        full_order_data: Dict[str, Any],
+        raw_order: Optional[TemuOrdersRaw] = None
+    ):
+        """
+        原有的订单处理逻辑（保持稳定性，但关联raw_data_id）
+        
+        Args:
+            order_item: 子订单数据
+            parent_order: 父订单数据
+            full_order_data: 完整订单数据
+            raw_order: 原始订单数据（可选）
+        """
+        order_sn = order_item.get('orderSn')
+        if not order_sn:
+            return
+        
+        # 查找现有订单（使用唯一约束：order_sn + product_sku + spu_id）
+        # 从 productList 中提取真正的SKU信息（extCode字段）
+        product_list = order_item.get('productList', [])
+        if product_list and len(product_list) > 0:
+            product_info = product_list[0]
+            product_sku = product_info.get('extCode') or ''
+            product_id_value = product_info.get('productId')
+            spu_id = str(product_id_value) if product_id_value is not None else ''
+        else:
+            product_sku = order_item.get('extCode') or ''
+            spu_id_value = order_item.get('spuId') or order_item.get('spu_id')
+            spu_id = str(spu_id_value) if spu_id_value is not None else ''
+        
+        # 首先尝试精确匹配
+        existing_order = self.db.query(Order).filter(
+            Order.order_sn == order_sn,
+            Order.product_sku == product_sku,
+            Order.spu_id == spu_id
+        ).first()
+        
+        if not existing_order and spu_id:
+            existing_order = self.db.query(Order).filter(
+                Order.order_sn == order_sn,
+                Order.spu_id == spu_id
+            ).first()
+        
+        if not existing_order:
+            existing_order = self.db.query(Order).filter(
+                Order.temu_order_id == order_sn
+            ).first()
+        
+        if existing_order:
+            # 更新现有订单
+            is_updated = self._update_order(existing_order, order_item, parent_order, full_order_data)
+            if is_updated and raw_order:
+                existing_order.raw_data_id = raw_order.id
+            if is_updated:
+                stats = getattr(self, '_current_stats', {})
+                stats['updated'] = stats.get('updated', 0) + 1
+        else:
+            # 创建新订单
+            try:
+                order = self._create_order(order_item, parent_order, full_order_data)
+                if raw_order:
+                    order.raw_data_id = raw_order.id
+                stats = getattr(self, '_current_stats', {})
+                stats['new'] = stats.get('new', 0) + 1
+            except Exception as create_error:
+                error_msg = str(create_error)
+                if 'UniqueViolation' in error_msg or 'duplicate key' in error_msg.lower():
+                    existing_order = self.db.query(Order).filter(
+                        Order.temu_order_id == order_sn
+                    ).first()
+                    if existing_order:
+                        is_updated = self._update_order(existing_order, order_item, parent_order, full_order_data)
+                        if is_updated and raw_order:
+                            existing_order.raw_data_id = raw_order.id
+                        if is_updated:
+                            stats = getattr(self, '_current_stats', {})
+                            stats['updated'] = stats.get('updated', 0) + 1
+                else:
+                    raise
     
     def _create_order(
         self, 
@@ -393,22 +528,8 @@ class SyncService:
         # 支付时间可能在 parentOrderMap 中
         payment_time = self._parse_timestamp(parent_order.get('paymentTime') or parent_order.get('payTime'))
         
-        # 提取价格信息
-        # 价格可能在order_item或parent_order中，优先从order_item获取
-        unit_price = self._parse_decimal(
-            order_item.get('goodsPrice') or 
-            order_item.get('unitPrice') or 
-            order_item.get('price') or 
-            parent_order.get('unitPrice') or 
-            0
-        )
-        total_price = self._parse_decimal(
-            order_item.get('goodsTotalPrice') or 
-            order_item.get('totalPrice') or 
-            order_item.get('amount') or 
-            parent_order.get('totalPrice') or 
-            unit_price * order_item.get('goodsNumber', 1)
-        )
+        # 价格信息将在匹配商品后从商品表的供货价（current_price）计算
+        # 不直接从API响应中获取价格，因为价格应该从商品列表中填入的供货价计算
         currency = order_item.get('currency') or parent_order.get('currency') or 'USD'
         
         # 提取商品信息
@@ -487,6 +608,11 @@ class SyncService:
         )
         
         if price_info:
+            # 使用商品的供货价（current_price）作为订单单价
+            supply_price = price_info.get('supply_price') or Decimal('0')
+            unit_price = supply_price
+            total_price = unit_price * Decimal(quantity) if quantity else Decimal('0')
+            
             unit_cost = price_info['cost_price']
             matched_product_id = price_info['product_id']
             
@@ -495,9 +621,9 @@ class SyncService:
                 total_cost = unit_cost * Decimal(quantity)
                 profit = total_price - total_cost
                 logger.info(
-                    f"✅ 订单 {order_item.get('orderSn')} 成功匹配商品并计算成本 - "
+                    f"✅ 订单 {order_item.get('orderSn')} 成功匹配商品并计算价格和成本 - "
                     f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {spu_id}, "
-                    f"数量: {quantity}, 单价: {unit_price}, 总价: {total_price}, "
+                    f"数量: {quantity}, 单价（供货价）: {unit_price}, 总价: {total_price}, "
                     f"单位成本: {unit_cost}, 总成本: {total_cost}, 利润: {profit}"
                 )
             else:
@@ -507,10 +633,13 @@ class SyncService:
                     f"匹配到商品但无成本价或数量为0，无法计算利润"
                 )
         else:
+            # 如果未匹配到商品，价格设为0
+            unit_price = Decimal('0')
+            total_price = Decimal('0')
             logger.warning(
                 f"❌ 订单 {order_item.get('orderSn')} 未找到匹配商品 - "
                 f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {spu_id}。"
-                f"请检查商品列表中是否已添加对应的商品和成本价"
+                f"请检查商品列表中是否已添加对应的商品和供货价，订单价格将设为0"
             )
         
         # 创建订单对象
@@ -550,13 +679,16 @@ class SyncService:
             
             # 客户和地址信息
             customer_id=customer_id if customer_id else None,
+            
+            # 关联原始数据
+            raw_data_id=raw_order.id if raw_order else None,
             shipping_country=shipping_country if shipping_country else None,
             shipping_city=shipping_city if shipping_city else None,
             shipping_province=shipping_province if shipping_province else None,
             shipping_postal_code=shipping_postal_code if shipping_postal_code else None,
             
-            # 保存原始数据
-            raw_data=json.dumps(full_order_data, ensure_ascii=False),
+            # 注意：raw_data字段已废弃，现在使用raw_data_id关联到temu_orders_raw表
+            # raw_data=json.dumps(full_order_data, ensure_ascii=False),  # 已废弃
             notes=f"Environment: {self.shop.environment.value}, GoodsID: {goods_id}"
         )
         
@@ -565,6 +697,9 @@ class SyncService:
             f"创建新订单: {order.order_sn}, SKU: {product_sku}, SPU: {spu_id}, "
             f"数量: {quantity}, 总价: {total_price}, 利润: {profit}"
         )
+        
+        # 清除相关统计缓存
+        self._invalidate_statistics_cache(order.shop_id, order.order_time.date())
     
     def _update_order(
         self, 
@@ -635,27 +770,8 @@ class SyncService:
                 order.delivery_time = None
                 updated = True
         
-        # 更新价格信息（如果价格发生变化）
-        unit_price = self._parse_decimal(
-            order_item.get('goodsPrice') or 
-            order_item.get('unitPrice') or 
-            order_item.get('price') or 
-            parent_order.get('unitPrice')
-        )
-        total_price = self._parse_decimal(
-            order_item.get('goodsTotalPrice') or 
-            order_item.get('totalPrice') or 
-            order_item.get('amount') or 
-            parent_order.get('totalPrice')
-        )
-        
-        if unit_price and order.unit_price != unit_price:
-            order.unit_price = unit_price
-            updated = True
-        
-        if total_price and order.total_price != total_price:
-            order.total_price = total_price
-            updated = True
+        # 价格信息将在匹配商品后从商品表的供货价（current_price）更新
+        # 不直接从API响应中获取价格，因为价格应该从商品列表中填入的供货价计算
         
         # 更新SKU货号（如果API中有extCode，优先使用extCode修正）
         product_list = order_item.get('productList', [])
@@ -731,10 +847,24 @@ class SyncService:
             )
             
             if price_info:
+                # 使用商品的供货价（current_price）更新订单价格
+                supply_price = price_info.get('supply_price') or Decimal('0')
+                new_unit_price = supply_price
+                new_total_price = new_unit_price * Decimal(order.quantity) if order.quantity else Decimal('0')
+                
+                # 更新订单价格（如果发生变化）
+                if order.unit_price != new_unit_price:
+                    order.unit_price = new_unit_price
+                    updated = True
+                
+                if order.total_price != new_total_price:
+                    order.total_price = new_total_price
+                    updated = True
+                
                 unit_cost = price_info['cost_price']
                 
                 if unit_cost is not None and order.quantity:
-                    # 计算总成本和利润
+                    # 计算总成本和利润（使用更新后的总价）
                     new_total_cost = unit_cost * Decimal(order.quantity)
                     new_profit = order.total_price - new_total_cost
                     
@@ -765,11 +895,12 @@ class SyncService:
                     f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {item_spu_id}"
                 )
         
-        # 更新原始数据
-        new_raw_data = json.dumps(full_order_data, ensure_ascii=False)
-        if order.raw_data != new_raw_data:
-            order.raw_data = new_raw_data
-            updated = True
+        # 注意：raw_data字段已废弃，现在使用raw_data_id关联到temu_orders_raw表
+        # 更新raw_data_id关联（如果需要）
+        # new_raw_data = json.dumps(full_order_data, ensure_ascii=False)  # 已废弃
+        # if order.raw_data != new_raw_data:
+        #     order.raw_data = new_raw_data
+        #     updated = True
         
         # 更新父订单关系（如果缺失）
         parent_order_sn = parent_order.get('parentOrderSn')
@@ -777,7 +908,35 @@ class SyncService:
             order.parent_order_sn = parent_order_sn
             updated = True
         
+        # 如果订单已更新，清除相关统计缓存
+        if updated:
+            self._invalidate_statistics_cache(order.shop_id, order.order_time.date())
+        
         return updated
+    
+    def _invalidate_statistics_cache(self, shop_id: int, order_date: date):
+        """
+        订单更新时清除相关统计缓存
+        
+        Args:
+            shop_id: 店铺ID
+            order_date: 订单日期
+        """
+        try:
+            # 清除该店铺该日期的所有统计缓存
+            pattern = f"stats:*shop*{shop_id}*date*{order_date}*"
+            deleted = RedisClient.delete_pattern(pattern)
+            if deleted > 0:
+                logger.debug(f"已清除统计缓存: shop_id={shop_id}, date={order_date}, 删除{deleted}个键")
+            
+            # 也清除包含该店铺ID的所有统计缓存（更宽泛的匹配）
+            pattern2 = f"stats:order:shops:*{shop_id}*"
+            deleted2 = RedisClient.delete_pattern(pattern2)
+            if deleted2 > 0:
+                logger.debug(f"已清除统计缓存（宽泛匹配）: shop_id={shop_id}, 删除{deleted2}个键")
+        except Exception as e:
+            # 缓存清除失败不应该影响主流程
+            logger.warning(f"清除统计缓存失败: {e}")
     
     def _map_order_status(self, temu_status: int) -> OrderStatus:
         """
@@ -1026,7 +1185,14 @@ class SyncService:
                         if has_sku:
                             page_sku_count += 1
                         
-                        self._process_product(product_item)
+                        # 步骤1: 先保存原始数据到raw表
+                        raw_product = self._save_product_to_raw(product_item)
+                        if not raw_product:
+                            logger.error(f"保存商品原始数据失败: {product_id}")
+                            continue
+                        
+                        # 步骤2: 处理商品（关联raw_data_id）
+                        self._process_product(product_item, raw_product)
                         # 立即提交每个商品，避免批量插入时的重复键错误
                         self.db.commit()
                         stats["total"] += 1
@@ -1109,12 +1275,63 @@ class SyncService:
             # 确保数据库会话正确关闭
             pass
     
-    def _process_product(self, product_data: Dict[str, Any]):
+    def _save_product_to_raw(self, product_data: Dict[str, Any]) -> Optional[TemuProductsRaw]:
         """
-        处理单个商品数据
+        保存商品原始数据到raw表
         
         Args:
             product_data: 商品数据
+            
+        Returns:
+            保存的raw商品对象，失败返回None
+        """
+        try:
+            # 提取商品ID
+            product_id = (
+                str(product_data.get('productId')) or
+                str(product_data.get('goodsId')) or
+                str(product_data.get('id')) or
+                ''
+            )
+            
+            if not product_id:
+                logger.warning(f"商品数据缺少ID，无法保存到raw表: {product_data}")
+                return None
+            
+            # 检查是否已存在
+            existing_raw = self.db.query(TemuProductsRaw).filter(
+                TemuProductsRaw.external_product_id == product_id,
+                TemuProductsRaw.shop_id == self.shop.id
+            ).first()
+            
+            if existing_raw:
+                # 更新现有记录
+                existing_raw.raw_json = product_data
+                existing_raw.fetched_at = datetime.now()
+                return existing_raw
+            else:
+                # 创建新记录
+                raw_product = TemuProductsRaw(
+                    shop_id=self.shop.id,
+                    external_product_id=product_id,
+                    raw_json=product_data,
+                    fetched_at=datetime.now()
+                )
+                self.db.add(raw_product)
+                self.db.flush()  # 获取ID
+                return raw_product
+                
+        except Exception as e:
+            logger.error(f"保存商品原始数据失败: {product_id}, 错误: {e}")
+            return None
+    
+    def _process_product(self, product_data: Dict[str, Any], raw_product: Optional[TemuProductsRaw] = None):
+        """
+        处理单个商品数据（三层架构：关联raw_data_id）
+        
+        Args:
+            product_data: 商品数据
+            raw_product: 原始商品数据（可选）
         """
         # 提取商品ID（可能是goodsId, productId, id等）
         # CN端点使用 productId，标准端点可能使用 goodsId
@@ -1191,11 +1408,16 @@ class SyncService:
                             f"将尝试从其他字段获取SKU信息"
                         )
                     
-                    self._create_or_update_product_from_data(combined_data, sku_id)
+                    self._create_or_update_product_from_data(combined_data, sku_id, raw_product)
                 else:
                     logger.warning(f"SKU数据缺少ID，跳过 - SKU索引: {idx}, SKU数据: {sku_data}")
     
-    def _create_or_update_product_from_data(self, product_data: Dict[str, Any], goods_id: str):
+    def _create_or_update_product_from_data(
+        self, 
+        product_data: Dict[str, Any], 
+        goods_id: str,
+        raw_product: Optional[TemuProductsRaw] = None
+    ):
         """
         从商品数据创建或更新商品记录
         
@@ -1216,16 +1438,20 @@ class SyncService:
         if existing_product:
             # 更新现有商品
             is_updated = self._update_product(existing_product, product_data)
+            if is_updated and raw_product:
+                existing_product.raw_data_id = raw_product.id
             if is_updated:
                 stats = getattr(self, '_current_stats', {})
                 stats['updated'] = stats.get('updated', 0) + 1
         else:
             # 创建新商品
-            self._create_product(product_data)
+            product = self._create_product(product_data)
+            if raw_product and product:
+                product.raw_data_id = raw_product.id
             stats = getattr(self, '_current_stats', {})
             stats['new'] = stats.get('new', 0) + 1
     
-    def _create_product(self, product_data: Dict[str, Any]):
+    def _create_product(self, product_data: Dict[str, Any]) -> Optional[Product]:
         """
         创建新商品
         
@@ -1431,6 +1657,7 @@ class SyncService:
         
         self.db.add(product)
         logger.debug(f"创建新商品: {product.product_name}, ID: {goods_id}, SKU: {sku}")
+        return product
     
     def _update_product(self, product: Product, product_data: Dict[str, Any]) -> bool:
         """

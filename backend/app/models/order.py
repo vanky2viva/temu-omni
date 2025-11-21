@@ -77,8 +77,7 @@ class Order(Base):
     raw_data = Column(Text, comment="原始数据JSON（保留用于迁移，后续可删除）")
     
     # 关联原始数据表（暂时移除外键约束，等数据库迁移完成后再添加）
-    # 注意：如果temu_orders_raw表不存在，外键约束会导致错误
-    raw_data_id = Column(Integer, nullable=True, index=True, comment="关联原始数据表ID")
+    raw_data_id = Column(Integer, ForeignKey("temu_orders_raw.id", ondelete="SET NULL"), nullable=True, index=True, comment="关联原始数据表ID")
     
     # 时间戳
     created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
@@ -87,8 +86,7 @@ class Order(Base):
     # 关联关系
     shop = relationship("Shop", back_populates="orders")
     product = relationship("Product", back_populates="orders")
-    # raw_data_ref关系暂时注释，等数据库迁移完成后再启用
-    # raw_data_ref = relationship("TemuOrdersRaw", foreign_keys=[raw_data_id], lazy="select")
+    raw_data_ref = relationship("TemuOrdersRaw", foreign_keys=[raw_data_id], lazy="select")
     
     def __repr__(self):
         return f"<Order {self.order_sn}>"

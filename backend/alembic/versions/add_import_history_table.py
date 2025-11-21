@@ -17,19 +17,36 @@ depends_on = None
 
 
 def upgrade():
+    # 创建enum类型（如果不存在）
+    # 注意：PostgreSQL中enum类型需要先创建
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE importtype AS ENUM ('orders', 'products', 'activities');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE importstatus AS ENUM ('processing', 'success', 'failed', 'partial');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
     # 创建导入历史记录表
     op.create_table(
         'import_history',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('shop_id', sa.Integer(), nullable=False),
-        sa.Column('import_type', sa.Enum('orders', 'products', 'activities', name='importtype'), nullable=False),
+        sa.Column('import_type', sa.Enum('orders', 'products', 'activities', name='importtype', create_type=False), nullable=False),
         sa.Column('file_name', sa.String(length=255), nullable=False),
         sa.Column('file_size', sa.Integer(), nullable=True),
         sa.Column('total_rows', sa.Integer(), nullable=True, server_default='0'),
         sa.Column('success_rows', sa.Integer(), nullable=True, server_default='0'),
         sa.Column('failed_rows', sa.Integer(), nullable=True, server_default='0'),
         sa.Column('skipped_rows', sa.Integer(), nullable=True, server_default='0'),
-        sa.Column('status', sa.Enum('processing', 'success', 'failed', 'partial', name='importstatus'), 
+        sa.Column('status', sa.Enum('processing', 'success', 'failed', 'partial', name='importstatus', create_type=False), 
                   nullable=True, server_default='processing'),
         sa.Column('error_log', sa.Text(), nullable=True),
         sa.Column('success_log', sa.Text(), nullable=True),

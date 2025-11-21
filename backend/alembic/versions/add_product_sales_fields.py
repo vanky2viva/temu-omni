@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'add_product_sales_fields'
-down_revision = None
+down_revision = 'add_default_manager_to_shops'  # 基于add_default_manager_to_shops
 branch_labels = None
 depends_on = None
 

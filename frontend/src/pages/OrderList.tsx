@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Table, Space, Select, DatePicker, Tag, Tooltip } from 'antd'
 import { orderApi, shopApi } from '@/services/api'
@@ -42,14 +42,14 @@ function OrderList() {
   // 分页状态
   const [pagination, setPagination] = useState({
     current: 1,
-    pageSize: 50,
+    pageSize: 20,
     total: 0,
   })
 
   // 获取订单列表（使用分页）
   const { data: ordersData, isLoading } = useQuery({
     queryKey: ['orders', shopId, dateRange, statusFilter, pagination.current, pagination.pageSize],
-    queryFn: () => {
+    queryFn: async () => {
       const params: any = {
         skip: (pagination.current - 1) * pagination.pageSize,
         limit: pagination.pageSize,
@@ -60,19 +60,30 @@ function OrderList() {
         params.end_date = dateRange[1].toISOString()
       }
       if (statusFilter) params.status_filter = statusFilter
-      return orderApi.getOrders(params)
+      const result = await orderApi.getOrders(params)
+      return result
     },
     staleTime: 30000, // 30秒缓存
-    onSuccess: (data) => {
-      // 更新分页总数
-      if (data && typeof data === 'object' && 'total' in data) {
-        setPagination(prev => ({ ...prev, total: data.total as number }))
-      } else if (Array.isArray(data)) {
-        // 兼容旧的数据结构（直接返回数组）
-        setPagination(prev => ({ ...prev, total: data.length }))
-      }
-    },
   })
+  
+  // 从API响应中提取数据并更新分页
+  useEffect(() => {
+    if (ordersData) {
+      if (ordersData && typeof ordersData === 'object' && 'total' in ordersData) {
+        const total = ordersData.total as number
+        setPagination(prev => {
+          if (prev.total !== total) {
+            console.log('更新分页总数:', { total, current: prev.current, pageSize: prev.pageSize })
+            return { ...prev, total }
+          }
+          return prev
+        })
+      } else if (Array.isArray(ordersData)) {
+        // 兼容旧的数据结构（直接返回数组）
+        setPagination(prev => ({ ...prev, total: ordersData.length }))
+      }
+    }
+  }, [ordersData])
 
   // 兼容新旧数据结构
   const orders = Array.isArray(ordersData) 
@@ -435,12 +446,14 @@ function OrderList() {
           rowKey="id"
           loading={isLoading}
           scroll={{ x: 2000 }}
-          pagination={{
+          pagination={pagination.total > 0 ? {
             current: pagination.current,
             pageSize: pagination.pageSize,
             total: pagination.total,
             showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条订单`,
+            showQuickJumper: true,
+            showLessItems: false,
+            showTotal: (total, range) => `共 ${total} 条订单，显示 ${range[0]}-${range[1]} 条`,
             pageSizeOptions: ['20', '50', '100', '200'],
             onChange: (page, pageSize) => {
               setPagination(prev => ({
@@ -461,7 +474,7 @@ function OrderList() {
               background: 'var(--color-bg)',
               borderTop: '1px solid var(--border-color, #e1e4e8)'
             }
-          }}
+          } : false}
           style={{
             background: 'var(--color-bg)',
           }}

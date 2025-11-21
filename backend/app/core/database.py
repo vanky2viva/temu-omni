@@ -63,10 +63,15 @@ def get_db():
     
     使用try-finally确保会话总是被关闭，即使发生异常
     """
+    from fastapi import HTTPException
     db = SessionLocal()
     try:
         yield db
         db.commit()  # 正常情况提交事务
+    except HTTPException:
+        # HTTP异常（如401, 404等）不需要回滚，直接抛出
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()  # 异常时回滚事务
         logger.error(f"数据库操作异常，已回滚: {e}")
