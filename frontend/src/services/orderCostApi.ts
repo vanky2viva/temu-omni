@@ -1,7 +1,7 @@
 /**
  * 订单成本计算API服务
  */
-import { api } from './api';
+import api from './api';
 
 export interface CalculateCostRequest {
   shop_id?: number;
