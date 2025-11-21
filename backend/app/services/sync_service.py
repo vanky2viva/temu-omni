@@ -190,6 +190,13 @@ class SyncService:
             total_items = 0  # 总订单数
             
             while True:
+                # 更新进度：开始获取订单数据
+                if progress_callback:
+                    progress_callback(
+                        20 + int((stats["total"] / max(total_items, 1)) * 40),
+                        f"正在获取订单列表（第{page_number}页）..."
+                    )
+                
                 # 获取订单列表
                 result = await self.temu_service.get_orders(
                     begin_time=begin_time,
@@ -893,6 +900,13 @@ class SyncService:
             logger.info(f"开始分页获取商品 - 店铺: {self.shop.shop_name}, 每页: {page_size}")
             
             while page_number <= max_pages:
+                # 更新进度：开始获取商品数据
+                if progress_callback and total_fetched > 0:
+                    progress_callback(
+                        60 + int((total_fetched / max(total_fetched + 1, 1)) * 30),
+                        f"正在获取商品列表（第{page_number}页）..."
+                    )
+                
                 # 获取商品列表
                 # 使用 skc_site_status=1 筛选在售商品
                 result = await self.temu_service.get_products(

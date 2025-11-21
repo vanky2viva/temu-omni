@@ -113,6 +113,13 @@ function ShopList() {
       clearInterval(progressIntervalRef.current)
     }
     
+    // 立即查询一次进度
+    syncApi.getSyncProgress(shopId).then((response: any) => {
+      const progress = response?.data || response
+      setSyncProgress(progress)
+    })
+    
+    // 每500ms查询一次进度，更频繁的更新
     progressIntervalRef.current = window.setInterval(async () => {
       try {
         const response: any = await syncApi.getSyncProgress(shopId)
@@ -263,7 +270,7 @@ function ShopList() {
       } catch (error) {
         console.error('获取进度失败:', error)
       }
-    }, 1000) // 每秒轮询一次
+    }, 500) // 每500ms轮询一次，更快地更新进度
   }
 
   // 清理轮询
