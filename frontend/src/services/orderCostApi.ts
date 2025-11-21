@@ -1,9 +1,7 @@
 /**
  * 订单成本计算API服务
  */
-import axios from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+import { api } from './api';
 
 export interface CalculateCostRequest {
   shop_id?: number;
@@ -34,18 +32,7 @@ export interface DailyCollectionForecast {
 export const calculateOrderCosts = async (
   request: CalculateCostRequest
 ): Promise<CalculateCostResponse> => {
-  const token = localStorage.getItem('token');
-  const response = await axios.post(
-    `${API_BASE_URL}/order-costs/calculate`,
-    request,
-    {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  );
-  return response.data;
+  return api.post('/order-costs/calculate', request);
 };
 
 /**
@@ -56,16 +43,6 @@ export const getDailyCollectionForecast = async (params?: {
   start_date?: string;
   end_date?: string;
 }): Promise<DailyCollectionForecast[]> => {
-  const token = localStorage.getItem('token');
-  const response = await axios.get(
-    `${API_BASE_URL}/order-costs/daily-forecast`,
-    {
-      params,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    }
-  );
-  return response.data;
+  return api.get('/order-costs/daily-forecast', { params });
 };
 
