@@ -68,12 +68,28 @@ async def startup_event():
         init_default_user()
     except Exception as e:
         logger.warning(f"初始化默认用户失败: {str(e)}")
+    
+    # 启动定时任务调度器
+    try:
+        from app.core.scheduler import start_scheduler
+        start_scheduler()
+        logger.info("定时任务调度器已启动")
+    except Exception as e:
+        logger.error(f"启动定时任务调度器失败: {str(e)}")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭事件"""
     logger.info(f"{settings.APP_NAME} is shutting down...")
+    
+    # 停止定时任务调度器
+    try:
+        from app.core.scheduler import stop_scheduler
+        stop_scheduler()
+        logger.info("定时任务调度器已停止")
+    except Exception as e:
+        logger.error(f"停止定时任务调度器失败: {str(e)}")
 
 
 if __name__ == "__main__":

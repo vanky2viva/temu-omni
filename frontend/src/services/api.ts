@@ -103,6 +103,7 @@ export const statisticsApi = {
 // 分析API
 export const analyticsApi = {
   getPaymentCollection: (params?: any) => api.get('/analytics/payment-collection', { params }),
+  getSalesOverview: (params?: any) => api.get('/analytics/sales-overview', { params }),
 }
 
 // 数据导入API

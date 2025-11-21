@@ -347,7 +347,6 @@ async def get_sync_progress(
             }
         
         progress = _sync_progress[shop_id].copy()
-        
         # 确保所有值都是可序列化的
         # 转换datetime对象为字符串
         import json

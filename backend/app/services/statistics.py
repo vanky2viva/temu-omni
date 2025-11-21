@@ -203,7 +203,8 @@ class StatisticsService:
         for row in results:
             daily_stats.append({
                 "date": row.date.strftime("%Y-%m-%d"),
-                "orders": row.orders or 0,
+                "order_count": row.orders or 0,  # 使用 order_count 保持一致性
+                "orders": row.orders or 0,  # 保留兼容性
                 "gmv": float(row.gmv or 0),
                 "cost": float(row.cost or 0),
                 "profit": float(row.profit or 0),

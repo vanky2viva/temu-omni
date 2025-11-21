@@ -211,19 +211,19 @@ function Finance() {
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
-        <h2 style={{ 
+      <h2 style={{ 
           margin: 0,
-          color: '#c9d1d9',
-          fontFamily: 'JetBrains Mono, monospace',
+        color: '#c9d1d9',
+        fontFamily: 'JetBrains Mono, monospace',
           fontSize: '24px',
           fontWeight: 600,
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
-        }}>
+      }}>
           <span style={{ fontSize: '28px' }}>💰</span>
           财务管理
-        </h2>
+      </h2>
         <span style={{ color: '#8b949e', fontSize: '14px' }}>
           {dayjs().format('YYYY年MM月')} 财务数据
         </span>
@@ -241,7 +241,7 @@ function Finance() {
         }}>
           本月概览
         </h3>
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col span={8}>
           <Card 
             className="stat-card" 
@@ -456,12 +456,12 @@ function Finance() {
             label: '预估回款',
             children: (
               <div>
-                {collectionLoading ? (
+      {collectionLoading ? (
         <Card className="chart-card">
           <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
         </Card>
       ) : (
-                <>
+        <>
           {/* 汇总统计标题 */}
           <h3 style={{ 
             color: '#8b949e', 
@@ -715,7 +715,7 @@ function Finance() {
           {collectionChartOption && (
             <Card className="chart-card" style={{ marginBottom: 32 }}>
               <ReactECharts option={collectionChartOption} style={{ height: 450 }} />
-            </Card>
+          </Card>
           )}
 
           {/* 明细数据标题 */}
