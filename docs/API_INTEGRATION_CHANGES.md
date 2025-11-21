@@ -137,3 +137,4 @@ python backend/scripts/clear_all_data.py --shops-only
 
 
 
+

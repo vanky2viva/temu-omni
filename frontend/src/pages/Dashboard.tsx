@@ -31,7 +31,7 @@ function Dashboard() {
   
   // 自动刷新间隔（秒）- 默认5分钟刷新一次
   const REFRESH_INTERVAL = 5 * 60 * 1000 // 5分钟
-
+  
   // 获取总览数据（所有历史订单 - 用于总订单量、总GMV、总利润、利润率）
   const { data: overview, isLoading: overviewLoading, refetch: refetchOverview } = useQuery({
     queryKey: ['overview-all'],
@@ -203,6 +203,17 @@ function Dashboard() {
   }
 
   // 调试日志
+  if (process.env.NODE_ENV === 'development') {
+    console.log('📊 Dashboard 数据加载状态:', {
+      overviewLoading,
+      dailyLoading,
+      salesLoading,
+      overview,
+      dailyData,
+      salesOverview,
+    })
+  }
+  
   if (salesOverview && process.env.NODE_ENV === 'development') {
     console.log('📊 店铺业绩对比数据:', {
       daily_trends: salesOverview?.daily_trends?.length,
@@ -392,9 +403,9 @@ function Dashboard() {
           数据总览
         </h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ color: '#8b949e', fontSize: '14px' }}>
+        <span style={{ color: '#8b949e', fontSize: '14px' }}>
             每5分钟自动刷新
-          </span>
+        </span>
           <Button
             type="default"
             icon={<ReloadOutlined />}

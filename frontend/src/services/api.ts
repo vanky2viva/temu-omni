@@ -79,11 +79,11 @@ export const orderApi = {
 // 商品API
 export const productApi = {
   getProducts: (params?: any) => api.get('/products/', { params }),
-  getProduct: (id: number) => api.get(`/products/${id}/`),
+  getProduct: (id: number) => api.get(`/products/${id}`),
   createProduct: (data: any) => api.post('/products/', data),
-  updateProduct: (id: number, data: any) => api.put(`/products/${id}/`, data),
-  deleteProduct: (id: number) => api.delete(`/products/${id}/`),
-  getProductCosts: (id: number) => api.get(`/products/${id}/costs/`),
+  updateProduct: (id: number, data: any) => api.put(`/products/${id}`, data),
+  deleteProduct: (id: number) => api.delete(`/products/${id}`),
+  getProductCosts: (id: number) => api.get(`/products/${id}/costs`),
   createProductCost: (data: any) => api.post('/products/costs/', data),
   updateProductCost: (id: number, data: { cost_price: number; currency?: string }) => 
     api.put(`/products/${id}/cost`, data),

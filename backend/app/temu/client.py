@@ -32,8 +32,24 @@ class TemuAPIClient:
             self.proxy_url = None
         else:
             self.proxy_url = proxy_url
-        self.client = httpx.AsyncClient(timeout=30.0)
+        # 使用配置的超时时间和连接限制
+        timeout = httpx.Timeout(
+            connect=settings.HTTP_CONNECT_TIMEOUT,
+            read=settings.HTTP_READ_TIMEOUT,
+            write=10.0,
+            pool=5.0
+        )
+        limits = httpx.Limits(
+            max_keepalive_connections=settings.HTTP_MAX_KEEPALIVE_CONNECTIONS,
+            max_connections=settings.HTTP_MAX_CONNECTIONS
+        )
+        self.client = httpx.AsyncClient(
+            timeout=timeout,
+            limits=limits,
+            follow_redirects=True
+        )
         self.rate_limiter = get_rate_limiter()
+        self._closed = False
     
     def _generate_sign(self, params: Dict[str, Any]) -> str:
         """
@@ -532,5 +548,18 @@ class TemuAPIClient:
     
     async def close(self):
         """关闭HTTP客户端"""
-        await self.client.aclose()
+        if not self._closed:
+            try:
+                await self.client.aclose()
+                self._closed = True
+            except Exception as e:
+                logger.warning(f"关闭HTTP客户端时出错: {e}")
+    
+    async def __aenter__(self):
+        """异步上下文管理器入口"""
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """异步上下文管理器出口，确保资源清理"""
+        await self.close()
 

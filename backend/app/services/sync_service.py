@@ -232,7 +232,12 @@ class SyncService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"订单同步失败 - 店铺: {self.shop.shop_name}, 错误: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             raise
+        finally:
+            # 确保数据库会话正确关闭（虽然依赖注入会处理，但这里确保资源释放）
+            pass
     
     def _process_order(self, order_data: Dict[str, Any]):
         """
@@ -1060,7 +1065,12 @@ class SyncService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"商品同步失败 - 店铺: {self.shop.shop_name}, 错误: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             raise
+        finally:
+            # 确保数据库会话正确关闭
+            pass
     
     def _process_product(self, product_data: Dict[str, Any]):
         """

@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 import asyncio
+import traceback
 from datetime import datetime
 from loguru import logger
 
@@ -88,10 +89,10 @@ async def sync_shop_orders(
             detail="店铺已禁用"
         )
     
+    sync_service = None
     try:
         sync_service = SyncService(db, shop)
         result = await sync_service.sync_orders(full_sync=full_sync)
-        await sync_service.temu_service.close()
         
         return {
             "success": True,
@@ -104,10 +105,19 @@ async def sync_shop_orders(
             }
         }
     except Exception as e:
+        logger.error(f"订单同步失败 - 店铺ID: {shop_id}, 错误: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"订单同步失败: {str(e)}"
         )
+    finally:
+        # 确保资源清理
+        if sync_service and sync_service.temu_service:
+            try:
+                await sync_service.temu_service.close()
+            except Exception as e:
+                logger.warning(f"关闭Temu服务时出错: {e}")
 
 
 @router.post("/shops/{shop_id}/products")
@@ -137,10 +147,10 @@ async def sync_shop_products(
             detail="店铺已禁用"
         )
     
+    sync_service = None
     try:
         sync_service = SyncService(db, shop)
         result = await sync_service.sync_products(full_sync=full_sync)
-        await sync_service.temu_service.close()
         
         return {
             "success": True,
@@ -153,14 +163,24 @@ async def sync_shop_products(
             }
         }
     except Exception as e:
+        logger.error(f"商品同步失败 - 店铺ID: {shop_id}, 错误: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"商品同步失败: {str(e)}"
         )
+    finally:
+        # 确保资源清理
+        if sync_service and sync_service.temu_service:
+            try:
+                await sync_service.temu_service.close()
+            except Exception as e:
+                logger.warning(f"关闭Temu服务时出错: {e}")
 
 
 async def _sync_shop_with_progress(shop_id: int, full_sync: bool, db: Session):
     """执行同步并更新进度"""
+    sync_service = None
     try:
         # 初始化进度
         _sync_progress[shop_id] = {
@@ -254,8 +274,6 @@ async def _sync_shop_with_progress(shop_id: int, full_sync: bool, db: Session):
         # except Exception as e:
         #     _sync_progress[shop_id]["categories"] = {"error": str(e)}
         
-        await sync_service.temu_service.close()
-        
         # 完成
         _sync_progress[shop_id].update({
             "status": "completed",
@@ -265,11 +283,20 @@ async def _sync_shop_with_progress(shop_id: int, full_sync: bool, db: Session):
         })
         
     except Exception as e:
+        logger.error(f"同步任务失败 - 店铺ID: {shop_id}, 错误: {e}")
+        logger.error(traceback.format_exc())
         _sync_progress[shop_id] = {
             "status": "error",
             "error": str(e),
             "end_time": datetime.now().isoformat(),
         }
+    finally:
+        # 确保资源清理
+        if sync_service and sync_service.temu_service:
+            try:
+                await sync_service.temu_service.close()
+            except Exception as e:
+                logger.warning(f"关闭Temu服务时出错: {e}")
 
 
 @router.post("/shops/{shop_id}/all")

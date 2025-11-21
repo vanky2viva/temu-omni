@@ -1,10 +1,13 @@
 """主应用入口"""
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from loguru import logger
+import traceback
 
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import engine, Base, check_database_connection
+from app.core.middleware import ExceptionHandlerMiddleware, RequestLoggingMiddleware, TimeoutMiddleware
 from app.api import shops, orders, products, statistics, sync, analytics, system, import_data, auth, order_costs
 
 # 创建数据库表
@@ -18,7 +21,17 @@ app = FastAPI(
     debug=settings.DEBUG
 )
 
-# 配置CORS
+# 添加中间件（顺序很重要，从外到内执行）
+# 1. 超时中间件（最外层）
+app.add_middleware(TimeoutMiddleware, timeout=300.0)
+
+# 2. 异常处理中间件
+app.add_middleware(ExceptionHandlerMiddleware)
+
+# 3. 请求日志中间件
+app.add_middleware(RequestLoggingMiddleware)
+
+# 4. CORS中间件
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -52,8 +65,27 @@ def root():
 
 @app.get("/health")
 def health_check():
-    """健康检查"""
-    return {"status": "healthy"}
+    """
+    健康检查端点
+    
+    检查数据库连接和应用状态
+    """
+    try:
+        db_healthy = check_database_connection()
+        return {
+            "status": "healthy" if db_healthy else "degraded",
+            "database": "connected" if db_healthy else "disconnected",
+            "version": settings.APP_VERSION
+        }
+    except Exception as e:
+        logger.error(f"健康检查失败: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "error": str(e)
+            }
+        )
 
 
 @app.on_event("startup")
@@ -68,7 +100,7 @@ async def startup_event():
         init_default_user()
     except Exception as e:
         logger.warning(f"初始化默认用户失败: {str(e)}")
-    
+
     # 启动定时任务调度器
     try:
         from app.core.scheduler import start_scheduler
