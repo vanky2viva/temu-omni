@@ -190,13 +190,6 @@ class SyncService:
             total_items = 0  # 总订单数
             
             while True:
-                # 更新进度：开始获取订单数据
-                if progress_callback:
-                    progress_callback(
-                        20 + int((stats["total"] / max(total_items, 1)) * 40),
-                        f"正在获取订单列表（第{page_number}页）..."
-                    )
-                
                 # 获取订单列表
                 result = await self.temu_service.get_orders(
                     begin_time=begin_time,
@@ -207,6 +200,10 @@ class SyncService:
                 
                 total_items = result.get('totalItemNum', 0)
                 page_items = result.get('pageItems', [])
+                
+                # 首次获取到总数时更新进度
+                if page_number == 1 and total_items > 0 and progress_callback:
+                    progress_callback(20, f"发现 {total_items} 个订单，开始同步...")
                 
                 if not page_items:
                     break
@@ -899,14 +896,10 @@ class SyncService:
             
             logger.info(f"开始分页获取商品 - 店铺: {self.shop.shop_name}, 每页: {page_size}")
             
+            # 用于追踪商品总数的变量
+            total_items = 0
+            
             while page_number <= max_pages:
-                # 更新进度：开始获取商品数据
-                if progress_callback and total_fetched > 0:
-                    progress_callback(
-                        60 + int((total_fetched / max(total_fetched + 1, 1)) * 30),
-                        f"正在获取商品列表（第{page_number}页）..."
-                    )
-                
                 # 获取商品列表
                 # 使用 skc_site_status=1 筛选在售商品
                 result = await self.temu_service.get_products(
@@ -932,13 +925,20 @@ class SyncService:
                 )
                 
                 # 获取总数（CN端点可能使用 totalCount 或其他字段）
-                total_items = (
+                current_total = (
                     result.get('totalCount') or  # CN端点可能使用此字段
                     result.get('totalItemNum') or 
                     result.get('total') or 
                     result.get('totalNum') or
                     0
                 )
+                
+                # 更新总数（第一次获取或更准确的值）
+                if current_total > 0:
+                    total_items = current_total
+                    # 首次获取到总数时更新进度
+                    if page_number == 1 and progress_callback:
+                        progress_callback(60, f"发现 {total_items} 个商品，开始同步...")
                 
                 # 记录当前页信息
                 logger.info(
