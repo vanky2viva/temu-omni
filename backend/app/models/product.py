@@ -26,6 +26,10 @@ class Product(Base):
     # 库存信息
     stock_quantity = Column(Integer, default=0, comment="库存数量")
     
+    # 销售信息
+    total_sales = Column(Integer, default=0, comment="累计销量")
+    listed_at = Column(DateTime, comment="上架日期")
+    
     # 状态
     is_active = Column(Boolean, default=True, comment="是否在售")
     

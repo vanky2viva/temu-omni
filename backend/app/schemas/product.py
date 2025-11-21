@@ -75,6 +75,8 @@ class ProductResponse(ProductBase):
     price_status: Optional[str] = None
     current_cost_price: Optional[Decimal] = None  # 当前成本价格
     cost_currency: Optional[str] = None  # 成本价格货币
+    total_sales: Optional[int] = 0  # 累计销量
+    listed_at: Optional[datetime] = None  # 上架日期
     created_at: datetime
     updated_at: datetime
     

@@ -495,6 +495,32 @@ function ProductList() {
       },
     },
     {
+      title: '上架日期',
+      dataIndex: 'listed_at',
+      key: 'listed_at',
+      width: 140,
+      sorter: (a: any, b: any) => {
+        const dateA = a.listed_at || a.created_at
+        const dateB = b.listed_at || b.created_at
+        return new Date(dateA).getTime() - new Date(dateB).getTime()
+      },
+      defaultSortOrder: 'descend' as const,
+      render: (listedAt: string, record: any) => {
+        const date = listedAt || record.created_at
+        return date ? dayjs(date).format('YYYY-MM-DD') : '-'
+      },
+    },
+    {
+      title: '累计销量',
+      dataIndex: 'total_sales',
+      key: 'total_sales',
+      width: 100,
+      sorter: (a: any, b: any) => (a.total_sales || 0) - (b.total_sales || 0),
+      render: (totalSales: number) => {
+        return totalSales || 0
+      },
+    },
+    {
       title: '状态',
       dataIndex: 'is_active',
       key: 'is_active',

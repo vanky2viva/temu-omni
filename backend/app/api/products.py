@@ -52,6 +52,9 @@ def get_products(
             (Product.product_id.like(search_term))
         )
     
+    # 默认按上架日期降序排序（最新上架的在前面）
+    query = query.order_by(Product.listed_at.desc().nullslast(), Product.created_at.desc())
+    
     products = query.offset(skip).limit(limit).all()
     
     # 为每个商品填充负责人和当前成本价格
