@@ -77,3 +77,40 @@ def get_app_credentials(db: Session = None) -> Dict[str, str]:
         "app_secret": settings.TEMU_APP_SECRET
     }
 
+
+@router.get("/scheduler/status")
+def get_scheduler_status(current_user: User = Depends(get_current_user)):
+    """获取定时任务调度器状态"""
+    try:
+        from app.core.scheduler import scheduler
+        
+        if scheduler is None:
+            return {
+                "running": False,
+                "initialized": False,
+                "jobs": [],
+                "message": "调度器未初始化"
+            }
+        
+        jobs = []
+        for job in scheduler.get_jobs():
+            next_run = job.next_run_time
+            jobs.append({
+                "id": job.id,
+                "name": job.name,
+                "next_run_time": next_run.isoformat() if next_run else None,
+                "trigger": str(job.trigger)
+            })
+        
+        return {
+            "running": scheduler.running,
+            "initialized": True,
+            "jobs": jobs,
+            "message": "调度器运行中" if scheduler.running else "调度器未运行"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取调度器状态失败: {str(e)}"
+        )
+

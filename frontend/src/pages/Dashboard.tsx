@@ -37,7 +37,7 @@ function Dashboard() {
     queryKey: ['overview-all'],
     queryFn: () => statisticsApi.getOverview(), // 不传时间参数，统计所有订单
     staleTime: 0,
-    cacheTime: 0,
+    gcTime: 0, // React Query v5 中 cacheTime 改名为 gcTime
     refetchInterval: REFRESH_INTERVAL, // 每5分钟自动刷新
   })
 
@@ -46,7 +46,7 @@ function Dashboard() {
     queryKey: ['daily', days],
     queryFn: () => statisticsApi.getDaily({ days }),
     staleTime: 0,
-    cacheTime: 0,
+    gcTime: 0, // React Query v5 中 cacheTime 改名为 gcTime
     refetchInterval: REFRESH_INTERVAL, // 每5分钟自动刷新
   })
 
@@ -55,7 +55,7 @@ function Dashboard() {
     queryKey: ['sales-overview', days],
     queryFn: () => analyticsApi.getSalesOverview({ days }),
     staleTime: 0,
-    cacheTime: 0,
+    gcTime: 0, // React Query v5 中 cacheTime 改名为 gcTime
     refetchInterval: REFRESH_INTERVAL, // 每5分钟自动刷新
   })
 
