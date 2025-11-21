@@ -78,18 +78,8 @@ class Settings(BaseSettings):
     # 回款配置
     SETTLEMENT_DAYS_AFTER_DELIVERY: int = 7  # 签收后N天回款
     
-    # AI服务配置
-    AI_PROVIDER: str = "deepseek"  # deepseek/openai
-    DEEPSEEK_API_KEY: str = ""  # DeepSeek API密钥
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"  # DeepSeek API地址
-    DEEPSEEK_MODEL: str = "deepseek-chat"  # DeepSeek默认模型
-    OPENAI_API_KEY: str = ""  # OpenAI API密钥（可选）
-    OPENAI_BASE_URL: str = "https://api.openai.com/v1"  # OpenAI API地址（可选）
-    OPENAI_MODEL: str = "gpt-4o"  # OpenAI默认模型
-    AI_TIMEOUT_SECONDS: int = 30  # AI API调用超时时间（秒）
-    AI_CACHE_ENABLED: bool = True  # 是否启用AI结果缓存
-    AI_CACHE_TTL_DAYS: int = 30  # AI缓存过期天数
-    AI_DAILY_LIMIT: int = 1000  # 每日AI调用次数限制
+    # AI服务配置（已移除环境变量支持，改为从数据库配置页面读取）
+    # 以下仅作为代码中的默认值，实际配置应从数据库 system_configs 表读取
     
     class Config:
         env_file = ".env"

@@ -107,7 +107,7 @@ class DataMappingService:
                 parent_order.get('shipTime')
             )
             delivery_time = self._parse_datetime(
-                parent_order.get('updateTime') if parent_order.get('parentOrderStatus') == 5 else None or
+                (parent_order.get('updateTime') if parent_order.get('parentOrderStatus') == 5 else None) or
                 parent_order.get('latestDeliveryTime') or
                 parent_order.get('deliveryTime')
             )

@@ -463,9 +463,7 @@ class SyncService:
         else:
             # 创建新订单
             try:
-                order = self._create_order(order_item, parent_order, full_order_data)
-                if raw_order:
-                    order.raw_data_id = raw_order.id
+                order = self._create_order(order_item, parent_order, full_order_data, raw_order)
                 stats = getattr(self, '_current_stats', {})
                 stats['new'] = stats.get('new', 0) + 1
             except Exception as create_error:
@@ -488,7 +486,8 @@ class SyncService:
         self, 
         order_item: Dict[str, Any], 
         parent_order: Dict[str, Any],
-        full_order_data: Dict[str, Any]
+        full_order_data: Dict[str, Any],
+        raw_order: Optional[TemuOrdersRaw] = None
     ):
         """
         创建新订单
@@ -497,6 +496,7 @@ class SyncService:
             order_item: 子订单数据
             parent_order: 父订单数据
             full_order_data: 完整订单数据（用于保存raw_data）
+            raw_order: 原始订单数据（可选）
         """
         # 映射订单状态
         order_status = self._map_order_status(parent_order.get('parentOrderStatus', 0))
@@ -700,6 +700,9 @@ class SyncService:
         
         # 清除相关统计缓存
         self._invalidate_statistics_cache(order.shop_id, order.order_time.date())
+        
+        # 返回创建的订单对象
+        return order
     
     def _update_order(
         self, 

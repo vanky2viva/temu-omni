@@ -13,6 +13,7 @@ import SalesStatistics from './pages/SalesStatistics'
 import GmvTable from './pages/GmvTable'
 import SkuAnalysis from './pages/SkuAnalysis'
 import HotSellerPage from './pages/HotSellerPage'
+import ForgGPT from './pages/ForgGPT'
 
 function App() {
   return (
@@ -38,6 +39,7 @@ function App() {
           <Route path="gmv-table" element={<GmvTable />} />
           <Route path="sku-analysis" element={<SkuAnalysis />} />
           <Route path="hot-seller" element={<HotSellerPage />} />
+          <Route path="forggpt" element={<ForgGPT />} />
         </Route>
       </Routes>
     </BrowserRouter>

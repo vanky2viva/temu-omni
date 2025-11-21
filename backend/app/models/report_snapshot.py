@@ -11,6 +11,7 @@ class ReportType(str, enum.Enum):
     """报表类型枚举"""
     DAILY = "daily"  # 日报
     WEEKLY = "weekly"  # 周报
+    MONTHLY = "monthly"  # 月报
 
 
 class ReportSnapshot(Base):

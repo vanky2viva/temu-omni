@@ -570,7 +570,7 @@ class ReportService:
             and_(
                 ReportSnapshot.shop_id == shop_id,
                 ReportSnapshot.date == month_start_date,
-                ReportSnapshot.type == 'monthly'  # 注意：ReportType枚举中没有MONTHLY，需要添加或使用字符串
+                ReportSnapshot.type == ReportType.MONTHLY.value
             )
         ).first()
         
@@ -581,11 +581,11 @@ class ReportService:
                 snapshot.ai_summary = ai_summary
             snapshot.updated_at = datetime.utcnow()
         else:
-            # 创建新快照（使用字符串类型，因为ReportType枚举中没有MONTHLY）
+            # 创建新快照
             snapshot = ReportSnapshot(
                 shop_id=shop_id,
                 date=month_start_date,
-                type='monthly',
+                type=ReportType.MONTHLY.value,
                 metrics=metrics,
                 ai_summary=ai_summary
             )

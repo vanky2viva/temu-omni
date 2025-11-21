@@ -114,3 +114,114 @@ def get_scheduler_status(current_user: User = Depends(get_current_user)):
             detail=f"获取调度器状态失败: {str(e)}"
         )
 
+
+class AIConfigUpdate(BaseModel):
+    """AI配置更新模型"""
+    provider: str  # deepseek/openai
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-chat"
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_model: str = "gpt-4o"
+    timeout_seconds: int = 30
+    cache_enabled: bool = True
+    cache_ttl_days: int = 30
+    daily_limit: int = 1000
+
+
+class AIConfigResponse(BaseModel):
+    """AI配置响应模型"""
+    provider: str
+    deepseek_api_key: str = ""
+    has_deepseek_api_key: bool = False
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-chat"
+    openai_api_key: str = ""
+    has_openai_api_key: bool = False
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_model: str = "gpt-4o"
+    timeout_seconds: int = 30
+    cache_enabled: bool = True
+    cache_ttl_days: int = 30
+    daily_limit: int = 1000
+
+
+@router.get("/ai-config/", response_model=AIConfigResponse)
+def get_ai_config(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """获取AI配置（从数据库读取，不再使用环境变量）"""
+    
+    # 从数据库读取配置，如果不存在则使用默认值
+    def get_config_value(key: str, default: str = "") -> str:
+        config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        return config.value if config and config.value else default
+    
+    def get_config_bool(key: str, default: bool = False) -> bool:
+        config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        if config and config.value:
+            return config.value.lower() in ('true', '1', 'yes')
+        return default
+    
+    def get_config_int(key: str, default: int = 0) -> int:
+        config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        if config and config.value:
+            try:
+                return int(config.value)
+            except:
+                return default
+        return default
+    
+    provider = get_config_value("ai_provider", "deepseek")
+    deepseek_api_key = get_config_value("deepseek_api_key", "")
+    openai_api_key = get_config_value("openai_api_key", "")
+    
+    return {
+        "provider": provider,
+        "deepseek_api_key": deepseek_api_key,
+        "has_deepseek_api_key": bool(deepseek_api_key),
+        "deepseek_base_url": get_config_value("deepseek_base_url", "https://api.deepseek.com"),
+        "deepseek_model": get_config_value("deepseek_model", "deepseek-chat"),
+        "openai_api_key": openai_api_key,
+        "has_openai_api_key": bool(openai_api_key),
+        "openai_base_url": get_config_value("openai_base_url", "https://api.openai.com/v1"),
+        "openai_model": get_config_value("openai_model", "gpt-4o"),
+        "timeout_seconds": get_config_int("ai_timeout_seconds", 30),
+        "cache_enabled": get_config_bool("ai_cache_enabled", True),
+        "cache_ttl_days": get_config_int("ai_cache_ttl_days", 30),
+        "daily_limit": get_config_int("ai_daily_limit", 1000),
+    }
+
+
+@router.put("/ai-config/")
+def update_ai_config(config: AIConfigUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """更新AI配置"""
+    def update_or_create_config(key: str, value: str, description: str, is_encrypted: bool = False):
+        config_item = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        if config_item:
+            config_item.value = value
+        else:
+            config_item = SystemConfig(
+                key=key,
+                value=value,
+                description=description,
+                is_encrypted=is_encrypted
+            )
+            db.add(config_item)
+    
+    # 更新配置
+    update_or_create_config("ai_provider", config.provider, "AI服务提供商")
+    update_or_create_config("deepseek_api_key", config.deepseek_api_key, "DeepSeek API密钥", is_encrypted=True)
+    update_or_create_config("deepseek_base_url", config.deepseek_base_url, "DeepSeek API地址")
+    update_or_create_config("deepseek_model", config.deepseek_model, "DeepSeek模型名称")
+    update_or_create_config("openai_api_key", config.openai_api_key, "OpenAI API密钥", is_encrypted=True)
+    update_or_create_config("openai_base_url", config.openai_base_url, "OpenAI API地址")
+    update_or_create_config("openai_model", config.openai_model, "OpenAI模型名称")
+    update_or_create_config("ai_timeout_seconds", str(config.timeout_seconds), "AI API调用超时时间（秒）")
+    update_or_create_config("ai_cache_enabled", str(config.cache_enabled).lower(), "是否启用AI结果缓存")
+    update_or_create_config("ai_cache_ttl_days", str(config.cache_ttl_days), "AI缓存过期天数")
+    update_or_create_config("ai_daily_limit", str(config.daily_limit), "每日AI调用次数限制")
+    
+    db.commit()
+    
+    return {"message": "AI配置更新成功"}
+

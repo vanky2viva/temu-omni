@@ -143,5 +143,49 @@ export const importApi = {
     api.get(`/import/shops/${shopId}/history/${importId}`),
 }
 
+// ForgGPT API
+export const forggptApi = {
+  // 发送消息（普通响应）
+  chat: (data: {
+    message: string
+    session_id?: string
+    shop_ids?: number[]
+    date_range?: { start: string; end: string }
+    stream?: boolean
+    history?: Array<{ role: string; content: string }>
+  }) => api.post('/forggpt/chat', data, { timeout: 60000 }),
+  
+  // 获取对话历史
+  getHistory: (sessionId: string) => api.get(`/forggpt/history/${sessionId}`),
+  
+  // 上传文件
+  uploadFile: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/forggpt/upload', formData, { timeout: 120000 })
+  },
+}
+
+// AI配置API
+export const aiConfigApi = {
+  // 获取AI配置
+  getConfig: () => api.get('/system/ai-config/'),
+  
+  // 更新AI配置
+  updateConfig: (data: {
+    provider: string
+    deepseek_api_key?: string
+    deepseek_base_url?: string
+    deepseek_model?: string
+    openai_api_key?: string
+    openai_base_url?: string
+    openai_model?: string
+    timeout_seconds?: number
+    cache_enabled?: boolean
+    cache_ttl_days?: number
+    daily_limit?: number
+  }) => api.put('/system/ai-config/', data),
+}
+
 export default api
 

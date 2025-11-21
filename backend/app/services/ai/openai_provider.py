@@ -1,6 +1,7 @@
 """OpenAI AI Provider实现"""
 import httpx
-from typing import List, Optional
+import json
+from typing import List, Optional, Iterator
 from loguru import logger
 
 from app.services.ai.base_provider import AIProvider, ChatMessage, ChatCompletionResponse
@@ -24,10 +25,10 @@ class OpenAIProvider(AIProvider):
             base_url: API基础URL（可选，支持代理）
             default_model: 默认模型名称
         """
-        self.api_key = api_key or getattr(settings, 'OPENAI_API_KEY', '')
-        self.base_url = base_url or getattr(settings, 'OPENAI_BASE_URL', 'https://api.openai.com/v1')
-        self.default_model = default_model or getattr(settings, 'OPENAI_MODEL', 'gpt-4o')
-        self.timeout = getattr(settings, 'AI_TIMEOUT_SECONDS', 30)
+        self.api_key = api_key or ''
+        self.base_url = base_url or 'https://api.openai.com/v1'
+        self.default_model = default_model or 'gpt-4o'
+        self.timeout = 30  # 默认30秒超时
     
     def chat_completion(
         self,
@@ -88,6 +89,82 @@ class OpenAIProvider(AIProvider):
             raise Exception(f"OpenAI API调用失败: {e}")
         except Exception as e:
             logger.error(f"OpenAI API响应解析失败: {e}")
+            raise
+    
+    def chat_completion_stream(
+        self,
+        messages: List[ChatMessage],
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> Iterator[str]:
+        """
+        流式调用OpenAI API进行聊天完成
+        
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大token数
+            
+        Yields:
+            每个chunk的内容
+        """
+        if not self.api_key:
+            raise ValueError("OpenAI API密钥未配置")
+        
+        model = model or self.default_model
+        url = f"{self.base_url}/chat/completions"
+        
+        # 构建请求体
+        payload = {
+            "model": model,
+            "messages": [{"role": msg.role, "content": msg.content} for msg in messages],
+            "temperature": temperature,
+            "stream": True,
+        }
+        
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            with httpx.Client(timeout=self.timeout * 2) as client:
+                with client.stream("POST", url, json=payload, headers=headers) as response:
+                    response.raise_for_status()
+                    
+                    for line in response.iter_lines():
+                        if not line:
+                            continue
+                        
+                        # 移除 "data: " 前缀
+                        if line.startswith("data: "):
+                            line = line[6:]
+                        
+                        # 检查是否是结束标记
+                        if line == "[DONE]":
+                            break
+                        
+                        try:
+                            data = json.loads(line)
+                            choices = data.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    yield content
+                        except json.JSONDecodeError:
+                            continue
+                            
+        except httpx.HTTPError as e:
+            logger.error(f"OpenAI API流式调用失败: {e}")
+            raise Exception(f"OpenAI API流式调用失败: {e}")
+        except Exception as e:
+            logger.error(f"OpenAI API流式响应解析失败: {e}")
             raise
     
     def get_available_models(self) -> List[str]:

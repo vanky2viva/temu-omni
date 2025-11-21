@@ -14,6 +14,7 @@ import {
   WalletOutlined,
   LogoutOutlined,
   UserOutlined,
+  RobotOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 
@@ -69,6 +70,11 @@ const menuItems = [
     key: '/hot-seller',
     icon: <CrownOutlined />,
     label: '爆单榜',
+  },
+  {
+    key: '/forggpt',
+    icon: <RobotOutlined />,
+    label: 'ForgGPT',
   },
 ]
 
