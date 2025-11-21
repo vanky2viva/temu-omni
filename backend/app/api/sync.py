@@ -186,7 +186,7 @@ async def _sync_shop_with_progress(shop_id: int, full_sync: bool, db: Session):
         _sync_progress[shop_id] = {
             "status": "running",
             "progress": 0,
-            "current_step": "初始化",
+            "current_step": "准备同步...",
             "orders": None,
             "products": None,
             "error": None,
@@ -203,13 +203,24 @@ async def _sync_shop_with_progress(shop_id: int, full_sync: bool, db: Session):
         
         sync_service = SyncService(db, shop)
         
+        # 定义进度回调函数
+        def update_progress(progress_percent: int, step_desc: str):
+            """更新同步进度"""
+            _sync_progress[shop_id].update({
+                "progress": progress_percent,
+                "current_step": step_desc,
+            })
+        
         # 同步订单
         _sync_progress[shop_id].update({
-            "progress": 20,
-            "current_step": "正在同步订单数据...",
+            "progress": 10,
+            "current_step": "开始同步订单...",
         })
         try:
-            orders_result = await sync_service.sync_orders(full_sync=full_sync)
+            orders_result = await sync_service.sync_orders(
+                full_sync=full_sync,
+                progress_callback=update_progress
+            )
             # 确保返回的结果包含统计信息
             if isinstance(orders_result, dict):
                 _sync_progress[shop_id]["orders"] = orders_result
@@ -235,11 +246,14 @@ async def _sync_shop_with_progress(shop_id: int, full_sync: bool, db: Session):
         
         # 同步商品
         _sync_progress[shop_id].update({
-            "progress": 70,
-            "current_step": "正在同步商品数据...",
+            "progress": 60,
+            "current_step": "开始同步商品...",
         })
         try:
-            products_result = await sync_service.sync_products(full_sync=full_sync)
+            products_result = await sync_service.sync_products(
+                full_sync=full_sync,
+                progress_callback=update_progress
+            )
             # 确保返回的结果包含统计信息
             if isinstance(products_result, dict):
                 _sync_progress[shop_id]["products"] = products_result

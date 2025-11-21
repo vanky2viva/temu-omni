@@ -135,7 +135,8 @@ class SyncService:
         self,
         begin_time: Optional[int] = None,
         end_time: Optional[int] = None,
-        full_sync: bool = False
+        full_sync: bool = False,
+        progress_callback: Optional[callable] = None
     ) -> Dict[str, int]:
         """
         同步订单数据
@@ -146,12 +147,14 @@ class SyncService:
             full_sync: 是否全量同步
                 - True: 全量同步，不限制时间范围（如果begin_time未指定，则从最早开始）
                 - False: 增量同步，从最后同步时间开始（如果从未同步，则同步最近7天）
+            progress_callback: 进度回调函数，接收 (当前进度百分比, 当前步骤描述) 参数
             
         Returns:
             同步统计 {new: 新增数量, updated: 更新数量, total: 总数}
         """
         stats = {"new": 0, "updated": 0, "total": 0, "failed": 0}
         self._current_stats = stats  # 用于在_process_order中更新统计
+        self._progress_callback = progress_callback  # 保存回调函数
         
         try:
             # 设置结束时间为当前时间
@@ -184,6 +187,7 @@ class SyncService:
             
             page_number = 1
             page_size = 100
+            total_items = 0  # 总订单数
             
             while True:
                 # 获取订单列表
@@ -207,6 +211,15 @@ class SyncService:
                         # 立即提交每个订单，避免批量插入时的重复键错误
                         self.db.commit()
                         stats["total"] += 1
+                        
+                        # 实时更新进度（订单同步占20%-60%）
+                        if progress_callback and total_items > 0:
+                            progress_percent = 20 + int((stats["total"] / total_items) * 40)
+                            progress_callback(
+                                progress_percent,
+                                f"正在同步订单: {stats['total']}/{total_items}"
+                            )
+                            
                     except Exception as e:
                         logger.error(f"处理订单失败: {e}, 订单数据: {item}")
                         self.db.rollback()  # 回滚失败的订单
@@ -847,7 +860,7 @@ class SyncService:
             logger.warning(f"解析金额失败: {value}, 错误: {e}")
             return Decimal('0.00')
     
-    async def sync_products(self, full_sync: bool = False) -> Dict[str, int]:
+    async def sync_products(self, full_sync: bool = False, progress_callback: Optional[callable] = None) -> Dict[str, int]:
         """
         同步商品数据
         
@@ -855,12 +868,14 @@ class SyncService:
             full_sync: 是否全量同步
                 - True: 全量同步，同步所有商品
                 - False: 增量同步，只同步新增和更新的商品（通过商品ID判断）
+            progress_callback: 进度回调函数，接收 (当前进度百分比, 当前步骤描述) 参数
             
         Returns:
             同步统计
         """
         stats = {"new": 0, "updated": 0, "total": 0, "failed": 0}
         self._current_stats = stats  # 用于在_process_product中更新统计
+        self._progress_callback = progress_callback  # 保存回调函数
         
         try:
             sync_mode = "全量同步" if full_sync else "增量同步"
@@ -931,7 +946,7 @@ class SyncService:
                 page_sku_count = 0  # 当前页有SKU的商品数
                 page_skipped_count = 0  # 当前页跳过的非在售商品数
                 
-                for product_item in product_list:
+                for idx, product_item in enumerate(product_list):
                     try:
                         # 记录商品基本信息（用于调试）
                         product_id = (
@@ -946,6 +961,14 @@ class SyncService:
                             product_item.get('name') or 
                             '未知商品'
                         )
+                        
+                        # 实时更新进度（商品同步占60%-90%）
+                        if progress_callback and total_items > 0:
+                            current_product = (page_number - 1) * page_size + idx + 1
+                            progress_callback(
+                                60 + int((current_product / total_items) * 30),
+                                f"正在同步商品: {stats['total']}/{total_items}"
+                            )
                         
                         # 检查商品状态（只处理在售商品）
                         # CN端点使用 skcSiteStatus 字段：1=在售，0=不在售
