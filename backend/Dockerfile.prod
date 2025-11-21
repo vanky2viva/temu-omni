@@ -24,9 +24,20 @@ USER appuser
 # 暴露端口
 EXPOSE 8000
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
+# 健康检查（优化：使用更轻量的检查方式）
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)" || exit 1
 
-# 启动命令
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# 启动命令（优化：使用Gunicorn + Uvicorn workers，更适合生产环境）
+# workers数量 = (2 * CPU核心数) + 1
+CMD ["gunicorn", "app.main:app", \
+     "--workers", "4", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:8000", \
+     "--timeout", "120", \
+     "--keepalive", "5", \
+     "--max-requests", "1000", \
+     "--max-requests-jitter", "100", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-", \
+     "--log-level", "info"]

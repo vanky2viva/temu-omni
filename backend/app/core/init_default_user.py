@@ -15,21 +15,26 @@ from app.models.user import User
 
 
 def init_default_user():
-    """初始化默认管理员用户"""
+    """初始化默认管理员用户（从环境变量读取配置）"""
     db: Session = SessionLocal()
     try:
+        # 从环境变量读取配置
+        admin_username = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
+        admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
+        admin_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@example.com")
+        
         # 检查默认用户是否已存在
-        existing_user = db.query(User).filter(User.username == "luffyadmin").first()
+        existing_user = db.query(User).filter(User.username == admin_username).first()
         
         if existing_user:
-            logger.info("默认管理员用户已存在，跳过初始化")
+            logger.info(f"默认管理员用户已存在: {admin_username}，跳过初始化")
             return
         
         # 创建默认管理员用户
-        hashed_password = get_password_hash("luffy123!@#")
+        hashed_password = get_password_hash(admin_password)
         default_user = User(
-            username="luffyadmin",
-            email="admin@luffy.com",
+            username=admin_username,
+            email=admin_email,
             hashed_password=hashed_password,
             is_active=True,
             is_superuser=True,
@@ -37,7 +42,7 @@ def init_default_user():
         
         db.add(default_user)
         db.commit()
-        logger.info("默认管理员用户创建成功: luffyadmin")
+        logger.info(f"默认管理员用户创建成功: {admin_username}")
         
     except Exception as e:
         logger.error(f"初始化默认用户失败: {str(e)}")
