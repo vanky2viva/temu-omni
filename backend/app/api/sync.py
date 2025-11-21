@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 import asyncio
 import traceback
+import json
 from datetime import datetime
 from loguru import logger
 
@@ -15,8 +16,58 @@ from app.services.sync_service import sync_shop_data, sync_all_shops, SyncServic
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
-# 存储同步进度（实际生产环境应使用Redis等）
-_sync_progress: Dict[int, Dict[str, Any]] = {}
+# Redis客户端（用于跨worker共享同步进度）
+try:
+    import redis
+    _redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
+    _use_redis = True
+    logger.info("已连接到Redis，同步进度将使用Redis存储")
+except Exception as e:
+    logger.warning(f"Redis连接失败，将使用内存存储（多worker环境下可能导致进度丢失）: {e}")
+    _sync_progress: Dict[int, Dict[str, Any]] = {}
+    _use_redis = False
+
+
+def _get_sync_progress(shop_id: int) -> Dict[str, Any]:
+    """从Redis或内存获取同步进度"""
+    if _use_redis:
+        try:
+            data = _redis_client.get(f"sync_progress:{shop_id}")
+            if data:
+                return json.loads(data)
+            return {"status": "not_started", "progress": 0}
+        except Exception as e:
+            logger.error(f"从Redis读取进度失败: {e}")
+            return {"status": "not_started", "progress": 0}
+    else:
+        return _sync_progress.get(shop_id, {"status": "not_started", "progress": 0})
+
+
+def _set_sync_progress(shop_id: int, progress_data: Dict[str, Any]):
+    """将同步进度存储到Redis或内存"""
+    if _use_redis:
+        try:
+            _redis_client.setex(
+                f"sync_progress:{shop_id}",
+                3600,  # 1小时过期
+                json.dumps(progress_data, ensure_ascii=False, default=str)
+            )
+        except Exception as e:
+            logger.error(f"将进度写入Redis失败: {e}")
+    else:
+        _sync_progress[shop_id] = progress_data
+
+
+def _delete_sync_progress(shop_id: int):
+    """删除同步进度"""
+    if _use_redis:
+        try:
+            _redis_client.delete(f"sync_progress:{shop_id}")
+        except Exception as e:
+            logger.error(f"从Redis删除进度失败: {e}")
+    else:
+        if shop_id in _sync_progress:
+            del _sync_progress[shop_id]
 
 
 @router.post("/shops/{shop_id}/verify-token")
@@ -183,7 +234,7 @@ async def _sync_shop_with_progress(shop_id: int, full_sync: bool, db: Session):
     sync_service = None
     try:
         # 初始化进度
-        _sync_progress[shop_id] = {
+        _set_sync_progress(shop_id, {
             "status": "running",
             "progress": 0,
             "current_step": "准备同步...",
@@ -191,14 +242,14 @@ async def _sync_shop_with_progress(shop_id: int, full_sync: bool, db: Session):
             "products": None,
             "error": None,
             "start_time": datetime.now().isoformat(),
-        }
+        })
         
         shop = db.query(Shop).filter(Shop.id == shop_id).first()
         if not shop:
-            _sync_progress[shop_id] = {
+            _set_sync_progress(shop_id, {
                 "status": "error",
                 "error": "店铺不存在",
-            }
+            })
             return
         
         sync_service = SyncService(db, shop)
@@ -206,104 +257,128 @@ async def _sync_shop_with_progress(shop_id: int, full_sync: bool, db: Session):
         # 定义进度回调函数
         def update_progress(progress_percent: int, step_desc: str):
             """更新同步进度"""
-            _sync_progress[shop_id].update({
+            current = _get_sync_progress(shop_id)
+            current.update({
                 "progress": progress_percent,
                 "current_step": step_desc,
             })
+            _set_sync_progress(shop_id, current)
         
         # 同步订单
-        _sync_progress[shop_id].update({
+        current = _get_sync_progress(shop_id)
+        current.update({
             "progress": 10,
             "current_step": "开始同步订单...",
         })
+        _set_sync_progress(shop_id, current)
+        
         try:
             orders_result = await sync_service.sync_orders(
                 full_sync=full_sync,
                 progress_callback=update_progress
             )
             # 确保返回的结果包含统计信息
+            current = _get_sync_progress(shop_id)
             if isinstance(orders_result, dict):
-                _sync_progress[shop_id]["orders"] = orders_result
+                current["orders"] = orders_result
             else:
-                _sync_progress[shop_id]["orders"] = {
+                current["orders"] = {
                     "total": 0,
                     "new": 0,
                     "updated": 0,
                     "failed": 0,
                     "error": "返回格式异常"
                 }
+            _set_sync_progress(shop_id, current)
         except Exception as e:
             import traceback
             error_msg = str(e)
             logger.error(f"订单同步失败 - 店铺ID: {shop_id}, 错误: {error_msg}\n{traceback.format_exc()}")
-            _sync_progress[shop_id]["orders"] = {
+            current = _get_sync_progress(shop_id)
+            current["orders"] = {
                 "total": 0,
                 "new": 0,
                 "updated": 0,
                 "failed": 0,
                 "error": error_msg
             }
+            _set_sync_progress(shop_id, current)
         
         # 同步商品
-        _sync_progress[shop_id].update({
+        current = _get_sync_progress(shop_id)
+        current.update({
             "progress": 60,
             "current_step": "开始同步商品...",
         })
+        _set_sync_progress(shop_id, current)
+        
         try:
             products_result = await sync_service.sync_products(
                 full_sync=full_sync,
                 progress_callback=update_progress
             )
             # 确保返回的结果包含统计信息
+            current = _get_sync_progress(shop_id)
             if isinstance(products_result, dict):
-                _sync_progress[shop_id]["products"] = products_result
+                current["products"] = products_result
             else:
-                _sync_progress[shop_id]["products"] = {
+                current["products"] = {
                     "total": 0,
                     "new": 0,
                     "updated": 0,
                     "failed": 0,
                     "error": "返回格式异常"
                 }
+            _set_sync_progress(shop_id, current)
         except Exception as e:
             import traceback
             error_msg = str(e)
             logger.error(f"商品同步失败 - 店铺ID: {shop_id}, 错误: {error_msg}\n{traceback.format_exc()}")
-            _sync_progress[shop_id]["products"] = {
+            current = _get_sync_progress(shop_id)
+            current["products"] = {
                 "total": 0,
                 "new": 0,
                 "updated": 0,
                 "failed": 0,
                 "error": error_msg
             }
+            _set_sync_progress(shop_id, current)
         
         # 同步分类（已禁用，无需获取商品分类）
-        # _sync_progress[shop_id].update({
+        # current = _get_sync_progress(shop_id)
+        # current.update({
         #     "progress": 90,
         #     "current_step": "正在同步分类数据...",
         # })
+        # _set_sync_progress(shop_id, current)
         # try:
         #     categories_result = await sync_service.sync_categories()
-        #     _sync_progress[shop_id]["categories"] = categories_result
+        #     current = _get_sync_progress(shop_id)
+        #     current["categories"] = categories_result
+        #     _set_sync_progress(shop_id, current)
         # except Exception as e:
-        #     _sync_progress[shop_id]["categories"] = {"error": str(e)}
+        #     current = _get_sync_progress(shop_id)
+        #     current["categories"] = {"error": str(e)}
+        #     _set_sync_progress(shop_id, current)
         
         # 完成
-        _sync_progress[shop_id].update({
+        current = _get_sync_progress(shop_id)
+        current.update({
             "status": "completed",
             "progress": 100,
             "current_step": "同步完成",
             "end_time": datetime.now().isoformat(),
         })
+        _set_sync_progress(shop_id, current)
         
     except Exception as e:
         logger.error(f"同步任务失败 - 店铺ID: {shop_id}, 错误: {e}")
         logger.error(traceback.format_exc())
-        _sync_progress[shop_id] = {
+        _set_sync_progress(shop_id, {
             "status": "error",
             "error": str(e),
             "end_time": datetime.now().isoformat(),
-        }
+        })
     finally:
         # 确保资源清理
         if sync_service and sync_service.temu_service:
@@ -343,14 +418,15 @@ async def sync_shop_all_data(
         )
     
     # 检查是否已有同步任务在运行
-    if shop_id in _sync_progress and _sync_progress[shop_id].get("status") == "running":
+    current_progress = _get_sync_progress(shop_id)
+    if current_progress.get("status") == "running":
         return {
             "success": True,
             "message": "同步任务已在运行中",
             "data": {
                 "shop_id": shop_id,
                 "shop_name": shop.shop_name,
-                "progress": _sync_progress[shop_id],
+                "progress": current_progress,
             }
         }
     
@@ -370,7 +446,7 @@ async def sync_shop_all_data(
 
 
 @router.get("/shops/{shop_id}/progress")
-async def get_sync_progress(
+async def get_sync_progress_endpoint(
     shop_id: int,
     current_user: User = Depends(get_current_user)
 ):
@@ -381,35 +457,8 @@ async def get_sync_progress(
         同步进度信息
     """
     try:
-        if shop_id not in _sync_progress:
-            return {
-                "status": "not_started",
-                "progress": 0,
-            }
-        
-        progress = _sync_progress[shop_id].copy()
-        # 确保所有值都是可序列化的
-        # 转换datetime对象为字符串
-        import json
-        
-        def make_serializable(obj):
-            """递归地将对象转换为可序列化的格式"""
-            if isinstance(obj, datetime):
-                return obj.isoformat()
-            elif isinstance(obj, dict):
-                return {k: make_serializable(v) for k, v in obj.items()}
-            elif isinstance(obj, (list, tuple)):
-                return [make_serializable(item) for item in obj]
-            elif hasattr(obj, '__dict__'):
-                return make_serializable(obj.__dict__)
-            else:
-                try:
-                    json.dumps(obj)
-                    return obj
-                except (TypeError, ValueError):
-                    return str(obj)
-        
-        return make_serializable(progress)
+        progress = _get_sync_progress(shop_id)
+        return progress
         
     except Exception as e:
         logger.error(f"获取同步进度失败 - 店铺ID: {shop_id}, 错误: {e}")
