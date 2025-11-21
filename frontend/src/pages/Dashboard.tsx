@@ -203,17 +203,6 @@ function Dashboard() {
   }
 
   // 调试日志
-  if (process.env.NODE_ENV === 'development') {
-    console.log('📊 Dashboard 数据加载状态:', {
-      overviewLoading,
-      dailyLoading,
-      salesLoading,
-      overview,
-      dailyData,
-      salesOverview,
-    })
-  }
-  
   if (salesOverview && process.env.NODE_ENV === 'development') {
     console.log('📊 店铺业绩对比数据:', {
       daily_trends: salesOverview?.daily_trends?.length,
