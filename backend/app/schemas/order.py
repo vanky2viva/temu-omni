@@ -59,7 +59,37 @@ class OrderResponse(OrderBase):
     shipping_province: Optional[str] = None
     shipping_postal_code: Optional[str] = None
     notes: Optional[str] = None
-    raw_data: Optional[str] = None
+    raw_data: Optional[str] = None  # 列表查询时建议排除此字段
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class OrderListResponse(OrderBase):
+    """订单列表响应模式（优化版，排除大字段）"""
+    id: int
+    shop_id: int
+    temu_order_id: Optional[str] = None
+    parent_order_sn: Optional[str] = None
+    product_id: Optional[int] = None
+    unit_cost: Optional[Decimal] = None
+    total_cost: Optional[Decimal] = None
+    profit: Optional[Decimal] = None
+    status: OrderStatus
+    order_time: datetime
+    payment_time: Optional[datetime] = None
+    shipping_time: Optional[datetime] = None
+    expect_ship_latest_time: Optional[datetime] = None
+    delivery_time: Optional[datetime] = None
+    customer_id: Optional[str] = None
+    shipping_country: Optional[str] = None
+    shipping_city: Optional[str] = None
+    shipping_province: Optional[str] = None
+    shipping_postal_code: Optional[str] = None
+    notes: Optional[str] = None
+    # 排除raw_data大字段，提升列表查询性能
     created_at: datetime
     updated_at: datetime
     

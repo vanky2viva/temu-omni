@@ -3,32 +3,54 @@ from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.order import Order, OrderStatus
 from app.models.user import User
-from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse, OrderStatistics
+from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse, OrderListResponse, OrderStatistics
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
+# 最大查询限制
+MAX_LIMIT = 1000
+DEFAULT_LIMIT = 50
 
-@router.get("/", response_model=List[OrderResponse])
+
+class PaginatedResponse(BaseModel):
+    """分页响应"""
+    items: List[OrderListResponse]
+    total: int
+    skip: int
+    limit: int
+    has_more: bool
+
+
+@router.get("/", response_model=PaginatedResponse)
 def get_orders(
-    skip: int = 0,
-    limit: int = 100,
-    shop_id: Optional[int] = None,
-    status_filter: Optional[OrderStatus] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    skip: int = Query(0, ge=0, description="跳过记录数"),
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="每页数量"),
+    shop_id: Optional[int] = Query(None, description="店铺ID"),
+    status_filter: Optional[OrderStatus] = Query(None, description="订单状态"),
+    start_date: Optional[datetime] = Query(None, description="开始日期"),
+    end_date: Optional[datetime] = Query(None, description="结束日期"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取订单列表"""
+    """
+    获取订单列表（优化版）
+    
+    使用eager loading优化关联查询，排除大字段，支持分页
+    """
+    # 构建基础查询
+    # 注意：如果不需要shop和product的详细信息，可以不使用joinedload
+    # 因为Order表中已经包含了shop_id和product_id，以及product_name等冗余字段
     query = db.query(Order)
     
+    # 应用过滤条件
     if shop_id:
         query = query.filter(Order.shop_id == shop_id)
     
@@ -41,8 +63,26 @@ def get_orders(
     if end_date:
         query = query.filter(Order.order_time <= end_date)
     
-    orders = query.order_by(Order.order_time.desc()).offset(skip).limit(limit).all()
-    return orders
+    # 获取总数（在分页前，使用子查询优化）
+    # 使用distinct()避免重复计数（如果有joinedload）
+    total = query.distinct().count()
+    
+    # 应用排序和分页
+    # 使用order_time索引优化排序查询
+    # 使用distinct()避免joinedload导致的重复记录
+    orders = query.distinct().order_by(Order.order_time.desc()).offset(skip).limit(limit).all()
+    
+    # 直接使用OrderListResponse序列化，Pydantic会自动处理
+    # 注意：OrderListResponse不包含raw_data字段，所以会自动排除
+    order_list = [OrderListResponse.model_validate(order) for order in orders]
+    
+    return PaginatedResponse(
+        items=order_list,
+        total=total,
+        skip=skip,
+        limit=limit,
+        has_more=(skip + limit) < total
+    )
 
 
 @router.get("/{order_id}", response_model=OrderResponse)

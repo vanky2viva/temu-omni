@@ -1,0 +1,103 @@
+"""DeepSeek AI Provider实现"""
+import httpx
+from typing import List, Optional
+from loguru import logger
+
+from app.services.ai.base_provider import AIProvider, ChatMessage, ChatCompletionResponse
+from app.core.config import settings
+
+
+class DeepSeekProvider(AIProvider):
+    """DeepSeek AI Provider"""
+    
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        default_model: str = "deepseek-chat"
+    ):
+        """
+        初始化DeepSeek Provider
+        
+        Args:
+            api_key: DeepSeek API密钥
+            base_url: API基础URL
+            default_model: 默认模型名称
+        """
+        self.api_key = api_key or getattr(settings, 'DEEPSEEK_API_KEY', '')
+        self.base_url = base_url or getattr(settings, 'DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
+        self.default_model = default_model or getattr(settings, 'DEEPSEEK_MODEL', 'deepseek-chat')
+        self.timeout = getattr(settings, 'AI_TIMEOUT_SECONDS', 30)
+    
+    def chat_completion(
+        self,
+        messages: List[ChatMessage],
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> ChatCompletionResponse:
+        """
+        调用DeepSeek API进行聊天完成
+        """
+        if not self.api_key:
+            raise ValueError("DeepSeek API密钥未配置")
+        
+        model = model or self.default_model
+        url = f"{self.base_url}/v1/chat/completions"
+        
+        # 构建请求体
+        payload = {
+            "model": model,
+            "messages": [{"role": msg.role, "content": msg.content} for msg in messages],
+            "temperature": temperature,
+        }
+        
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            with httpx.Client(timeout=self.timeout) as client:
+                response = client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                
+                data = response.json()
+                
+                # 解析响应
+                choice = data.get("choices", [{}])[0]
+                message = choice.get("message", {})
+                usage = data.get("usage", {})
+                
+                return ChatCompletionResponse(
+                    content=message.get("content", ""),
+                    model=data.get("model", model),
+                    usage={
+                        "prompt_tokens": usage.get("prompt_tokens", 0),
+                        "completion_tokens": usage.get("completion_tokens", 0),
+                        "total_tokens": usage.get("total_tokens", 0),
+                    },
+                    finish_reason=choice.get("finish_reason")
+                )
+                
+        except httpx.HTTPError as e:
+            logger.error(f"DeepSeek API调用失败: {e}")
+            raise Exception(f"DeepSeek API调用失败: {e}")
+        except Exception as e:
+            logger.error(f"DeepSeek API响应解析失败: {e}")
+            raise
+    
+    def get_available_models(self) -> List[str]:
+        """获取可用的模型列表"""
+        return [
+            "deepseek-chat",
+            "deepseek-coder",
+        ]
+    
+    def is_available(self) -> bool:
+        """检查Provider是否可用"""
+        return bool(self.api_key)
+

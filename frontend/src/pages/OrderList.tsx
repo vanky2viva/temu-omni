@@ -26,6 +26,11 @@ function OrderList() {
   const [shopId, setShopId] = useState<number | undefined>()
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null)
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
+  
+  // 当筛选条件改变时，重置到第一页
+  const handleFilterChange = () => {
+    setPagination(prev => ({ ...prev, current: 1 }))
+  }
 
   // 获取店铺列表
   const { data: shops } = useQuery({
@@ -34,13 +39,20 @@ function OrderList() {
     staleTime: 0,
   })
 
-  // 获取订单列表
-  const { data: orders, isLoading } = useQuery({
-    queryKey: ['orders', shopId, dateRange, statusFilter],
+  // 分页状态
+  const [pagination, setPagination] = useState({
+    current: 1,
+    pageSize: 50,
+    total: 0,
+  })
+
+  // 获取订单列表（使用分页）
+  const { data: ordersData, isLoading } = useQuery({
+    queryKey: ['orders', shopId, dateRange, statusFilter, pagination.current, pagination.pageSize],
     queryFn: () => {
       const params: any = {
-        skip: 0,
-        limit: 10000,
+        skip: (pagination.current - 1) * pagination.pageSize,
+        limit: pagination.pageSize,
       }
       if (shopId) params.shop_id = shopId
       if (dateRange) {
@@ -50,12 +62,26 @@ function OrderList() {
       if (statusFilter) params.status_filter = statusFilter
       return orderApi.getOrders(params)
     },
-    staleTime: 0,
+    staleTime: 30000, // 30秒缓存
+    onSuccess: (data) => {
+      // 更新分页总数
+      if (data && typeof data === 'object' && 'total' in data) {
+        setPagination(prev => ({ ...prev, total: data.total as number }))
+      } else if (Array.isArray(data)) {
+        // 兼容旧的数据结构（直接返回数组）
+        setPagination(prev => ({ ...prev, total: data.length }))
+      }
+    },
   })
+
+  // 兼容新旧数据结构
+  const orders = Array.isArray(ordersData) 
+    ? ordersData  // 旧格式：直接返回数组
+    : (ordersData?.items || [])  // 新格式：分页响应对象
 
   // 处理订单数据，按父订单号分组，用于合并显示
   const processedOrders = useMemo(() => {
-    const ordersList = Array.isArray(orders) ? orders : []
+    const ordersList = orders || []
     if (!ordersList || ordersList.length === 0) return []
     
     // 按父订单号分组
@@ -358,7 +384,10 @@ function OrderList() {
               placeholder="全部店铺"
               allowClear
               value={shopId}
-              onChange={setShopId}
+              onChange={(value) => {
+                setShopId(value)
+                handleFilterChange()
+              }}
               options={Array.isArray(shops) ? shops.map((shop: any) => ({
                 label: shop.shop_name,
                 value: shop.id,
@@ -372,7 +401,10 @@ function OrderList() {
               placeholder="全部状态"
               allowClear
               value={statusFilter}
-              onChange={setStatusFilter}
+              onChange={(value) => {
+                setStatusFilter(value)
+                handleFilterChange()
+              }}
               options={[
                 { label: '待处理', value: 'PENDING' },
                 { label: '未发货', value: 'PROCESSING' },
@@ -385,7 +417,10 @@ function OrderList() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px' }}>日期：</span>
             <RangePicker
-              onChange={(dates) => setDateRange(dates as any)}
+              onChange={(dates) => {
+                setDateRange(dates as any)
+                handleFilterChange()
+              }}
               format="YYYY-MM-DD"
               style={{ width: 240 }}
             />
@@ -401,10 +436,26 @@ function OrderList() {
           loading={isLoading}
           scroll={{ x: 2000 }}
           pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: pagination.total,
             showSizeChanger: true,
             showTotal: (total) => `共 ${total} 条订单`,
-            defaultPageSize: 20,
-            pageSizeOptions: ['10', '20', '50', '100'],
+            pageSizeOptions: ['20', '50', '100', '200'],
+            onChange: (page, pageSize) => {
+              setPagination(prev => ({
+                ...prev,
+                current: page,
+                pageSize: pageSize || prev.pageSize,
+              }))
+            },
+            onShowSizeChange: (current, size) => {
+              setPagination(prev => ({
+                ...prev,
+                current: 1,
+                pageSize: size,
+              }))
+            },
             style: { 
               padding: '16px 24px',
               background: 'var(--color-bg)',

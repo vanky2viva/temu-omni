@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'add_default_manager_to_shops'
-down_revision = None
+down_revision = 'add_cn_api_fields'  # 合并到主迁移链
 branch_labels = None
 depends_on = None
 

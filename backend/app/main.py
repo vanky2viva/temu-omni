@@ -9,6 +9,8 @@ from app.core.config import settings
 from app.core.database import engine, Base, check_database_connection
 from app.core.middleware import ExceptionHandlerMiddleware, RequestLoggingMiddleware, TimeoutMiddleware
 from app.api import shops, orders, products, statistics, sync, analytics, system, import_data, auth, order_costs
+# 暂时注释掉新API路由，等数据库迁移完成后再启用
+# from app.api import raw_data, payouts, reports
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -51,6 +53,10 @@ app.include_router(analytics.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
 app.include_router(import_data.router, prefix="/api")
 app.include_router(order_costs.router, prefix="/api", tags=["订单成本"])
+# 暂时注释掉新API路由，等数据库迁移完成后再启用
+# app.include_router(raw_data.router, prefix="/api")
+# app.include_router(payouts.router, prefix="/api")
+# app.include_router(reports.router, prefix="/api")
 
 
 @app.get("/")
