@@ -10,6 +10,7 @@ import {
 import ReactECharts from 'echarts-for-react'
 import { statisticsApi, analyticsApi } from '@/services/api'
 import dayjs from 'dayjs'
+import { useEffect, useState } from 'react'
 
 // 格式化数字，添加千分位分隔符
 const formatNumber = (value: number | undefined, precision: number = 0): string => {
@@ -21,6 +22,18 @@ const formatNumber = (value: number | undefined, precision: number = 0): string 
 }
 
 function Dashboard() {
+  const [isMobile, setIsMobile] = useState(false)
+  
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+  
   // 统一使用30天作为趋势统计时间范围
   const days = 30
   
@@ -377,36 +390,41 @@ function Dashboard() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px',
       }}>
         <h2 style={{ 
           margin: 0,
           color: '#c9d1d9',
           fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '24px',
+          fontSize: isMobile ? '20px' : '24px',
           fontWeight: 600,
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
         }}>
-          <span style={{ fontSize: '28px' }}>📊</span>
+          <span style={{ fontSize: isMobile ? '24px' : '28px' }}>📊</span>
           数据总览
         </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <span style={{ color: '#8b949e', fontSize: '14px' }}>
-            每5分钟自动刷新
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {!isMobile && (
+            <span style={{ color: '#8b949e', fontSize: '14px' }}>
+              每5分钟自动刷新
+            </span>
+          )}
           <Button
             type="default"
             icon={<ReloadOutlined />}
             onClick={handleRefresh}
             loading={overviewLoading || dailyLoading || salesLoading}
+            size={isMobile ? 'small' : 'default'}
             style={{
               borderColor: '#30363d',
               color: '#c9d1d9',
               background: '#161b22',
             }}
           >
-            手动刷新
+            {isMobile ? '刷新' : '手动刷新'}
           </Button>
         </div>
       </div>
@@ -686,9 +704,12 @@ function Dashboard() {
 
       {/* 趋势图表 */}
       <Row gutter={[16, 16]}>
-        <Col span={24}>
+        <Col xs={24}>
           <Card className="chart-card" loading={dailyLoading} bordered={false}>
-            <ReactECharts option={trendChartOption} style={{ height: 450 }} />
+            <ReactECharts 
+              option={trendChartOption} 
+              style={{ height: isMobile ? 300 : 450 }} 
+            />
           </Card>
         </Col>
       </Row>
@@ -708,9 +729,12 @@ function Dashboard() {
 
       {/* 店铺对比图表 */}
       <Row gutter={[16, 16]}>
-        <Col span={24}>
+        <Col xs={24}>
           <Card className="chart-card" loading={salesLoading} bordered={false}>
-            <ReactECharts option={salesChartOption} style={{ height: 450 }} />
+            <ReactECharts 
+              option={salesChartOption} 
+              style={{ height: isMobile ? 300 : 450 }} 
+            />
           </Card>
         </Col>
       </Row>

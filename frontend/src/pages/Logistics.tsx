@@ -1,10 +1,21 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card } from 'antd'
 import StateHeatmap from '@/components/StateHeatmap'
 import { orderApi } from '@/services/api'
 
 function Logistics() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
   // 获取所有订单数据
   const { data: orders, isLoading } = useQuery({
     queryKey: ['orders', 'logistics'],
@@ -82,22 +93,23 @@ function Logistics() {
         marginBottom: 24, 
         color: '#c9d1d9',
         fontFamily: 'JetBrains Mono, monospace',
+        fontSize: isMobile ? '18px' : '24px',
       }}>
         🚚 物流管理
       </h2>
 
       <Card className="chart-card">
         {isLoading ? (
-          <div style={{ textAlign: 'center', padding: '50px 0', color: '#8b949e' }}>
+          <div style={{ textAlign: 'center', padding: isMobile ? '30px 0' : '50px 0', color: '#8b949e' }}>
             正在加载订单数据...
           </div>
         ) : stateOrderData.length > 0 ? (
-          <StateHeatmap data={stateOrderData} height={600} />
+          <StateHeatmap data={stateOrderData} height={isMobile ? 400 : 600} />
         ) : (
-          <div style={{ textAlign: 'center', padding: '50px 0', color: '#8b949e' }}>
+          <div style={{ textAlign: 'center', padding: isMobile ? '30px 16px' : '50px 0', color: '#8b949e' }}>
             暂无包含地址信息的订单数据，无法显示地图热力图
             <br />
-            <span style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px', display: 'block' }}>
+            <span style={{ fontSize: isMobile ? '11px' : '12px', color: '#6b7280', marginTop: '8px', display: 'block' }}>
               请确保导入的订单数据包含州/省份信息（如 CA, NY 等州代码）
             </span>
           </div>

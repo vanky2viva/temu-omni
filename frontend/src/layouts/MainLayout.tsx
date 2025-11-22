@@ -98,11 +98,10 @@ function MainLayout() {
   // 检测是否为移动设备
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768)
-      // 移动端默认收起侧边栏
-      if (window.innerWidth < 768) {
-        setCollapsed(true)
-      }
+      const isMobileWidth = window.innerWidth < 768
+      setIsMobile(isMobileWidth)
+      // 移动端默认收起侧边栏，桌面端默认展开
+      setCollapsed(isMobileWidth)
     }
     
     checkMobile()

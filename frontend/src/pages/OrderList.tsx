@@ -23,9 +23,20 @@ const statusLabels: Record<string, string> = {
 }
 
 function OrderList() {
+  const [isMobile, setIsMobile] = useState(false)
   const [shopId, setShopId] = useState<number | undefined>()
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null)
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
+  
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
   
   // 当筛选条件改变时，重置到第一页
   const handleFilterChange = () => {
@@ -374,24 +385,29 @@ function OrderList() {
       overflow: 'hidden'
     }}>
       <div style={{ 
-        padding: '20px 24px',
+        padding: isMobile ? '16px' : '20px 24px',
         borderBottom: '1px solid var(--border-color, #e1e4e8)',
         background: 'var(--color-bg)'
       }}>
         <h2 style={{ 
           margin: 0,
           marginBottom: '16px',
-          fontSize: '20px',
+          fontSize: isMobile ? '18px' : '20px',
           fontWeight: 600,
           color: 'var(--color-fg)'
         }}>
           订单管理
         </h2>
-        <Space size="middle" wrap>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px' }}>店铺：</span>
+        <Space 
+          size={isMobile ? "small" : "middle"} 
+          wrap 
+          direction={isMobile ? "vertical" : "horizontal"}
+          style={{ width: '100%' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: isMobile ? '100%' : 'auto' }}>
+            <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px', minWidth: isMobile ? '60px' : 'auto' }}>店铺：</span>
             <Select
-              style={{ width: 200 }}
+              style={{ width: isMobile ? '100%' : 200 }}
               placeholder="全部店铺"
               allowClear
               value={shopId}
@@ -405,10 +421,10 @@ function OrderList() {
               })) : []}
             />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px' }}>状态：</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: isMobile ? '100%' : 'auto' }}>
+            <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px', minWidth: isMobile ? '60px' : 'auto' }}>状态：</span>
             <Select
-              style={{ width: 140 }}
+              style={{ width: isMobile ? '100%' : 140 }}
               placeholder="全部状态"
               allowClear
               value={statusFilter}
@@ -425,15 +441,15 @@ function OrderList() {
               ]}
             />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px' }}>日期：</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: isMobile ? '100%' : 'auto' }}>
+            <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px', minWidth: isMobile ? '60px' : 'auto' }}>日期：</span>
             <RangePicker
               onChange={(dates) => {
                 setDateRange(dates as any)
                 handleFilterChange()
               }}
               format="YYYY-MM-DD"
-              style={{ width: 240 }}
+              style={{ width: isMobile ? '100%' : 240 }}
             />
           </div>
         </Space>

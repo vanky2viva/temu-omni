@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Card,
@@ -42,6 +42,18 @@ import { shopApi } from '@/services/api'
 import dayjs from 'dayjs'
 
 function SalesStatistics() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   // 筛选条件
   const [days, setDays] = useState(30)
   const [shopIds, setShopIds] = useState<number[]>([])

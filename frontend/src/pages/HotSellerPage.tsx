@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, Select, Space, Table, Modal, Row, Col, Statistic, Tag, Avatar, Badge } from 'antd'
 import { CrownOutlined, TrophyOutlined, ShoppingOutlined, DollarOutlined } from '@ant-design/icons'
@@ -8,6 +8,17 @@ import axios from 'axios'
 import dayjs from 'dayjs'
 
 function HotSellerPage() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
   const currentDate = dayjs()
   const [year, setYear] = useState(currentDate.year())
   const [month, setMonth] = useState(currentDate.month() + 1)
@@ -280,14 +291,14 @@ function HotSellerPage() {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 24 }}>
+      <h2 style={{ marginBottom: 24, fontSize: isMobile ? '18px' : '24px' }}>
         <CrownOutlined style={{ color: '#faad14', marginRight: 8 }} />
         爆单榜
       </h2>
 
       {/* 筛选条件 */}
       <Card style={{ marginBottom: 16 }}>
-        <Space size="middle" wrap>
+        <Space size={isMobile ? "small" : "middle"} wrap direction={isMobile ? "vertical" : "horizontal"}>
           <span>统计周期：</span>
           <Select
             value={year}
@@ -322,7 +333,7 @@ function HotSellerPage() {
       {rankingData?.ranking && rankingData.ranking.length > 0 && (
         <Row gutter={16} style={{ marginBottom: 16 }}>
           {rankingData.ranking.slice(0, 3).map((item: any, index: number) => (
-            <Col span={8} key={item.rank}>
+            <Col xs={24} sm={12} md={8} lg={8} key={item.rank}>
               <Card
                 hoverable
                 onClick={() => handleRowClick(item)}
@@ -367,7 +378,7 @@ function HotSellerPage() {
 
       {/* GMV图表 */}
       <Card style={{ marginBottom: 16 }}>
-        <ReactECharts option={gmvChartOption} style={{ height: 400 }} />
+        <ReactECharts option={gmvChartOption} style={{ height: isMobile ? 300 : 400 }} />
       </Card>
 
       {/* 完整排行榜表格 */}

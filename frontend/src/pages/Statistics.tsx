@@ -1,10 +1,21 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, Row, Col, Select, Tabs } from 'antd'
 import ReactECharts from 'echarts-for-react'
 import { statisticsApi, shopApi } from '@/services/api'
 
 function Statistics() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
   const [selectedShops, setSelectedShops] = useState<number[]>([])
   const [activeTab, setActiveTab] = useState('daily')
 
@@ -191,14 +202,14 @@ function Statistics() {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 24 }}>数据统计</h2>
+      <h2 style={{ marginBottom: 24, fontSize: isMobile ? '18px' : '24px' }}>数据统计</h2>
 
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span>店铺筛选：</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexDirection: isMobile ? 'column' : 'row' }}>
+          <span style={{ minWidth: isMobile ? '100%' : 'auto' }}>店铺筛选：</span>
           <Select
             mode="multiple"
-            style={{ flex: 1, maxWidth: 500 }}
+            style={{ flex: 1, width: isMobile ? '100%' : 'auto', maxWidth: isMobile ? '100%' : 500 }}
             placeholder="全部店铺"
             allowClear
             onChange={setSelectedShops}
@@ -215,7 +226,7 @@ function Statistics() {
       <Row gutter={16}>
         <Col span={24}>
           <Card>
-            <ReactECharts option={gmvProfitChartOption} style={{ height: 400 }} />
+            <ReactECharts option={gmvProfitChartOption} style={{ height: isMobile ? 300 : 400 }} />
           </Card>
         </Col>
       </Row>
@@ -223,13 +234,13 @@ function Statistics() {
       <Row gutter={16} style={{ marginTop: 16 }}>
         <Col span={24}>
           <Card>
-            <ReactECharts option={orderTrendChartOption} style={{ height: 400 }} />
+            <ReactECharts option={orderTrendChartOption} style={{ height: isMobile ? 300 : 400 }} />
             <div style={{ marginTop: 16, textAlign: 'center' }}>
-              <span style={{ fontSize: 16 }}>
+              <span style={{ fontSize: isMobile ? '14px' : '16px' }}>
                 增长率：
                 <span
                   style={{
-                    fontSize: 20,
+                    fontSize: isMobile ? '18px' : '20px',
                     fontWeight: 'bold',
                     color: (trendData?.growth_rate || 0) >= 0 ? '#52c41a' : '#ff4d4f',
                   }}

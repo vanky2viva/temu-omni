@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Form, Input, Button, Card, message, Typography } from 'antd'
 import { UserOutlined, LockOutlined } from '@ant-design/icons'
@@ -13,7 +13,18 @@ interface LoginForm {
 
 function Login() {
   const [loading, setLoading] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const navigate = useNavigate()
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   const onFinish = async (values: LoginForm) => {
     setLoading(true)
@@ -51,11 +62,22 @@ function Login() {
       alignItems: 'center',
       minHeight: '100vh',
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      padding: '16px',
     }}>
-      <Card style={{ width: 400, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
+      <Card 
+        style={{ 
+          width: '100%',
+          maxWidth: 400,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+        }}
+      >
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <Title level={2}>Temu-Omni</Title>
-          <Text type="secondary">多店铺管理系统</Text>
+          <Title level={2} style={{ fontSize: isMobile ? '24px' : '32px' }}>
+            Temu-Omni
+          </Title>
+          <Text type="secondary" style={{ fontSize: isMobile ? '12px' : '14px' }}>
+            多店铺管理系统
+          </Text>
         </div>
         <Form
           name="login"
@@ -70,6 +92,7 @@ function Login() {
             <Input
               prefix={<UserOutlined />}
               placeholder="用户名或邮箱"
+              style={{ fontSize: '16px' }} // 防止iOS自动缩放
             />
           </Form.Item>
 
@@ -80,15 +103,21 @@ function Login() {
             <Input.Password
               prefix={<LockOutlined />}
               placeholder="密码"
+              style={{ fontSize: '16px' }} // 防止iOS自动缩放
             />
           </Form.Item>
 
-          <Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
             <Button
               type="primary"
               htmlType="submit"
               block
               loading={loading}
+              size="large"
+              style={{
+                height: isMobile ? '44px' : '48px',
+                fontSize: '16px',
+              }}
             >
               登录
             </Button>

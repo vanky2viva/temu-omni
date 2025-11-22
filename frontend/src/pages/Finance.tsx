@@ -7,8 +7,20 @@ import { analyticsApi } from '@/services/api'
 import { calculateOrderCosts, getDailyCollectionForecast } from '@/services/orderCostApi'
 import { statisticsApi } from '@/services/statisticsApi'
 import dayjs from 'dayjs'
+import { useEffect, useState } from 'react'
 
 function Finance() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
   // 获取本月统计数据
   const currentMonth = dayjs().startOf('month').format('YYYY-MM-DD')
   const { data: monthlyStats, isLoading: monthlyStatsLoading } = useQuery({
@@ -210,23 +222,32 @@ function Finance() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px',
       }}>
       <h2 style={{ 
           margin: 0,
         color: '#c9d1d9',
         fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '24px',
+          fontSize: isMobile ? '20px' : '24px',
           fontWeight: 600,
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
       }}>
-          <span style={{ fontSize: '28px' }}>💰</span>
+          <span style={{ fontSize: isMobile ? '24px' : '28px' }}>💰</span>
           财务管理
       </h2>
-        <span style={{ color: '#8b949e', fontSize: '14px' }}>
-          {dayjs().format('YYYY年MM月')} 财务数据
-        </span>
+        {!isMobile && (
+          <span style={{ color: '#8b949e', fontSize: '14px' }}>
+            {dayjs().format('YYYY年MM月')} 财务数据
+          </span>
+        )}
+        {isMobile && (
+          <span style={{ color: '#8b949e', fontSize: '12px' }}>
+            {dayjs().format('MM月')} 数据
+          </span>
+        )}
       </div>
       
       {/* 本月财务概览 */}
@@ -242,12 +263,12 @@ function Finance() {
           本月概览
         </h3>
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col span={8}>
+        <Col xs={24} sm={12} md={8} lg={8}>
           <Card 
             className="stat-card" 
             bordered={false} 
             style={{ 
-              height: '160px',
+              height: isMobile ? '140px' : '160px',
               background: 'linear-gradient(135deg, rgba(88, 166, 255, 0.15) 0%, rgba(88, 166, 255, 0.05) 100%)',
               border: '1px solid rgba(88, 166, 255, 0.3)',
               boxShadow: '0 8px 32px rgba(88, 166, 255, 0.15)',
@@ -292,7 +313,7 @@ function Finance() {
                 <div>
                   <div style={{ 
                     color: '#58a6ff',
-                    fontSize: '32px',
+                    fontSize: isMobile ? '28px' : '32px',
                     fontWeight: 700,
                     fontFamily: 'JetBrains Mono, monospace',
                     lineHeight: '1.2',
@@ -301,20 +322,22 @@ function Finance() {
                   }}>
                     ¥{((monthlyStats?.total_gmv || 0) / 1000).toFixed(1)}k
                   </div>
-                  <div style={{ color: '#8b949e', fontSize: '12px' }}>
-                    {(monthlyStats?.total_gmv || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CNY
-                  </div>
+                  {!isMobile && (
+                    <div style={{ color: '#8b949e', fontSize: '12px' }}>
+                      {(monthlyStats?.total_gmv || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CNY
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} sm={12} md={8} lg={8}>
           <Card 
             className="stat-card" 
             bordered={false} 
             style={{ 
-              height: '160px',
+              height: isMobile ? '140px' : '160px',
               background: 'linear-gradient(135deg, rgba(82, 196, 26, 0.15) 0%, rgba(82, 196, 26, 0.05) 100%)',
               border: '1px solid rgba(82, 196, 26, 0.3)',
               boxShadow: '0 8px 32px rgba(82, 196, 26, 0.15)',
@@ -359,7 +382,7 @@ function Finance() {
                 <div>
                   <div style={{ 
                     color: '#52c41a',
-                    fontSize: '32px',
+                    fontSize: isMobile ? '28px' : '32px',
                     fontWeight: 700,
                     fontFamily: 'JetBrains Mono, monospace',
                     lineHeight: '1.2',
@@ -368,20 +391,22 @@ function Finance() {
                   }}>
                     ¥{((monthlyStats?.total_profit || 0) / 1000).toFixed(1)}k
                   </div>
-                  <div style={{ color: '#8b949e', fontSize: '12px' }}>
-                    {(monthlyStats?.total_profit || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CNY
-                  </div>
+                  {!isMobile && (
+                    <div style={{ color: '#8b949e', fontSize: '12px' }}>
+                      {(monthlyStats?.total_profit || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CNY
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} sm={12} md={8} lg={8}>
           <Card 
             className="stat-card" 
             bordered={false} 
             style={{ 
-              height: '160px',
+              height: isMobile ? '140px' : '160px',
               background: 'linear-gradient(135deg, rgba(114, 46, 209, 0.15) 0%, rgba(114, 46, 209, 0.05) 100%)',
               border: '1px solid rgba(114, 46, 209, 0.3)',
               boxShadow: '0 8px 32px rgba(114, 46, 209, 0.15)',
@@ -426,7 +451,7 @@ function Finance() {
                 <div>
                   <div style={{ 
                     color: '#722ed1',
-                    fontSize: '40px',
+                    fontSize: isMobile ? '36px' : '40px',
                     fontWeight: 700,
                     fontFamily: 'JetBrains Mono, monospace',
                     lineHeight: '1.2',
@@ -435,9 +460,11 @@ function Finance() {
                   }}>
                     {(monthlyStats?.profit_margin || 0).toFixed(2)}%
                   </div>
-                  <div style={{ color: '#8b949e', fontSize: '12px' }}>
-                    盈利能力指标
-                  </div>
+                  {!isMobile && (
+                    <div style={{ color: '#8b949e', fontSize: '12px' }}>
+                      盈利能力指标
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -521,23 +548,23 @@ function Finance() {
                   </div>
                   <div style={{ 
                     color: '#fa8c16',
-                    fontSize: '28px',
+                    fontSize: isMobile ? '24px' : '28px',
                     fontWeight: 700,
                     fontFamily: 'JetBrains Mono, monospace',
                     lineHeight: '1.3',
                     textShadow: '0 0 15px rgba(250, 140, 22, 0.4)',
                   }}>
                     {dailyForecastData.reduce((sum, item) => sum + item.order_count, 0).toLocaleString('zh-CN')}
-                    <span style={{ fontSize: '14px', marginLeft: '4px', color: '#8b949e' }}>单</span>
+                    <span style={{ fontSize: isMobile ? '12px' : '14px', marginLeft: '4px', color: '#8b949e' }}>单</span>
                   </div>
                 </Card>
               </Col>
-              <Col span={6}>
+              <Col xs={24} sm={12} md={6} lg={6}>
                 <Card 
                   className="stat-card" 
                   bordered={false} 
                   style={{ 
-                    height: '140px',
+                    height: isMobile ? '120px' : '140px',
                     background: 'linear-gradient(135deg, rgba(24, 144, 255, 0.12) 0%, rgba(24, 144, 255, 0.04) 100%)',
                     border: '1px solid rgba(24, 144, 255, 0.25)',
                     boxShadow: '0 6px 24px rgba(24, 144, 255, 0.12)',
@@ -571,25 +598,27 @@ function Finance() {
                   </div>
                   <div style={{ 
                     color: '#1890ff',
-                    fontSize: '24px',
+                    fontSize: isMobile ? '20px' : '24px',
                     fontWeight: 700,
                     fontFamily: 'JetBrains Mono, monospace',
                     lineHeight: '1.3',
                     textShadow: '0 0 15px rgba(24, 144, 255, 0.4)',
                   }}>
                     ¥{(dailyForecastData.reduce((sum, item) => sum + item.total_amount, 0) / 1000).toFixed(1)}k
-                    <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '2px', fontWeight: 400 }}>
-                      {dailyForecastData.reduce((sum, item) => sum + item.total_amount, 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })} CNY
-                    </div>
+                    {!isMobile && (
+                      <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '2px', fontWeight: 400 }}>
+                        {dailyForecastData.reduce((sum, item) => sum + item.total_amount, 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })} CNY
+                      </div>
+                    )}
                   </div>
                 </Card>
               </Col>
-              <Col span={6}>
+              <Col xs={24} sm={12} md={6} lg={6}>
                 <Card 
                   className="stat-card" 
                   bordered={false} 
                   style={{ 
-                    height: '140px',
+                    height: isMobile ? '120px' : '140px',
                     background: 'linear-gradient(135deg, rgba(245, 34, 45, 0.12) 0%, rgba(245, 34, 45, 0.04) 100%)',
                     border: '1px solid rgba(245, 34, 45, 0.25)',
                     boxShadow: '0 6px 24px rgba(245, 34, 45, 0.12)',
@@ -623,25 +652,27 @@ function Finance() {
                   </div>
                   <div style={{ 
                     color: '#f5222d',
-                    fontSize: '24px',
+                    fontSize: isMobile ? '20px' : '24px',
                     fontWeight: 700,
                     fontFamily: 'JetBrains Mono, monospace',
                     lineHeight: '1.3',
                     textShadow: '0 0 15px rgba(245, 34, 45, 0.4)',
                   }}>
                     ¥{(dailyForecastData.reduce((sum, item) => sum + item.total_cost, 0) / 1000).toFixed(1)}k
-                    <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '2px', fontWeight: 400 }}>
-                      {dailyForecastData.reduce((sum, item) => sum + item.total_cost, 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })} CNY
-                    </div>
+                    {!isMobile && (
+                      <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '2px', fontWeight: 400 }}>
+                        {dailyForecastData.reduce((sum, item) => sum + item.total_cost, 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })} CNY
+                      </div>
+                    )}
                   </div>
                 </Card>
               </Col>
-              <Col span={6}>
+              <Col xs={24} sm={12} md={6} lg={6}>
                 <Card 
                   className="stat-card" 
                   bordered={false} 
                   style={{ 
-                    height: '140px',
+                    height: isMobile ? '120px' : '140px',
                     background: 'linear-gradient(135deg, rgba(82, 196, 26, 0.12) 0%, rgba(82, 196, 26, 0.04) 100%)',
                     border: '1px solid rgba(82, 196, 26, 0.25)',
                     boxShadow: '0 6px 24px rgba(82, 196, 26, 0.12)',
@@ -675,16 +706,18 @@ function Finance() {
                   </div>
                   <div style={{ 
                     color: '#52c41a',
-                    fontSize: '24px',
+                    fontSize: isMobile ? '20px' : '24px',
                     fontWeight: 700,
                     fontFamily: 'JetBrains Mono, monospace',
                     lineHeight: '1.3',
                     textShadow: '0 0 15px rgba(82, 196, 26, 0.4)',
                   }}>
                     ¥{(dailyForecastData.reduce((sum, item) => sum + item.total_profit, 0) / 1000).toFixed(1)}k
-                    <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '2px', fontWeight: 400 }}>
-                      {dailyForecastData.reduce((sum, item) => sum + item.total_profit, 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })} CNY
-                    </div>
+                    {!isMobile && (
+                      <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '2px', fontWeight: 400 }}>
+                        {dailyForecastData.reduce((sum, item) => sum + item.total_profit, 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })} CNY
+                      </div>
+                    )}
                   </div>
                 </Card>
               </Col>
@@ -714,7 +747,10 @@ function Finance() {
           {/* 回款趋势折线图 - 移到表格上方 */}
           {collectionChartOption && (
             <Card className="chart-card" style={{ marginBottom: 32 }}>
-              <ReactECharts option={collectionChartOption} style={{ height: 450 }} />
+              <ReactECharts 
+                option={collectionChartOption} 
+                style={{ height: isMobile ? 300 : 450 }} 
+              />
           </Card>
           )}
 

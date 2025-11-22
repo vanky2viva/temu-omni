@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, Table, Space, Select, DatePicker, Row, Col } from 'antd'
 import ReactECharts from 'echarts-for-react'
@@ -9,6 +9,17 @@ import dayjs from 'dayjs'
 const { RangePicker } = DatePicker
 
 function SkuAnalysis() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
   const [selectedShops, setSelectedShops] = useState<number[]>([])
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>([
     dayjs().subtract(30, 'day'),
@@ -198,11 +209,11 @@ function SkuAnalysis() {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 24 }}>SKU销量分析</h2>
+      <h2 style={{ marginBottom: 24, fontSize: isMobile ? '18px' : '24px' }}>SKU销量分析</h2>
 
       {/* 筛选条件 */}
       <Card style={{ marginBottom: 16 }}>
-        <Space size="middle" wrap>
+        <Space size={isMobile ? "small" : "middle"} wrap direction={isMobile ? "vertical" : "horizontal"}>
           <span>店铺筛选：</span>
           <Select
             mode="multiple"
@@ -241,14 +252,14 @@ function SkuAnalysis() {
 
       {/* 图表 */}
       <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={12}>
+        <Col xs={24} sm={24} md={12} lg={12}>
           <Card loading={isLoading}>
-            <ReactECharts option={quantityChartOption} style={{ height: 400 }} />
+            <ReactECharts option={quantityChartOption} style={{ height: isMobile ? 300 : 400 }} />
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} sm={24} md={12} lg={12}>
           <Card loading={isLoading}>
-            <ReactECharts option={gmvChartOption} style={{ height: 400 }} />
+            <ReactECharts option={gmvChartOption} style={{ height: isMobile ? 300 : 400 }} />
           </Card>
         </Col>
       </Row>

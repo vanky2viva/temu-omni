@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Table, Card, Select, Space, DatePicker, Statistic, Row, Col } from 'antd'
 import { DollarOutlined, RiseOutlined, ShoppingOutlined } from '@ant-design/icons'
@@ -9,6 +9,17 @@ import dayjs from 'dayjs'
 const { RangePicker } = DatePicker
 
 function GmvTable() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
   const [periodType, setPeriodType] = useState('month')
   const [periods, setPeriods] = useState(12)
   const [selectedShops, setSelectedShops] = useState<number[]>([])
@@ -114,12 +125,12 @@ function GmvTable() {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 24 }}>GMV数据表格</h2>
+      <h2 style={{ marginBottom: 24, fontSize: isMobile ? '18px' : '24px' }}>GMV数据表格</h2>
 
       {/* 汇总卡片 */}
       {summary && (
         <Row gutter={16} style={{ marginBottom: 24 }}>
-          <Col span={6}>
+          <Col xs={24} sm={12} md={6} lg={6}>
             <Card>
               <Statistic
                 title="总订单量"
@@ -128,7 +139,7 @@ function GmvTable() {
               />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={24} sm={12} md={6} lg={6}>
             <Card>
               <Statistic
                 title="总GMV"
@@ -139,7 +150,7 @@ function GmvTable() {
               />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={24} sm={12} md={6} lg={6}>
             <Card>
               <Statistic
                 title="总利润"
@@ -151,7 +162,7 @@ function GmvTable() {
               />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={24} sm={12} md={6} lg={6}>
             <Card>
               <Statistic
                 title="平均利润率"
@@ -167,7 +178,7 @@ function GmvTable() {
 
       {/* 筛选条件 */}
       <Card style={{ marginBottom: 16 }}>
-        <Space size="middle" wrap>
+        <Space size={isMobile ? "small" : "middle"} wrap direction={isMobile ? "vertical" : "horizontal"}>
           <span>周期类型：</span>
           <Select
             value={periodType}
