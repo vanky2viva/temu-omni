@@ -22,11 +22,14 @@ function Finance() {
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
   // 获取本月统计数据
+  // 使用与销量统计页面相同的数据源，确保数据一致
   const currentMonth = dayjs().startOf('month').format('YYYY-MM-DD')
+  const currentMonthEnd = dayjs().endOf('month').format('YYYY-MM-DD')
   const { data: monthlyStats, isLoading: monthlyStatsLoading } = useQuery({
-    queryKey: ['monthly-statistics', currentMonth],
-    queryFn: () => statisticsApi.getOverview({
+    queryKey: ['sales-overview', currentMonth, currentMonthEnd],
+    queryFn: () => analyticsApi.getSalesOverview({
       start_date: currentMonth,
+      end_date: currentMonthEnd,
     }),
     staleTime: 0,
   })
@@ -458,7 +461,10 @@ function Finance() {
                     marginBottom: '4px',
                     textShadow: '0 0 20px rgba(114, 46, 209, 0.5)',
                   }}>
-                    {(monthlyStats?.profit_margin || 0).toFixed(2)}%
+                    {monthlyStats?.total_gmv && monthlyStats?.total_gmv > 0 
+                      ? ((monthlyStats?.total_profit || 0) / monthlyStats.total_gmv * 100).toFixed(2)
+                      : '0.00'
+                    }%
                   </div>
                   {!isMobile && (
                     <div style={{ color: '#8b949e', fontSize: '12px' }}>

@@ -416,7 +416,8 @@ def build_sales_filters(
     统计规则：
     - 有效订单：只统计状态为'已发货'（SHIPPED）、'待发货'（PROCESSING）、'已签收'（DELIVERED）的订单
     - 注意：'平台处理中'（映射为PAID）不计入销量统计
-    - 订单量口径：每个不同的订单号为一单
+    - 订单量口径：一个不重复的父订单号记为一单（如果parent_order_sn存在，使用parent_order_sn；否则使用order_sn）
+    - 销售件数：子订单内商品数量累计（quantity之和）
     - SKU销量：每一行乘以应履约件数（quantity）为SKU的销量
     """
     filters = []
@@ -473,7 +474,9 @@ def build_sales_filters(
 
 @router.get("/sales-overview")
 def get_sales_overview(
-    days: int = Query(30, description="统计天数，默认30天"),
+    days: Optional[int] = Query(None, description="统计天数（如果未提供start_date和end_date则使用此参数，默认30天）"),
+    start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
+    end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
     shop_ids: Optional[List[int]] = Query(None, description="店铺ID列表"),
     manager: Optional[str] = Query(None, description="负责人"),
     region: Optional[str] = Query(None, description="地区"),
@@ -484,38 +487,94 @@ def get_sales_overview(
     """
     获取销量统计总览
     
+    统计口径：
+    - 订单数：一个不重复的父订单号记为一单（如果parent_order_sn存在，使用parent_order_sn；否则使用order_sn）
+    - 销售件数：子订单内商品数量累计（quantity之和）
+    - 只统计有效订单（PROCESSING、SHIPPED、DELIVERED）
+    - 如果没有提供日期范围，统计所有时间的订单（与订单列表页面保持一致）
+    
     Returns:
-        - 总销量（件数）
-        - 总订单数
-        - GMV（预留，暂无数据）
-        - 利润（预留）
+        - 总销量（件数）：子订单内商品数量累计
+        - 总订单数（按父订单号去重，只统计有效订单）
+        - GMV（收入）：统一转换为CNY
+        - 利润：统一转换为CNY
         - 按天的趋势数据
         - 按店铺分组的趋势数据
     """
+    # 解析日期字符串
+    start_dt = None
+    end_dt = None
+    
+    if start_date:
+        try:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        except ValueError:
+            # 如果是日期格式，添加时间部分（设置为当天的开始时间）
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        # 转换为香港时区
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=HK_TIMEZONE)
+        else:
+            start_dt = start_dt.astimezone(HK_TIMEZONE)
+    
+    if end_date:
+        try:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        except ValueError:
+            # 如果是日期格式，添加时间部分（设置为当天的结束时间）
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            # 设置为当天的23:59:59
+            end_dt = end_dt.replace(hour=23, minute=59, second=59)
+        # 转换为香港时区
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=HK_TIMEZONE)
+        else:
+            end_dt = end_dt.astimezone(HK_TIMEZONE)
+    
     # 计算时间范围（香港时区）
-    end_date = get_hk_now()
-    start_date = end_date - timedelta(days=days)
+    # 如果没有提供日期范围，不应用时间筛选（统计所有时间的订单）
+    # 这样与订单列表页面的行为保持一致
+    if start_dt and end_dt:
+        # 如果提供了start_date和end_date，使用它们
+        start_date = start_dt
+        end_date = end_dt
+    else:
+        # 如果没有提供日期范围，不应用时间筛选（统计所有时间）
+        # 注意：这里不设置start_date和end_date，让build_sales_filters不应用时间筛选
+        start_date = None
+        end_date = None
     
     # 构建查询条件
     filters = build_sales_filters(
         db, start_date, end_date, shop_ids, manager, region, sku_search
     )
     
-    # 总销量和总订单数
-    # 总销量：所有行的quantity之和
-    # 总订单数：不同的订单号数量（每个订单号为一单）
+    # 总销量、总订单数、GMV和利润
+    # 总销量：所有行的quantity之和（子订单内商品数量累计）
+    # 总订单数：按父订单号去重统计（一个不重复的父订单号记为一单）
+    #   如果parent_order_sn存在，使用parent_order_sn；否则使用order_sn
+    # GMV和利润：统一转换为CNY
+    from sqlalchemy import case
+    parent_order_key = case(
+        (Order.parent_order_sn.isnot(None), Order.parent_order_sn),
+        else_=Order.order_sn
+    )
+    
+    usd_rate = CurrencyConverter.USD_TO_CNY_RATE
     total_stats = db.query(
-        func.sum(Order.quantity).label("total_quantity"),
-        func.count(func.distinct(Order.order_sn)).label("total_orders"),  # 按订单号去重统计
+        func.sum(Order.quantity).label("total_quantity"),  # 销售件数：子订单内商品数量累计
+        func.count(func.distinct(parent_order_key)).label("total_orders"),  # 按父订单号去重统计
+        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("total_gmv"),
+        func.sum(_convert_to_cny(Order.profit, usd_rate)).label("total_profit"),
     ).filter(and_(*filters)).first()
     
     # 按天统计趋势
-    # 销量：quantity之和
-    # 订单数：不同的订单号数量（按订单号去重）
+    # 销量：quantity之和（子订单内商品数量累计）
+    # 订单数：按父订单号去重统计
     daily_trends = db.query(
         func.date(Order.order_time).label("date"),
         func.sum(Order.quantity).label("quantity"),
-        func.count(func.distinct(Order.order_sn)).label("orders"),  # 按订单号去重统计
+        func.count(func.distinct(parent_order_key)).label("orders"),  # 按父订单号去重统计
     ).filter(and_(*filters)).group_by(
         func.date(Order.order_time)
     ).order_by(
@@ -523,13 +582,13 @@ def get_sales_overview(
     ).all()
     
     # 按店铺统计趋势
-    # 销量：quantity之和
-    # 订单数：不同的订单号数量（按订单号去重）
+    # 销量：quantity之和（子订单内商品数量累计）
+    # 订单数：按父订单号去重统计
     shop_trends = db.query(
         func.date(Order.order_time).label("date"),
         Shop.shop_name.label("shop_name"),
         func.sum(Order.quantity).label("quantity"),
-        func.count(func.distinct(Order.order_sn)).label("orders"),  # 按订单号去重统计
+        func.count(func.distinct(parent_order_key)).label("orders"),  # 按父订单号去重统计
     ).join(
         Shop, Shop.id == Order.shop_id
     ).filter(and_(*filters)).group_by(
@@ -561,24 +620,38 @@ def get_sales_overview(
             "orders": int(trend.orders or 0),
         })
     
-    return {
-        "total_quantity": int(total_stats.total_quantity or 0),
-        "total_orders": int(total_stats.total_orders or 0),
-        "total_gmv": None,  # 预留，暂无数据
-        "total_profit": None,  # 预留，暂无数据
-        "daily_trends": daily_data,
-        "shop_trends": shop_daily_data,
-        "period": {
+    # 计算实际使用的天数（用于返回）
+    if start_date and end_date:
+        actual_days = (end_date - start_date).days + 1
+        period_info = {
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
-            "days": days
+            "days": actual_days
         }
+    else:
+        # 如果没有日期范围，返回None表示统计所有时间
+        period_info = {
+            "start_date": None,
+            "end_date": None,
+            "days": None
+        }
+    
+    return {
+        "total_quantity": int(total_stats.total_quantity or 0),
+        "total_orders": int(total_stats.total_orders or 0),  # 按父订单号去重，只统计有效订单
+        "total_gmv": float(total_stats.total_gmv or 0),  # GMV（收入），统一转换为CNY
+        "total_profit": float(total_stats.total_profit or 0),  # 利润，统一转换为CNY
+        "daily_trends": daily_data,
+        "shop_trends": shop_daily_data,
+        "period": period_info
     }
 
 
 @router.get("/sku-sales-ranking")
 def get_sku_sales_ranking(
-    days: int = Query(30, description="统计天数，默认30天"),
+    days: Optional[int] = Query(None, description="统计天数（如果未提供start_date和end_date则使用此参数，默认30天）"),
+    start_date: Optional[datetime] = Query(None, description="开始日期"),
+    end_date: Optional[datetime] = Query(None, description="结束日期"),
     shop_ids: Optional[List[int]] = Query(None, description="店铺ID列表"),
     manager: Optional[str] = Query(None, description="负责人"),
     region: Optional[str] = Query(None, description="地区"),
@@ -593,8 +666,15 @@ def get_sku_sales_ranking(
     通过 product_sku 关联订单和商品表
     """
     # 计算时间范围（香港时区）
-    end_date = get_hk_now()
-    start_date = end_date - timedelta(days=days)
+    if start_date and end_date:
+        # 如果提供了start_date和end_date，使用它们
+        start_date = start_date.replace(tzinfo=HK_TIMEZONE) if start_date.tzinfo is None else start_date
+        end_date = end_date.replace(tzinfo=HK_TIMEZONE) if end_date.tzinfo is None else end_date
+    else:
+        # 否则使用days参数
+        end_date = get_hk_now()
+        days = days or 30
+        start_date = end_date - timedelta(days=days)
     
     # 构建查询条件
     filters = build_sales_filters(
@@ -607,11 +687,15 @@ def get_sku_sales_ranking(
     # SKU销量 = quantity之和
     
     # 先统计有product_sku的订单（直接从订单表统计，不关联商品表）
+    # 统一转换为CNY
+    usd_rate = CurrencyConverter.USD_TO_CNY_RATE
     sku_stats = db.query(
         Order.product_sku.label("sku"),
         func.max(Order.product_name).label("product_name_from_order"),
         func.sum(Order.quantity).label("total_quantity"),
         func.count(func.distinct(Order.order_sn)).label("order_count"),
+        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("total_gmv"),
+        func.sum(_convert_to_cny(Order.profit, usd_rate)).label("total_profit"),
     ).filter(
         and_(*filters),
         Order.product_sku.isnot(None),
@@ -648,12 +732,16 @@ def get_sku_sales_ranking(
         func.max(product_info.c.manager).label("manager"),
         sku_stats.c.total_quantity.label("total_quantity"),
         sku_stats.c.order_count.label("order_count"),
+        sku_stats.c.total_gmv.label("total_gmv"),
+        sku_stats.c.total_profit.label("total_profit"),
     ).outerjoin(
         product_info, sku_stats.c.sku == product_info.c.product_sku
     ).group_by(
         sku_stats.c.sku,
         sku_stats.c.total_quantity,
-        sku_stats.c.order_count
+        sku_stats.c.order_count,
+        sku_stats.c.total_gmv,
+        sku_stats.c.total_profit
     ).order_by(
         sku_stats.c.total_quantity.desc()
     ).limit(limit).all()
@@ -671,16 +759,19 @@ def get_sku_sales_ranking(
             "spu_id": None,  # 等数据库迁移后再启用
             "quantity": int(row.total_quantity or 0),
             "orders": int(row.order_count or 0),
-            "gmv": None,  # 预留
-            "profit": None,  # 预留
+            "gmv": float(row.total_gmv or 0),
+            "profit": float(row.total_profit or 0),
         })
+    
+    # 计算实际使用的天数（用于返回）
+    actual_days = (end_date - start_date).days + 1
     
     return {
         "ranking": ranking,
         "period": {
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
-            "days": days
+            "days": actual_days
         }
     }
 

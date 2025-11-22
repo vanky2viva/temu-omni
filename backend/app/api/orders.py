@@ -318,35 +318,65 @@ def get_order_status_statistics(
         end_date: 结束日期（可选）
     
     Returns:
-        订单状态统计信息，包括总订单数（不含已取消）、未发货、已发货、已送达、延误订单数、延误率
+        订单状态统计信息，包括总订单数（只统计有效订单：待发货、已发货、已签收）、未发货、已发货、已送达、延误订单数、延误率
     """
     from datetime import datetime, timedelta
     
-    # 构建查询，排除已取消的订单
-    query = db.query(Order).filter(Order.status != OrderStatus.CANCELLED)
+    # 构建查询，只统计有效订单（与销量统计保持一致）
+    # 统计口径：一个不重复的父订单号记为一单
+    # 只统计有效订单状态：PROCESSING（待发货）、SHIPPED（已发货）、DELIVERED（已签收）
+    # 排除：PENDING（待支付）、PAID（平台处理中）、CANCELLED（已取消）、REFUNDED（已退款）
+    from sqlalchemy import func, and_
+    
+    filters = [Order.status.in_([
+        OrderStatus.PROCESSING,  # 待发货 - 计入统计
+        OrderStatus.SHIPPED,     # 已发货 - 计入统计
+        OrderStatus.DELIVERED    # 已签收 - 计入统计
+    ])]
     
     # 优先使用多选店铺，如果没有则使用单选
     if shop_ids and len(shop_ids) > 0:
-        query = query.filter(Order.shop_id.in_(shop_ids))
+        filters.append(Order.shop_id.in_(shop_ids))
     elif shop_id:
-        query = query.filter(Order.shop_id == shop_id)
+        filters.append(Order.shop_id == shop_id)
     
     if start_date:
-        query = query.filter(Order.order_time >= start_date)
+        filters.append(Order.order_time >= start_date)
     
     if end_date:
-        query = query.filter(Order.order_time <= end_date)
+        filters.append(Order.order_time <= end_date)
     
-    # 获取所有订单
-    orders = query.all()
+    # 按父订单号去重统计总订单数（排除取消订单）
+    # 统计口径：一个不重复的父订单号记为一单
+    # 如果parent_order_sn存在，使用parent_order_sn；否则使用order_sn
+    from sqlalchemy import case
+    parent_order_key = case(
+        (Order.parent_order_sn.isnot(None), Order.parent_order_sn),
+        else_=Order.order_sn
+    )
     
-    # 统计各状态订单数
-    total_orders = len(orders)
-    processing = sum(1 for o in orders if o.status == OrderStatus.PROCESSING)
-    shipped = sum(1 for o in orders if o.status == OrderStatus.SHIPPED)
-    delivered = sum(1 for o in orders if o.status == OrderStatus.DELIVERED)
+    total_orders_result = db.query(
+        func.count(func.distinct(parent_order_key)).label("total_orders")
+    ).filter(and_(*filters)).first()
+    total_orders = total_orders_result.total_orders or 0
     
-    # 计算延误订单数
+    # 统计各状态订单数（按父订单号去重）
+    processing_result = db.query(
+        func.count(func.distinct(parent_order_key)).label("count")
+    ).filter(and_(*filters, Order.status == OrderStatus.PROCESSING)).first()
+    processing = processing_result.count or 0
+    
+    shipped_result = db.query(
+        func.count(func.distinct(parent_order_key)).label("count")
+    ).filter(and_(*filters, Order.status == OrderStatus.SHIPPED)).first()
+    shipped = shipped_result.count or 0
+    
+    delivered_result = db.query(
+        func.count(func.distinct(parent_order_key)).label("count")
+    ).filter(and_(*filters, Order.status == OrderStatus.DELIVERED)).first()
+    delivered = delivered_result.count or 0
+    
+    # 计算延误订单数（按父订单号去重）
     # 延误判断逻辑：
     # 1. 优先从raw_data中获取latestDeliveryTime（最晚送达时间）
     # 2. 如果没有latestDeliveryTime，使用expect_ship_latest_time+14天作为估算
@@ -355,7 +385,11 @@ def get_order_status_statistics(
     import json
     
     now = datetime.utcnow()
-    delayed_orders = 0
+    delayed_parent_orders = set()  # 使用set来去重父订单号
+    
+    # 获取所有订单记录用于延误判断
+    query = db.query(Order).filter(and_(*filters))
+    orders = query.all()
     
     for order in orders:
         is_delayed = False
@@ -414,12 +448,16 @@ def get_order_status_statistics(
                 is_delayed = True
         
         if is_delayed:
-            delayed_orders += 1
+            # 使用父订单号作为key（如果存在），否则使用订单号
+            parent_order_key_value = order.parent_order_sn if order.parent_order_sn else order.order_sn
+            delayed_parent_orders.add(parent_order_key_value)
+    
+    delayed_orders = len(delayed_parent_orders)
     
     # 计算延误率
     delay_rate = (delayed_orders / total_orders * 100) if total_orders > 0 else 0.0
     
-    # 计算7日趋势数据
+    # 计算7日趋势数据（按订单号去重统计）
     trends = {}
     today_changes = {}
     week_changes = {}
@@ -430,7 +468,7 @@ def get_order_status_statistics(
         week_ago_start = today_start - timedelta(days=7)
         two_weeks_ago_start = week_ago_start - timedelta(days=7)
         
-        # 计算7日趋势（每日订单数统计）
+        # 计算7日趋势（每日订单数统计，按订单号去重）
         trend_days = 7
         trends['total'] = []
         trends['processing'] = []
@@ -441,34 +479,66 @@ def get_order_status_statistics(
             day_start = today_start - timedelta(days=trend_days - 1 - i)
             day_end = day_start + timedelta(days=1)
             
-            day_orders = [o for o in orders if day_start <= o.order_time < day_end]
-            trends['total'].append(len(day_orders))
-            trends['processing'].append(sum(1 for o in day_orders if o.status == OrderStatus.PROCESSING))
-            trends['shipped'].append(sum(1 for o in day_orders if o.status == OrderStatus.SHIPPED))
-            trends['delivered'].append(sum(1 for o in day_orders if o.status == OrderStatus.DELIVERED))
+            # 按父订单号去重统计每日订单数
+            day_filters = filters + [Order.order_time >= day_start, Order.order_time < day_end]
+            day_total = db.query(func.count(func.distinct(parent_order_key))).filter(and_(*day_filters)).scalar() or 0
+            trends['total'].append(day_total)
+            
+            day_processing = db.query(func.count(func.distinct(parent_order_key))).filter(
+                and_(*day_filters, Order.status == OrderStatus.PROCESSING)
+            ).scalar() or 0
+            trends['processing'].append(day_processing)
+            
+            day_shipped = db.query(func.count(func.distinct(parent_order_key))).filter(
+                and_(*day_filters, Order.status == OrderStatus.SHIPPED)
+            ).scalar() or 0
+            trends['shipped'].append(day_shipped)
+            
+            day_delivered = db.query(func.count(func.distinct(parent_order_key))).filter(
+                and_(*day_filters, Order.status == OrderStatus.DELIVERED)
+            ).scalar() or 0
+            trends['delivered'].append(day_delivered)
         
-        # 计算今日新增
-        today_orders = [o for o in orders if o.order_time >= today_start]
-        today_changes['total'] = len(today_orders)
-        today_changes['processing'] = sum(1 for o in today_orders if o.status == OrderStatus.PROCESSING)
-        today_changes['shipped'] = sum(1 for o in today_orders if o.status == OrderStatus.SHIPPED)
-        today_changes['delivered'] = sum(1 for o in today_orders if o.status == OrderStatus.DELIVERED)
+        # 计算今日新增（按父订单号去重）
+        today_filters = filters + [Order.order_time >= today_start]
+        today_changes['total'] = db.query(func.count(func.distinct(parent_order_key))).filter(and_(*today_filters)).scalar() or 0
+        today_changes['processing'] = db.query(func.count(func.distinct(parent_order_key))).filter(
+            and_(*today_filters, Order.status == OrderStatus.PROCESSING)
+        ).scalar() or 0
+        today_changes['shipped'] = db.query(func.count(func.distinct(parent_order_key))).filter(
+            and_(*today_filters, Order.status == OrderStatus.SHIPPED)
+        ).scalar() or 0
+        today_changes['delivered'] = db.query(func.count(func.distinct(parent_order_key))).filter(
+            and_(*today_filters, Order.status == OrderStatus.DELIVERED)
+        ).scalar() or 0
         
-        # 计算周对比变化率
-        week_orders = [o for o in orders if week_ago_start <= o.order_time < today_start]
-        two_weeks_ago_orders = [o for o in orders if two_weeks_ago_start <= o.order_time < week_ago_start]
+        # 计算周对比变化率（按父订单号去重）
+        week_filters = filters + [Order.order_time >= week_ago_start, Order.order_time < today_start]
+        two_weeks_ago_filters = filters + [Order.order_time >= two_weeks_ago_start, Order.order_time < week_ago_start]
         
-        week_total = len(week_orders)
-        two_weeks_ago_total = len(two_weeks_ago_orders)
+        week_total = db.query(func.count(func.distinct(parent_order_key))).filter(and_(*week_filters)).scalar() or 0
+        two_weeks_ago_total = db.query(func.count(func.distinct(parent_order_key))).filter(and_(*two_weeks_ago_filters)).scalar() or 0
         
-        week_processing = sum(1 for o in week_orders if o.status == OrderStatus.PROCESSING)
-        two_weeks_ago_processing = sum(1 for o in two_weeks_ago_orders if o.status == OrderStatus.PROCESSING)
+        week_processing = db.query(func.count(func.distinct(parent_order_key))).filter(
+            and_(*week_filters, Order.status == OrderStatus.PROCESSING)
+        ).scalar() or 0
+        two_weeks_ago_processing = db.query(func.count(func.distinct(parent_order_key))).filter(
+            and_(*two_weeks_ago_filters, Order.status == OrderStatus.PROCESSING)
+        ).scalar() or 0
         
-        week_shipped = sum(1 for o in week_orders if o.status == OrderStatus.SHIPPED)
-        two_weeks_ago_shipped = sum(1 for o in two_weeks_ago_orders if o.status == OrderStatus.SHIPPED)
+        week_shipped = db.query(func.count(func.distinct(parent_order_key))).filter(
+            and_(*week_filters, Order.status == OrderStatus.SHIPPED)
+        ).scalar() or 0
+        two_weeks_ago_shipped = db.query(func.count(func.distinct(parent_order_key))).filter(
+            and_(*two_weeks_ago_filters, Order.status == OrderStatus.SHIPPED)
+        ).scalar() or 0
         
-        week_delivered = sum(1 for o in week_orders if o.status == OrderStatus.DELIVERED)
-        two_weeks_ago_delivered = sum(1 for o in two_weeks_ago_orders if o.status == OrderStatus.DELIVERED)
+        week_delivered = db.query(func.count(func.distinct(parent_order_key))).filter(
+            and_(*week_filters, Order.status == OrderStatus.DELIVERED)
+        ).scalar() or 0
+        two_weeks_ago_delivered = db.query(func.count(func.distinct(parent_order_key))).filter(
+            and_(*two_weeks_ago_filters, Order.status == OrderStatus.DELIVERED)
+        ).scalar() or 0
         
         # 计算变化率（百分比）
         def calc_change_rate(current, previous):

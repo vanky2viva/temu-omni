@@ -1,12 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Card,
-  Row,
-  Col,
-  Statistic,
   Select,
-  Input,
   Space,
   Tabs,
   Table,
@@ -14,31 +9,32 @@ import {
   Button,
   Badge,
   Tooltip,
+  DatePicker,
   Dropdown,
 } from 'antd'
 import type { MenuProps } from 'antd'
+import type { Dayjs } from 'dayjs'
 import {
   ShoppingOutlined,
   DollarOutlined,
   RiseOutlined,
-  SearchOutlined,
   ThunderboltOutlined,
   LineChartOutlined,
   TeamOutlined,
   ReloadOutlined,
   FilterOutlined,
-  ExportOutlined,
+  CalendarOutlined,
+  CheckCircleOutlined,
   RocketOutlined,
   AppstoreOutlined,
   BarChartOutlined,
   TrophyOutlined,
   GlobalOutlined,
-  CalendarOutlined,
-  CheckCircleOutlined,
+  PercentageOutlined,
 } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import axios from 'axios'
-import { shopApi } from '@/services/api'
+import { shopApi, analyticsApi } from '@/services/api'
 import dayjs from 'dayjs'
 
 function SalesStatistics() {
@@ -55,97 +51,164 @@ function SalesStatistics() {
   }, [])
 
   // 筛选条件
-  const [days, setDays] = useState(30)
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null)
   const [shopIds, setShopIds] = useState<number[]>([])
   const [manager, setManager] = useState<string | undefined>()
   const [region, setRegion] = useState<string | undefined>()
-  const [skuSearch, setSkuSearch] = useState<string>('')
-  const [activeTab, setActiveTab] = useState('spu')
+  const [activeTab, setActiveTab] = useState('sku')
+
+  const { RangePicker } = DatePicker
 
   // 获取店铺列表
-  const { data: shops, refetch: refetchShops } = useQuery({
+  const { data: shops } = useQuery({
     queryKey: ['shops'],
     queryFn: shopApi.getShops,
   })
 
-  // 获取销量总览数据
+  // 获取销量总览数据 - 使用与仪表盘相同的数据源
   const { data: salesOverview, isLoading: overviewLoading, refetch: refetchOverview } = useQuery({
-    queryKey: ['sales-overview', days, shopIds, manager, region, skuSearch],
+    queryKey: ['sales-overview', dateRange, shopIds, manager, region],
     queryFn: async () => {
-      const params: any = { days }
-      if (shopIds.length > 0) params.shop_ids = shopIds
-      if (manager) params.manager = manager
-      if (region) params.region = region
-      if (skuSearch) params.sku_search = skuSearch
-      const response = await axios.get('/api/analytics/sales-overview', { params })
-      return response.data
+      try {
+        const params: any = {}
+        // 使用 start_date 和 end_date 参数
+        if (dateRange && dateRange[0] && dateRange[1]) {
+          params.start_date = dateRange[0].format('YYYY-MM-DD')
+          params.end_date = dateRange[1].format('YYYY-MM-DD')
+        }
+        // 如果没有日期范围，不传日期参数，后端会使用默认值（最近30天）
+        if (shopIds.length > 0) params.shop_ids = shopIds
+        if (manager) params.manager = manager
+        if (region) params.region = region
+        return await analyticsApi.getSalesOverview(params)
+      } catch (error: any) {
+        console.error('Failed to fetch sales overview:', error)
+        // 返回空数据，避免页面崩溃
+        return {
+          total_quantity: 0,
+          total_orders: 0,
+          total_gmv: 0,
+          total_profit: 0,
+          daily_trends: [],
+          shop_trends: {},
+        }
+      }
     },
   })
 
-  // 获取SPU销量排行
-  const { data: spuRanking, isLoading: spuLoading, refetch: refetchSpu } = useQuery({
-    queryKey: ['spu-sales-ranking', days, shopIds, manager, region, skuSearch],
+  // 获取SKU销量排行
+  const { data: skuRanking, isLoading: skuLoading, refetch: refetchSku } = useQuery({
+    queryKey: ['sku-sales-ranking', dateRange, shopIds, manager, region],
     queryFn: async () => {
-      const params: any = { days, limit: 100 }
+      try {
+        const params: any = { limit: 100 }
+        // 使用 start_date 和 end_date 参数
+        if (dateRange && dateRange[0] && dateRange[1]) {
+          params.start_date = dateRange[0].format('YYYY-MM-DD')
+          params.end_date = dateRange[1].format('YYYY-MM-DD')
+        }
+        // 如果没有日期范围，不传日期参数，后端会使用默认值（最近30天）
       if (shopIds.length > 0) params.shop_ids = shopIds
       if (manager) params.manager = manager
       if (region) params.region = region
-      if (skuSearch) params.sku_search = skuSearch
-      const response = await axios.get('/api/analytics/spu-sales-ranking', { params })
+        const response = await axios.get('/api/analytics/sku-sales-ranking', { params })
       return response.data
+      } catch (error: any) {
+        console.error('Failed to fetch SKU ranking:', error)
+        return { ranking: [] }
+      }
     },
-    enabled: activeTab === 'spu',
+    enabled: activeTab === 'sku',
   })
 
   // 获取负责人销量统计
   const { data: managerSales, isLoading: managerLoading, refetch: refetchManager } = useQuery({
-    queryKey: ['manager-sales', days, shopIds, region],
+    queryKey: ['manager-sales', dateRange, shopIds, region],
     queryFn: async () => {
-      const params: any = { days }
+      try {
+        const params: any = {}
+        if (dateRange && dateRange[0] && dateRange[1]) {
+          params.start_date = dateRange[0].format('YYYY-MM-DD')
+          params.end_date = dateRange[1].format('YYYY-MM-DD')
+        }
       if (shopIds.length > 0) params.shop_ids = shopIds
       if (region) params.region = region
       const response = await axios.get('/api/analytics/manager-sales', { params })
       return response.data
+      } catch (error: any) {
+        console.error('Failed to fetch manager sales:', error)
+        return { managers: [] }
+      }
     },
     enabled: activeTab === 'manager',
   })
 
-  // 获取负责人选项（基于当前数据）
+  // 获取负责人选项
   const managerOptions = useMemo(() => {
     const managers = new Set<string>()
-    // 从SPU销量排行数据中获取负责人列表
-    if (!spuRanking?.ranking) return []
-    spuRanking.ranking.forEach((item: any) => {
+    if (!skuRanking?.ranking) return []
+    skuRanking.ranking.forEach((item: any) => {
       if (item.manager && item.manager !== '-') {
         managers.add(item.manager)
       }
     })
     return Array.from(managers).map(m => ({ label: m, value: m }))
-  }, [spuRanking])
+  }, [skuRanking])
 
-  // 准备趋势图数据
+  // 准备趋势图数据 - 使用与仪表盘相同的数据结构（订单量）
   const chartOption = useMemo(() => {
     if (!salesOverview) return null
     const dailyTrends = salesOverview.daily_trends || []
     const shopTrends = salesOverview.shop_trends || {}
-
     const dates = dailyTrends.map((item: any) => item.date)
-    const totalQuantities = dailyTrends.map((item: any) => item.quantity)
 
-    // 构建每个店铺的系列数据
-    const shopSeries = Object.keys(shopTrends).map((shopName, index) => {
+    // 构建图表系列数据 - 与仪表盘一致
+    const series: any[] = []
+    
+    // 总订单量
+    series.push({
+      name: '总订单量',
+          type: 'line',
+      data: dailyTrends.map((item: any) => item.orders || 0),
+          smooth: true,
+          lineStyle: {
+            width: 3,
+        color: '#faad14',  // 金色
+          },
+          itemStyle: {
+        color: '#faad14',
+          },
+          areaStyle: {
+            color: {
+              type: 'linear',
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+            { offset: 0, color: 'rgba(250, 173, 20, 0.3)' },
+            { offset: 1, color: 'rgba(250, 173, 20, 0.05)' },
+              ],
+            },
+          },
+      z: 1,
+    })
+    
+    // 各店铺订单量
+    const colors = ['#1890ff', '#52c41a', '#fa8c16', '#f5222d', '#722ed1', '#13c2c2']
+    const shopNames = Object.keys(shopTrends)
+    
+    shopNames.forEach((shopName, index) => {
       const shopData = shopTrends[shopName]
-      const quantities: number[] = []
-      dates.forEach((date: string) => {
+      const orders: number[] = dates.map((date: string) => {
         const dayData = shopData.find((d: any) => d.date === date)
-        quantities.push(dayData ? dayData.quantity : 0)
+        return dayData ? (dayData.orders || 0) : 0
       })
-
-      const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2']
-      return {
+      
+      series.push({
         name: shopName,
-        type: 'line' as const,
-        data: quantities,
+        type: 'line',
+        data: orders,
         smooth: true,
         lineStyle: {
           width: 2,
@@ -154,9 +217,10 @@ function SalesStatistics() {
           color: colors[index % colors.length],
         },
         areaStyle: {
-          opacity: 0.15,
+          opacity: 0.1,
         },
-      }
+        z: 0,
+      })
     })
 
     return {
@@ -172,16 +236,12 @@ function SalesStatistics() {
         backgroundColor: 'rgba(0, 0, 0, 0.8)',
         borderColor: '#1890ff',
         borderWidth: 1,
-        textStyle: {
-          color: '#fff',
-        },
+        textStyle: { color: '#fff' },
       },
       legend: {
-        data: ['总销量', ...Object.keys(shopTrends)],
+        data: ['总订单量', ...shopNames],
         bottom: 10,
-        textStyle: {
-          color: '#fff',
-        },
+        textStyle: { color: '#8b949e', fontSize: 12 },
       },
       grid: {
         left: '3%',
@@ -194,11 +254,7 @@ function SalesStatistics() {
         type: 'category',
         boundaryGap: false,
         data: dates,
-        axisLine: {
-          lineStyle: {
-            color: '#30363d',
-          },
-        },
+        axisLine: { lineStyle: { color: '#30363d' } },
         axisLabel: {
           color: '#8b949e',
           rotate: 45,
@@ -207,205 +263,135 @@ function SalesStatistics() {
       },
       yAxis: {
         type: 'value',
-        name: '销量（件）',
-        nameTextStyle: {
-          color: '#8b949e',
-        },
-        axisLine: {
-          lineStyle: {
-            color: '#30363d',
-          },
-        },
-        axisLabel: {
-          color: '#8b949e',
-        },
-        splitLine: {
-          lineStyle: {
-            color: '#21262d',
-            type: 'dashed',
-          },
-        },
+        name: '订单量（单）',
+        nameTextStyle: { color: '#8b949e', fontSize: 11 },
+        axisLine: { lineStyle: { color: '#30363d' } },
+        axisLabel: { color: '#8b949e', fontSize: 11 },
+        splitLine: { lineStyle: { color: '#21262d', type: 'dashed' } },
       },
-      series: [
-        {
-          name: '总销量',
-          type: 'line',
-          data: totalQuantities,
-          smooth: true,
-          lineStyle: {
-            width: 3,
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 1,
-              y2: 0,
-              colorStops: [
-                { offset: 0, color: '#1890ff' },
-                { offset: 1, color: '#722ed1' },
-              ],
-            },
-          },
-          itemStyle: {
-            color: '#1890ff',
-          },
-          areaStyle: {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: 'rgba(24, 144, 255, 0.3)' },
-                { offset: 1, color: 'rgba(24, 144, 255, 0.05)' },
-              ],
-            },
-          },
-        },
-        ...shopSeries,
-      ] as any,
+      series,
     }
   }, [salesOverview])
 
-  // 负责人业绩图表配置
-  const managerChartOption = useMemo(() => {
-    if (!managerSales?.managers || managerSales.managers.length === 0) return null
+  // 准备每日销量表格数据
+  const dailySalesTableData = useMemo(() => {
+    if (!salesOverview) return []
+    const dailyTrends = salesOverview.daily_trends || []
+    const shopTrends = salesOverview.shop_trends || {}
+    const shopNames = Object.keys(shopTrends)
 
-    const managers = managerSales.managers
-    const allDates = new Set<string>()
-    
-    managers.forEach((mgr: any) => {
-      mgr.daily_trends?.forEach((day: any) => {
-        allDates.add(day.date)
-      })
-    })
-    
-    const sortedDates = Array.from(allDates).sort()
-
-    const series = managers.map((mgr: any) => {
-      const orders: number[] = []
-      sortedDates.forEach((date: string) => {
-        const dayData = mgr.daily_trends?.find((d: any) => d.date === date)
-        orders.push(dayData ? dayData.orders : 0)
-      })
-
-      return {
-        name: mgr.manager,
-        type: 'line' as const,
-        data: orders,
-        smooth: true,
-        lineStyle: {
-          width: 2,
-        },
-        areaStyle: {
-          opacity: 0.15,
-        },
+    return dailyTrends.map((day: any) => {
+      const row: any = {
+        key: day.date,
+        date: day.date,
+        total: day.quantity || 0,
       }
+      
+      // 添加每个店铺的销量
+      shopNames.forEach((shopName) => {
+        const shopData = shopTrends[shopName]
+        const dayData = shopData.find((d: any) => d.date === day.date)
+        row[shopName] = dayData ? (dayData.quantity || 0) : 0
+      })
+      
+      return row
+    })
+  }, [salesOverview])
+
+  // 每日销量表格列配置
+  const dailySalesColumns = useMemo(() => {
+    if (!salesOverview) return []
+    const shopTrends = salesOverview.shop_trends || {}
+    const shopNames = Object.keys(shopTrends)
+
+    const columns: any[] = [
+      {
+        title: '日期',
+        dataIndex: 'date',
+        key: 'date',
+        width: 70,
+        fixed: 'left' as const,
+        render: (date: string) => (
+          <span style={{ color: '#c9d1d9', fontFamily: 'monospace', fontSize: '11px' }}>
+            {dayjs(date).format('MM-DD')}
+          </span>
+        ),
+      },
+    ]
+
+    // 添加每个店铺的列
+    shopNames.forEach((shopName) => {
+      columns.push({
+        title: shopName,
+        dataIndex: shopName,
+        key: shopName,
+        width: 80,
+        align: 'right' as const,
+        render: (value: number) => (
+          <span style={{ 
+            color: '#48c774',
+            fontWeight: 500,
+            fontSize: '11px',
+          }}>
+            {value.toLocaleString()}
+          </span>
+        ),
+      })
     })
 
-    return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: {
-          type: 'cross',
-          label: {
-            backgroundColor: '#6a7985',
-          },
-        },
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        borderColor: '#1890ff',
-        borderWidth: 1,
-        textStyle: {
-          color: '#fff',
-        },
-      },
-      legend: {
-        data: managers.map((m: any) => m.manager),
-        bottom: 10,
-        textStyle: {
-          color: '#fff',
-        },
-      },
-      grid: {
-        left: '3%',
-        right: '4%',
-        bottom: '15%',
-        top: '10%',
-        containLabel: true,
-      },
-      xAxis: {
-        type: 'category',
-        boundaryGap: false,
-        data: sortedDates,
-        axisLine: {
-          lineStyle: {
-            color: '#30363d',
-          },
-        },
-        axisLabel: {
-          color: '#8b949e',
-          rotate: 45,
-          formatter: (value: string) => dayjs(value).format('MM-DD'),
-        },
-      },
-      yAxis: {
-        type: 'value',
-        name: '订单数（单）',
-        nameTextStyle: {
-          color: '#8b949e',
-        },
-        axisLine: {
-          lineStyle: {
-            color: '#30363d',
-          },
-        },
-        axisLabel: {
-          color: '#8b949e',
-        },
-        splitLine: {
-          lineStyle: {
-            color: '#21262d',
-            type: 'dashed',
-          },
-        },
-      },
-      series: series as any,
-    }
-  }, [managerSales])
+    // 添加总计列
+    columns.push({
+      title: '总计',
+      dataIndex: 'total',
+      key: 'total',
+      width: 70,
+      fixed: 'right' as const,
+      align: 'right' as const,
+      render: (value: number) => (
+        <span style={{ 
+          color: '#00d1b2',
+          fontWeight: 600,
+          fontSize: '12px',
+        }}>
+          {value.toLocaleString()}
+        </span>
+      ),
+    })
 
-  // SPU销量排行表格列
-  const spuColumns = [
+    return columns
+  }, [salesOverview])
+
+  // SKU销量排行表格列
+  const skuColumns = [
     {
       title: '排名',
       dataIndex: 'rank',
       key: 'rank',
-      width: 80,
+      width: 60,
       align: 'center' as const,
       render: (rank: number) => (
         <Badge
           count={rank}
           style={{
-            backgroundColor: rank <= 3 ? '#f5222d' : '#1890ff',
+            backgroundColor: rank <= 3 ? '#f14668' : '#00d1b2',
             boxShadow: '0 0 0 1px #fff inset',
           }}
         />
       ),
     },
     {
-      title: 'SPU ID',
-      dataIndex: 'spu_id',
-      key: 'spu_id',
-      width: 150,
-      render: (spuId: string) => (
+      title: 'SKU',
+      dataIndex: 'sku',
+      key: 'sku',
+      width: 120,
+      render: (sku: string) => (
         <span style={{ 
           fontFamily: 'monospace', 
-          fontSize: '13px',
-          color: '#58a6ff',
+          fontSize: '11px',
+          color: '#00d1b2',
           fontWeight: 500,
         }}>
-          {spuId || '-'}
+          {sku || '-'}
         </span>
       ),
     },
@@ -414,10 +400,10 @@ function SalesStatistics() {
       dataIndex: 'product_name',
       key: 'product_name',
       ellipsis: true,
-      width: 300,
+      width: 200,
       render: (text: string) => (
         <Tooltip title={text}>
-          <span style={{ color: '#c9d1d9' }}>{text || '-'}</span>
+          <span style={{ color: '#c9d1d9', fontSize: '11px' }}>{text || '-'}</span>
         </Tooltip>
       ),
     },
@@ -425,35 +411,23 @@ function SalesStatistics() {
       title: '负责人',
       dataIndex: 'manager',
       key: 'manager',
-      width: 120,
-      render: (manager: string) => (
-        <Tag icon={<TeamOutlined />} color="blue">
-          {manager || '-'}
-        </Tag>
-      ),
-    },
-    {
-      title: 'SKU数量',
-      dataIndex: 'sku_count',
-      key: 'sku_count',
       width: 100,
-      align: 'center' as const,
-      render: (count: number) => (
-        <Badge count={count} showZero style={{ backgroundColor: '#52c41a' }} />
+      render: (manager: string) => (
+        <Tag color="cyan" style={{ fontSize: '11px', padding: '2px 8px' }}>{manager || '-'}</Tag>
       ),
     },
     {
       title: '销量',
       dataIndex: 'quantity',
       key: 'quantity',
-      width: 120,
+      width: 80,
       align: 'right' as const,
       sorter: (a: any, b: any) => a.quantity - b.quantity,
       render: (quantity: number) => (
         <span style={{ 
-          fontSize: '14px',
+          fontSize: '11px',
           fontWeight: 600,
-          color: '#52c41a',
+          color: '#48c774',
         }}>
           {quantity.toLocaleString()}
         </span>
@@ -463,14 +437,14 @@ function SalesStatistics() {
       title: '订单数',
       dataIndex: 'orders',
       key: 'orders',
-      width: 120,
+      width: 80,
       align: 'right' as const,
       sorter: (a: any, b: any) => a.orders - b.orders,
       render: (orders: number) => (
         <span style={{ 
-          fontSize: '14px',
+          fontSize: '11px',
           fontWeight: 500,
-          color: '#1890ff',
+          color: '#3273dc',
         }}>
           {orders.toLocaleString()}
         </span>
@@ -480,28 +454,34 @@ function SalesStatistics() {
       title: 'GMV',
       dataIndex: 'gmv',
       key: 'gmv',
-      width: 120,
+      width: 100,
       align: 'right' as const,
-      render: (gmv: number | null) => gmv ? (
-        <span style={{ color: '#faad14' }}>${gmv.toLocaleString()}</span>
-      ) : (
-        <span style={{ color: '#8b949e' }}>-</span>
-      ),
+      sorter: (a: any, b: any) => (a.gmv || 0) - (b.gmv || 0),
+      render: (gmv: number | null | undefined) => {
+        const value = gmv ?? 0
+        return (
+          <span style={{ color: '#ffdd57', fontSize: '11px', fontWeight: 500 }}>
+            ¥{value.toLocaleString()}
+          </span>
+        )
+      },
     },
     {
       title: '利润',
       dataIndex: 'profit',
       key: 'profit',
-      width: 120,
+      width: 100,
       align: 'right' as const,
-      render: (profit: number | null) => {
-        if (!profit && profit !== 0) return <span style={{ color: '#8b949e' }}>-</span>
+      sorter: (a: any, b: any) => (a.profit || 0) - (b.profit || 0),
+      render: (profit: number | null | undefined) => {
+        const value = profit ?? 0
         return (
           <span style={{ 
-            color: profit >= 0 ? '#52c41a' : '#f5222d',
+            color: value >= 0 ? '#48c774' : '#f14668',
             fontWeight: 600,
+            fontSize: '11px',
           }}>
-            ${profit.toLocaleString()}
+            ¥{value.toLocaleString()}
           </span>
         )
       },
@@ -517,7 +497,7 @@ function SalesStatistics() {
       width: 150,
       render: (manager: string) => (
         <Space>
-          <TeamOutlined style={{ color: '#1890ff' }} />
+          <TeamOutlined style={{ color: '#3273dc' }} />
           <span style={{ fontWeight: 600, color: '#c9d1d9' }}>{manager}</span>
         </Space>
       ),
@@ -533,7 +513,7 @@ function SalesStatistics() {
         <span style={{ 
           fontSize: '14px',
           fontWeight: 600,
-          color: '#1890ff',
+          color: '#3273dc',
         }}>
           {count.toLocaleString()}
         </span>
@@ -550,7 +530,7 @@ function SalesStatistics() {
         <span style={{ 
           fontSize: '14px',
           fontWeight: 600,
-          color: '#52c41a',
+          color: '#48c774',
         }}>
           {quantity.toLocaleString()}
         </span>
@@ -563,8 +543,8 @@ function SalesStatistics() {
       width: 150,
       align: 'right' as const,
       render: (gmv: number | null) => gmv ? (
-        <span style={{ color: '#faad14', fontWeight: 600 }}>
-          ${gmv.toLocaleString()}
+        <span style={{ color: '#ffdd57', fontWeight: 600 }}>
+          ¥{gmv.toLocaleString()}
         </span>
       ) : (
         <span style={{ color: '#8b949e' }}>-</span>
@@ -580,99 +560,114 @@ function SalesStatistics() {
         if (!profit && profit !== 0) return <span style={{ color: '#8b949e' }}>-</span>
         return (
           <span style={{ 
-            color: profit >= 0 ? '#52c41a' : '#f5222d',
+            color: profit >= 0 ? '#48c774' : '#f14668',
             fontWeight: 600,
           }}>
-            ${profit.toLocaleString()}
+            ¥{profit.toLocaleString()}
           </span>
         )
       },
     },
   ]
 
-  // 快速筛选菜单
+  // 快速筛选菜单 - 日期范围快捷选项
   const quickFilterMenu: MenuProps['items'] = [
     {
       key: '7',
       label: '最近7天',
       icon: <CalendarOutlined />,
-      onClick: () => setDays(7),
+      onClick: () => setDateRange([dayjs().subtract(6, 'day'), dayjs()]) 
     },
     {
       key: '30',
       label: '最近30天',
       icon: <CalendarOutlined />,
-      onClick: () => setDays(30),
+      onClick: () => setDateRange([dayjs().subtract(29, 'day'), dayjs()]) 
     },
     {
       key: '90',
       label: '最近90天',
       icon: <CalendarOutlined />,
-      onClick: () => setDays(90),
+      onClick: () => setDateRange([dayjs().subtract(89, 'day'), dayjs()]) 
     },
     {
-      key: '180',
-      label: '最近180天',
+      key: 'clear', 
+      label: '清除筛选', 
       icon: <CalendarOutlined />,
-      onClick: () => setDays(180),
+      onClick: () => setDateRange(null) 
     },
   ]
 
   // 刷新所有数据
   const handleRefresh = () => {
     refetchOverview()
-    if (activeTab === 'spu') {
-      refetchSpu()
+    if (activeTab === 'sku') {
+      refetchSku()
     } else if (activeTab === 'manager') {
       refetchManager()
     }
   }
 
+  // 计算核心指标
+  const totalQuantity = salesOverview?.total_quantity || 0
+  const totalOrders = salesOverview?.total_orders || 0
+  const totalGmv = salesOverview?.total_gmv || 0
+  const totalProfit = salesOverview?.total_profit ?? null
+  const profitMargin = totalGmv > 0 && totalProfit !== null && totalProfit !== undefined 
+    ? ((totalProfit / totalGmv) * 100).toFixed(2) 
+    : '0.00'
+  const avgOrderValue = totalOrders > 0 && totalGmv > 0 
+    ? (totalGmv / totalOrders).toFixed(2) 
+    : '0.00'
+
   return (
-    <div style={{ 
-      padding: '24px',
+    <div className="bulma-section bulma-grid-bg" style={{ 
+      padding: isMobile ? '16px' : '24px',
       background: 'linear-gradient(135deg, #0d1117 0%, #161b22 100%)',
       minHeight: '100vh',
     }}>
-      {/* 页面头部 */}
+      {/* 页面头部 - Bulma 风格 */}
       <div style={{ 
-        marginBottom: 24,
+        marginBottom: 32,
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'flex-start',
+        flexWrap: isMobile ? 'wrap' : 'nowrap',
+        gap: 16,
       }}>
-        <div>
-          <h1 style={{ 
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 className="bulma-title" style={{ 
             margin: 0,
-            fontSize: '28px',
-            fontWeight: 700,
-            background: 'linear-gradient(135deg, #1890ff 0%, #722ed1 100%)',
+            fontSize: isMobile ? '24px' : '32px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}>
+            <RocketOutlined style={{ color: '#00d1b2', fontSize: isMobile ? '24px' : '32px' }} />
+            <span style={{
+              background: 'linear-gradient(135deg, #00d1b2 0%, #3273dc 100%)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
           }}>
-            <RocketOutlined style={{ marginRight: 12, color: '#1890ff' }} />
             销售数据分析
+            </span>
           </h1>
           <p style={{ 
             margin: '8px 0 0 0',
             color: '#8b949e',
-            fontSize: '14px',
+            fontSize: isMobile ? '12px' : '14px',
           }}>
-            实时监控销售业绩，洞察业务趋势
+            实时监控销售业绩，洞察业务趋势，助力数据驱动决策
           </p>
         </div>
-        <Space>
+        <Space wrap>
           <Tooltip title="刷新数据">
             <Button
               type="primary"
               icon={<ReloadOutlined />}
               onClick={handleRefresh}
-              style={{
-                background: 'linear-gradient(135deg, #1890ff 0%, #722ed1 100%)',
-                border: 'none',
-                boxShadow: '0 4px 12px rgba(24, 144, 255, 0.3)',
-              }}
+              className="bulma-button"
             >
               刷新
             </Button>
@@ -680,10 +675,7 @@ function SalesStatistics() {
           <Dropdown menu={{ items: quickFilterMenu }} placement="bottomRight">
             <Button
               icon={<FilterOutlined />}
-              style={{
-                borderColor: '#30363d',
-                color: '#c9d1d9',
-              }}
+              className="bulma-button"
             >
               快速筛选
             </Button>
@@ -691,38 +683,83 @@ function SalesStatistics() {
         </Space>
       </div>
 
-      {/* 筛选区域 */}
-      <Card 
-        style={{ 
+      {/* 筛选区域 - Bulma Card 风格 */}
+      <div className="bulma-card" style={{ 
           marginBottom: 24,
-          background: 'rgba(22, 27, 34, 0.8)',
-          border: '1px solid #30363d',
-          borderRadius: '12px',
-          backdropFilter: 'blur(10px)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-        }}
-        bodyStyle={{ padding: '20px' }}
-      >
+        padding: '20px',
+      }}>
         <Space size="large" wrap style={{ width: '100%' }}>
           <Space>
-            <CalendarOutlined style={{ color: '#1890ff' }} />
+            <CalendarOutlined style={{ color: '#00d1b2' }} />
             <span style={{ color: '#c9d1d9', fontWeight: 500 }}>时间范围：</span>
+            {/* 快捷时间选择下拉框 */}
             <Select
-              style={{ width: 150 }}
-              value={days}
-              onChange={setDays}
+              placeholder="快捷选择"
+              allowClear
+              style={{ width: 120 }}
+              onChange={(value) => {
+                if (!value) {
+                  setDateRange(null)
+                  return
+                }
+                
+                let start: Dayjs
+                let end: Dayjs = dayjs()
+                
+                switch (value) {
+                  case 'today':
+                    start = dayjs().startOf('day')
+                    end = dayjs().endOf('day')
+                    break
+                  case 'yesterday':
+                    start = dayjs().subtract(1, 'day').startOf('day')
+                    end = dayjs().subtract(1, 'day').endOf('day')
+                    break
+                  case 'last7days':
+                    start = dayjs().subtract(6, 'day').startOf('day')
+                    end = dayjs().endOf('day')
+                    break
+                  case 'last30days':
+                    start = dayjs().subtract(29, 'day').startOf('day')
+                    end = dayjs().endOf('day')
+                    break
+                  case 'thisMonth':
+                    start = dayjs().startOf('month')
+                    end = dayjs().endOf('month')
+                    break
+                  case 'lastMonth':
+                    start = dayjs().subtract(1, 'month').startOf('month')
+                    end = dayjs().subtract(1, 'month').endOf('month')
+                    break
+                  default:
+                    return
+                }
+                
+                setDateRange([start, end])
+              }}
               options={[
-                { label: '最近7天', value: 7 },
-                { label: '最近30天', value: 30 },
-                { label: '最近90天', value: 90 },
-                { label: '最近180天', value: 180 },
+                { label: '今天', value: 'today' },
+                { label: '昨天', value: 'yesterday' },
+                { label: '最近7天', value: 'last7days' },
+                { label: '最近30天', value: 'last30days' },
+                { label: '本月', value: 'thisMonth' },
+                { label: '上月', value: 'lastMonth' },
               ]}
-              suffixIcon={<CalendarOutlined />}
+              className="bulma-input"
+            />
+            <RangePicker
+              value={dateRange}
+              onChange={(dates) => setDateRange(dates)}
+              format="YYYY-MM-DD"
+              placeholder={['开始日期', '结束日期']}
+              allowClear
+              style={{ width: 240 }}
+              className="bulma-input"
             />
           </Space>
 
           <Space>
-            <AppstoreOutlined style={{ color: '#1890ff' }} />
+            <AppstoreOutlined style={{ color: '#00d1b2' }} />
             <span style={{ color: '#c9d1d9', fontWeight: 500 }}>店铺：</span>
             <Select
               mode="multiple"
@@ -731,16 +768,16 @@ function SalesStatistics() {
               allowClear
               value={shopIds}
               onChange={setShopIds}
+              className="bulma-input"
               options={shops?.map((shop: any) => ({
                 label: shop.shop_name,
                 value: shop.id,
               }))}
-              suffixIcon={<AppstoreOutlined />}
             />
           </Space>
 
           <Space>
-            <TeamOutlined style={{ color: '#1890ff' }} />
+            <TeamOutlined style={{ color: '#00d1b2' }} />
             <span style={{ color: '#c9d1d9', fontWeight: 500 }}>负责人：</span>
             <Select
               style={{ width: 150 }}
@@ -748,13 +785,13 @@ function SalesStatistics() {
               allowClear
               value={manager}
               onChange={setManager}
+              className="bulma-input"
               options={managerOptions}
-              suffixIcon={<TeamOutlined />}
             />
           </Space>
 
           <Space>
-            <GlobalOutlined style={{ color: '#1890ff' }} />
+            <GlobalOutlined style={{ color: '#00d1b2' }} />
             <span style={{ color: '#c9d1d9', fontWeight: 500 }}>地区：</span>
             <Select
               style={{ width: 120 }}
@@ -762,233 +799,354 @@ function SalesStatistics() {
               allowClear
               value={region}
               onChange={setRegion}
+              className="bulma-input"
               options={[
                 { label: '美国', value: 'us' },
                 { label: '欧洲', value: 'eu' },
                 { label: '全球', value: 'global' },
               ]}
-              suffixIcon={<GlobalOutlined />}
             />
           </Space>
 
-          <Space>
-            <SearchOutlined style={{ color: '#1890ff' }} />
-            <Input
-              style={{ width: 200 }}
-              placeholder="搜索SKU关键词"
-              prefix={<SearchOutlined />}
-              value={skuSearch}
-              onChange={(e) => setSkuSearch(e.target.value)}
-              allowClear
-            />
           </Space>
-        </Space>
-      </Card>
+      </div>
 
-      {/* 总览卡片 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card
-            hoverable
-            style={{
-              background: 'linear-gradient(135deg, rgba(24, 144, 255, 0.1) 0%, rgba(24, 144, 255, 0.05) 100%)',
-              border: '1px solid rgba(24, 144, 255, 0.3)',
-              borderRadius: '12px',
-              boxShadow: '0 4px 16px rgba(24, 144, 255, 0.2)',
-              transition: 'all 0.3s ease',
-            }}
-            bodyStyle={{ padding: '20px' }}
-          >
-            <Statistic
-              title={
-                <span style={{ color: '#8b949e', fontSize: '14px' }}>
-                  <ShoppingOutlined style={{ marginRight: 8, color: '#1890ff' }} />
+      {/* 核心指标卡片 - Bulma Card 风格 */}
+      <div style={{ 
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(240px, 1fr))',
+        gap: 16,
+        marginBottom: 24,
+      }}>
+        {/* 总销量 */}
+        <div className="bulma-card bulma-glow" style={{ 
+          padding: '24px',
+          position: 'relative',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: '100px',
+            height: '100px',
+            background: 'linear-gradient(135deg, rgba(0, 209, 178, 0.1) 0%, transparent 100%)',
+            borderRadius: '50%',
+            transform: 'translate(30%, -30%)',
+          }} />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div style={{ 
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 16,
+            }}>
+              <span style={{ 
+                color: '#8b949e', 
+                fontSize: '14px',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <ShoppingOutlined style={{ color: '#00d1b2' }} />
                   总销量
                 </span>
-              }
-              value={salesOverview?.total_quantity || 0}
-              suffix="件"
-              valueStyle={{ 
-                color: '#1890ff',
-                fontSize: '24px',
-                fontWeight: 700,
-              }}
-              prefix={<ThunderboltOutlined style={{ color: '#1890ff', fontSize: '20px' }} />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card
-            hoverable
-            style={{
-              background: 'linear-gradient(135deg, rgba(82, 196, 26, 0.1) 0%, rgba(82, 196, 26, 0.05) 100%)',
-              border: '1px solid rgba(82, 196, 26, 0.3)',
-              borderRadius: '12px',
-              boxShadow: '0 4px 16px rgba(82, 196, 26, 0.2)',
-              transition: 'all 0.3s ease',
-            }}
-            bodyStyle={{ padding: '20px' }}
-          >
-            <Statistic
-              title={
-                <span style={{ color: '#8b949e', fontSize: '14px' }}>
-                  <BarChartOutlined style={{ marginRight: 8, color: '#52c41a' }} />
+              <ThunderboltOutlined style={{ color: '#00d1b2', fontSize: '24px', opacity: 0.3 }} />
+            </div>
+            <div className="bulma-stat-value" style={{ 
+              fontSize: isMobile ? '28px' : '36px',
+              marginBottom: 8,
+            }}>
+              {totalQuantity.toLocaleString()}
+            </div>
+            <div style={{ color: '#8b949e', fontSize: '12px' }}>件</div>
+          </div>
+        </div>
+
+        {/* 总订单数 */}
+        <div className="bulma-card bulma-glow" style={{ 
+          padding: '24px',
+          position: 'relative',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: '100px',
+            height: '100px',
+            background: 'linear-gradient(135deg, rgba(50, 115, 220, 0.1) 0%, transparent 100%)',
+            borderRadius: '50%',
+            transform: 'translate(30%, -30%)',
+          }} />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div style={{ 
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 16,
+            }}>
+              <span style={{ 
+                color: '#8b949e', 
+                fontSize: '14px',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <BarChartOutlined style={{ color: '#3273dc' }} />
                   总订单数
                 </span>
-              }
-              value={salesOverview?.total_orders || 0}
-              suffix="单"
-              valueStyle={{ 
-                color: '#52c41a',
-                fontSize: '24px',
-                fontWeight: 700,
-              }}
-              prefix={<CheckCircleOutlined style={{ color: '#52c41a', fontSize: '20px' }} />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card
-            hoverable
-            style={{
-              background: 'linear-gradient(135deg, rgba(250, 173, 20, 0.1) 0%, rgba(250, 173, 20, 0.05) 100%)',
-              border: '1px solid rgba(250, 173, 20, 0.3)',
-              borderRadius: '12px',
-              boxShadow: '0 4px 16px rgba(250, 173, 20, 0.2)',
-              transition: 'all 0.3s ease',
-            }}
-            bodyStyle={{ padding: '20px' }}
-          >
-            <Statistic
-              title={
-                <span style={{ color: '#8b949e', fontSize: '14px' }}>
-                  <DollarOutlined style={{ marginRight: 8, color: '#faad14' }} />
+              <CheckCircleOutlined style={{ color: '#3273dc', fontSize: '24px', opacity: 0.3 }} />
+            </div>
+            <div className="bulma-stat-value" style={{ 
+              fontSize: isMobile ? '28px' : '36px',
+              marginBottom: 8,
+              background: 'linear-gradient(135deg, #3273dc 0%, #2366d1 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}>
+              {totalOrders.toLocaleString()}
+            </div>
+            <div style={{ color: '#8b949e', fontSize: '12px' }}>单</div>
+          </div>
+        </div>
+
+        {/* GMV */}
+        <div className="bulma-card bulma-glow" style={{ 
+          padding: '24px',
+          position: 'relative',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: '100px',
+            height: '100px',
+            background: 'linear-gradient(135deg, rgba(255, 221, 87, 0.1) 0%, transparent 100%)',
+            borderRadius: '50%',
+            transform: 'translate(30%, -30%)',
+          }} />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div style={{ 
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 16,
+            }}>
+              <span style={{ 
+                color: '#8b949e', 
+                fontSize: '14px',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <DollarOutlined style={{ color: '#ffdd57' }} />
                   GMV
                 </span>
-              }
-              value={salesOverview?.total_gmv || '暂无数据'}
-              suffix={salesOverview?.total_gmv ? 'CNY' : ''}
-              valueStyle={{ 
-                color: '#faad14',
-                fontSize: '24px',
-                fontWeight: 700,
-              }}
-              prefix={<RiseOutlined style={{ color: '#faad14', fontSize: '20px' }} />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card
-            hoverable
-            style={{
-              background: salesOverview?.total_profit 
-                ? (salesOverview.total_profit >= 0 
-                  ? 'linear-gradient(135deg, rgba(82, 196, 26, 0.1) 0%, rgba(82, 196, 26, 0.05) 100%)'
-                  : 'linear-gradient(135deg, rgba(245, 34, 45, 0.1) 0%, rgba(245, 34, 45, 0.05) 100%)')
-                : 'linear-gradient(135deg, rgba(139, 148, 158, 0.1) 0%, rgba(139, 148, 158, 0.05) 100%)',
-              border: `1px solid ${salesOverview?.total_profit 
-                ? (salesOverview.total_profit >= 0 ? 'rgba(82, 196, 26, 0.3)' : 'rgba(245, 34, 45, 0.3)')
-                : 'rgba(139, 148, 158, 0.3)'}`,
-              borderRadius: '12px',
-              boxShadow: `0 4px 16px ${salesOverview?.total_profit 
-                ? (salesOverview.total_profit >= 0 ? 'rgba(82, 196, 26, 0.2)' : 'rgba(245, 34, 45, 0.2)')
-                : 'rgba(139, 148, 158, 0.2)'}`,
-              transition: 'all 0.3s ease',
-            }}
-            bodyStyle={{ padding: '20px' }}
-          >
-            <Statistic
-              title={
-                <span style={{ color: '#8b949e', fontSize: '14px' }}>
-                  <TrophyOutlined style={{ marginRight: 8, color: salesOverview?.total_profit 
-                    ? (salesOverview.total_profit >= 0 ? '#52c41a' : '#f5222d')
-                    : '#8b949e' }} />
+              <RiseOutlined style={{ color: '#ffdd57', fontSize: '24px', opacity: 0.3 }} />
+            </div>
+            <div className="bulma-stat-value" style={{ 
+              fontSize: isMobile ? '28px' : '36px',
+              marginBottom: 8,
+              background: 'linear-gradient(135deg, #ffdd57 0%, #ffd83d 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}>
+              {totalGmv > 0 ? `¥${totalGmv.toLocaleString()}` : '暂无数据'}
+            </div>
+            <div style={{ color: '#8b949e', fontSize: '12px' }}>
+              {totalGmv > 0 && `平均订单: ¥${avgOrderValue}`}
+            </div>
+          </div>
+        </div>
+
+        {/* 利润 */}
+        <div className="bulma-card bulma-glow" style={{ 
+          padding: '24px',
+          position: 'relative',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: '100px',
+            height: '100px',
+            background: totalProfit >= 0
+              ? 'linear-gradient(135deg, rgba(72, 199, 116, 0.1) 0%, transparent 100%)'
+              : 'linear-gradient(135deg, rgba(241, 70, 104, 0.1) 0%, transparent 100%)',
+            borderRadius: '50%',
+            transform: 'translate(30%, -30%)',
+          }} />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div style={{ 
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 16,
+            }}>
+              <span style={{ 
+                color: '#8b949e', 
+                fontSize: '14px',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <TrophyOutlined style={{ 
+                  color: totalProfit >= 0 ? '#48c774' : '#f14668' 
+                }} />
                   利润
                 </span>
-              }
-              value={salesOverview?.total_profit || '暂无数据'}
-              suffix={salesOverview?.total_profit ? 'CNY' : ''}
-              valueStyle={{ 
-                color: salesOverview?.total_profit 
-                  ? (salesOverview.total_profit >= 0 ? '#52c41a' : '#f5222d')
-                  : '#8b949e',
+              <TrophyOutlined style={{ 
+                color: totalProfit >= 0 ? '#48c774' : '#f14668', 
                 fontSize: '24px',
-                fontWeight: 700,
-              }}
-            />
-          </Card>
-        </Col>
-      </Row>
+                opacity: 0.3 
+              }} />
+            </div>
+            <div className="bulma-stat-value" style={{ 
+              fontSize: isMobile ? '28px' : '36px',
+              marginBottom: 8,
+              background: totalProfit >= 0
+                ? 'linear-gradient(135deg, #48c774 0%, #3ec46d 100%)'
+                : 'linear-gradient(135deg, #f14668 0%, #ef2e55 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}>
+              {totalProfit !== null && totalProfit !== undefined 
+                ? `¥${totalProfit.toLocaleString()}` 
+                : '暂无数据'}
+            </div>
+            <div style={{ 
+              color: '#8b949e', 
+              fontSize: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}>
+              {totalProfit !== null && totalProfit !== undefined && (
+                <>
+                  <PercentageOutlined style={{ fontSize: '10px' }} />
+                  利润率: {profitMargin}%
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
-      {/* 销量趋势图 */}
+      {/* 销量趋势分析 - 左侧表格，右侧图表 */}
+      <div style={{ 
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : '0.8fr 1.2fr',
+        gap: 16,
+        marginBottom: 24,
+      }}>
+        {/* 左侧：每日销量表格 */}
+        <div className="bulma-card" style={{ 
+          padding: '12px',
+        }}>
+          <header style={{
+            display: 'flex',
+            alignItems: 'center',
+            marginBottom: 12,
+            paddingBottom: 8,
+            borderBottom: '1px solid #30363d',
+          }}>
+            <BarChartOutlined style={{ color: '#00d1b2', fontSize: '14px', marginRight: 6 }} />
+            <span style={{ 
+              color: '#c9d1d9', 
+              fontWeight: 600,
+              fontSize: '14px',
+            }}>
+              每日店铺销量
+            </span>
+          </header>
+          <div style={{ maxHeight: isMobile ? '400px' : '500px', overflowY: 'auto' }}>
+            <Table
+              columns={dailySalesColumns}
+              dataSource={dailySalesTableData}
+              pagination={false}
+              scroll={{ x: 'max-content', y: isMobile ? '350px' : '450px' }}
+              size="small"
+              style={{ background: 'transparent' }}
+              className="compact-table"
+            />
+          </div>
+        </div>
+
+        {/* 右侧：销量趋势图表 */}
       {chartOption && (
-        <Card 
-          title={
-            <Space>
-              <LineChartOutlined style={{ color: '#1890ff' }} />
-              <span style={{ color: '#c9d1d9', fontWeight: 600 }}>销量趋势分析</span>
-            </Space>
-          }
-          style={{ 
-            marginBottom: 24,
-            background: 'rgba(22, 27, 34, 0.8)',
-            border: '1px solid #30363d',
-            borderRadius: '12px',
-            backdropFilter: 'blur(10px)',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-          }}
-          bodyStyle={{ padding: '20px' }}
-        >
+          <div className="bulma-card" style={{ 
+            padding: '20px',
+          }}>
+            <header style={{
+              display: 'flex',
+              alignItems: 'center',
+              marginBottom: 16,
+              paddingBottom: 12,
+              borderBottom: '1px solid #30363d',
+            }}>
+              <LineChartOutlined style={{ color: '#00d1b2', fontSize: '18px', marginRight: 8 }} />
+              <span style={{ 
+                color: '#c9d1d9', 
+                fontWeight: 600,
+                fontSize: '16px',
+              }}>
+                店铺业绩对比
+              </span>
+            </header>
+            <div>
           <ReactECharts 
             option={chartOption} 
-            style={{ height: '450px' }}
+                style={{ height: isMobile ? '300px' : '500px' }}
             opts={{ renderer: 'svg' }}
           />
-        </Card>
-      )}
+            </div>
+          </div>
+        )}
+      </div>
 
-      {/* Tab切换 */}
-      <Card
-        style={{
-          background: 'rgba(22, 27, 34, 0.8)',
-          border: '1px solid #30363d',
-          borderRadius: '12px',
-          backdropFilter: 'blur(10px)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-        }}
-        bodyStyle={{ padding: '20px' }}
-      >
+      {/* Tab切换 - Bulma Card 风格 */}
+      <div className="bulma-card" style={{ padding: '24px' }}>
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
           items={[
             {
-              key: 'spu',
+              key: 'sku',
               label: (
                 <Space>
                   <AppstoreOutlined />
-                  <span>SPU销量排行</span>
+                  <span>SKU销量排行</span>
                 </Space>
               ),
               children: (
+                <div style={{ padding: 0 }}>
                 <Table
-                  columns={spuColumns}
-                  dataSource={spuRanking?.ranking || []}
-                  rowKey={(record, index) => record?.rank?.toString() || `spu-${index}`}
-                  loading={spuLoading}
+                  columns={skuColumns}
+                  dataSource={skuRanking?.ranking || []}
+                  rowKey={(record, index) => record?.sku || record?.rank?.toString() || `sku-${index}`}
+                  loading={skuLoading}
                   pagination={{
                     pageSize: 20,
                     showSizeChanger: true,
                     showTotal: (total) => (
                       <span style={{ color: '#8b949e' }}>
-                        共 <strong style={{ color: '#1890ff' }}>{total}</strong> 条记录
+                          共 <strong style={{ color: '#00d1b2' }}>{total}</strong> 条记录
                       </span>
                     ),
                   }}
-                  style={{
-                    background: 'transparent',
-                  }}
+                    style={{ background: 'transparent' }}
                 />
+                </div>
               ),
             },
             {
@@ -1000,30 +1158,7 @@ function SalesStatistics() {
                 </Space>
               ),
               children: (
-                <div>
-                  {managerChartOption && (
-                    <Card 
-                      title={
-                        <Space>
-                          <LineChartOutlined style={{ color: '#1890ff' }} />
-                          <span style={{ color: '#c9d1d9', fontWeight: 600 }}>负责人订单量趋势</span>
-                        </Space>
-                      }
-                      style={{ 
-                        marginBottom: 16,
-                        background: 'rgba(13, 17, 23, 0.6)',
-                        border: '1px solid #30363d',
-                        borderRadius: '8px',
-                      }}
-                      bodyStyle={{ padding: '20px' }}
-                    >
-                      <ReactECharts 
-                        option={managerChartOption} 
-                        style={{ height: '400px' }}
-                        opts={{ renderer: 'svg' }}
-                      />
-                    </Card>
-                  )}
+                <div style={{ padding: 0 }}>
                   <Table
                     columns={managerColumns}
                     dataSource={managerSales?.managers || []}
@@ -1034,20 +1169,18 @@ function SalesStatistics() {
                       showSizeChanger: true,
                       showTotal: (total) => (
                         <span style={{ color: '#8b949e' }}>
-                          共 <strong style={{ color: '#1890ff' }}>{total}</strong> 条记录
+                          共 <strong style={{ color: '#00d1b2' }}>{total}</strong> 条记录
                         </span>
                       ),
                     }}
-                    style={{
-                      background: 'transparent',
-                    }}
+                    style={{ background: 'transparent' }}
                   />
                 </div>
               ),
             },
           ]}
         />
-      </Card>
+      </div>
     </div>
   )
 }

@@ -8,7 +8,6 @@ import OrderList from './pages/OrderList'
 import ProductList from './pages/ProductList'
 import Logistics from './pages/Logistics'
 import Finance from './pages/Finance'
-import Statistics from './pages/Statistics'
 import SalesStatistics from './pages/SalesStatistics'
 import ForgGPT from './pages/ForgGPT'
 
