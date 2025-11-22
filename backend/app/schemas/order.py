@@ -1,7 +1,7 @@
 """订单相关的Pydantic模式"""
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, List
 from decimal import Decimal
 from app.models.order import OrderStatus
 
@@ -115,4 +115,7 @@ class OrderStatusStatistics(BaseModel):
     delivered: int  # 已送达
     delayed_orders: int  # 延误订单数
     delay_rate: float  # 延误率（百分比）
+    trends: Optional[Dict[str, List[int]]] = None  # 7日趋势数据 {total: [...], processing: [...], shipped: [...], delivered: [...]}
+    today_changes: Optional[Dict[str, int]] = None  # 今日新增 {total: ..., processing: ..., shipped: ..., delivered: ...}
+    week_changes: Optional[Dict[str, float]] = None  # 周对比变化率（百分比）
 

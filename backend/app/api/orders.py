@@ -12,6 +12,7 @@ from app.core.security import get_current_user
 from app.models.order import Order, OrderStatus
 from app.models.user import User
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse, OrderListResponse, OrderStatistics, OrderStatusStatistics
+from datetime import timedelta
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -33,14 +34,17 @@ class PaginatedResponse(BaseModel):
 def get_orders(
     skip: int = Query(0, ge=0, description="跳过记录数"),
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="每页数量"),
-    shop_id: Optional[int] = Query(None, description="店铺ID"),
-    status_filter: Optional[OrderStatus] = Query(None, description="订单状态"),
+    shop_id: Optional[int] = Query(None, description="店铺ID（单选）"),
+    shop_ids: Optional[List[int]] = Query(None, description="店铺ID列表（多选）"),
+    status_filter: Optional[OrderStatus] = Query(None, description="订单状态（单选）"),
+    status_filters: Optional[List[OrderStatus]] = Query(None, description="订单状态列表（多选）"),
     start_date: Optional[datetime] = Query(None, description="开始日期"),
     end_date: Optional[datetime] = Query(None, description="结束日期"),
     search: Optional[str] = Query(None, description="模糊搜索（订单号、商品名称、SKU）"),
     order_sn: Optional[str] = Query(None, description="订单号（精确匹配）"),
     product_name: Optional[str] = Query(None, description="商品名称（模糊匹配）"),
     product_sku: Optional[str] = Query(None, description="SKU（模糊匹配）"),
+    delay_risk_level: Optional[str] = Query(None, description="延误风险等级（normal/warning/delayed）"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -57,11 +61,23 @@ def get_orders(
     query = db.query(Order)
     
     # 应用过滤条件
-    if shop_id:
+    # 优先使用多选店铺，如果没有则使用单选
+    if shop_ids and len(shop_ids) > 0:
+        query = query.filter(Order.shop_id.in_(shop_ids))
+    elif shop_id:
         query = query.filter(Order.shop_id == shop_id)
     
-    if status_filter:
+    # 优先使用多选状态，如果没有则使用单选
+    if status_filters and len(status_filters) > 0:
+        query = query.filter(Order.status.in_(status_filters))
+    elif status_filter:
         query = query.filter(Order.status == status_filter)
+    
+    # 延误风险等级筛选（暂时使用简单的逻辑，后续可以优化）
+    if delay_risk_level:
+        # 这里可以根据实际业务逻辑实现延误风险等级的判断
+        # 暂时留空，等待具体需求
+        pass
     
     if start_date:
         query = query.filter(Order.order_time >= start_date)
@@ -286,7 +302,8 @@ def get_order_statistics(
 
 @router.get("/statistics/status", response_model=OrderStatusStatistics)
 def get_order_status_statistics(
-    shop_id: Optional[int] = Query(None, description="店铺ID"),
+    shop_id: Optional[int] = Query(None, description="店铺ID（单选）"),
+    shop_ids: Optional[List[int]] = Query(None, description="店铺ID列表（多选）"),
     start_date: Optional[datetime] = Query(None, description="开始日期"),
     end_date: Optional[datetime] = Query(None, description="结束日期"),
     db: Session = Depends(get_db),
@@ -308,7 +325,10 @@ def get_order_status_statistics(
     # 构建查询，排除已取消的订单
     query = db.query(Order).filter(Order.status != OrderStatus.CANCELLED)
     
-    if shop_id:
+    # 优先使用多选店铺，如果没有则使用单选
+    if shop_ids and len(shop_ids) > 0:
+        query = query.filter(Order.shop_id.in_(shop_ids))
+    elif shop_id:
         query = query.filter(Order.shop_id == shop_id)
     
     if start_date:
@@ -399,12 +419,77 @@ def get_order_status_statistics(
     # 计算延误率
     delay_rate = (delayed_orders / total_orders * 100) if total_orders > 0 else 0.0
     
+    # 计算7日趋势数据
+    trends = {}
+    today_changes = {}
+    week_changes = {}
+    
+    if total_orders > 0:
+        now = datetime.utcnow()
+        today_start = datetime(now.year, now.month, now.day)
+        week_ago_start = today_start - timedelta(days=7)
+        two_weeks_ago_start = week_ago_start - timedelta(days=7)
+        
+        # 计算7日趋势（每日订单数统计）
+        trend_days = 7
+        trends['total'] = []
+        trends['processing'] = []
+        trends['shipped'] = []
+        trends['delivered'] = []
+        
+        for i in range(trend_days):
+            day_start = today_start - timedelta(days=trend_days - 1 - i)
+            day_end = day_start + timedelta(days=1)
+            
+            day_orders = [o for o in orders if day_start <= o.order_time < day_end]
+            trends['total'].append(len(day_orders))
+            trends['processing'].append(sum(1 for o in day_orders if o.status == OrderStatus.PROCESSING))
+            trends['shipped'].append(sum(1 for o in day_orders if o.status == OrderStatus.SHIPPED))
+            trends['delivered'].append(sum(1 for o in day_orders if o.status == OrderStatus.DELIVERED))
+        
+        # 计算今日新增
+        today_orders = [o for o in orders if o.order_time >= today_start]
+        today_changes['total'] = len(today_orders)
+        today_changes['processing'] = sum(1 for o in today_orders if o.status == OrderStatus.PROCESSING)
+        today_changes['shipped'] = sum(1 for o in today_orders if o.status == OrderStatus.SHIPPED)
+        today_changes['delivered'] = sum(1 for o in today_orders if o.status == OrderStatus.DELIVERED)
+        
+        # 计算周对比变化率
+        week_orders = [o for o in orders if week_ago_start <= o.order_time < today_start]
+        two_weeks_ago_orders = [o for o in orders if two_weeks_ago_start <= o.order_time < week_ago_start]
+        
+        week_total = len(week_orders)
+        two_weeks_ago_total = len(two_weeks_ago_orders)
+        
+        week_processing = sum(1 for o in week_orders if o.status == OrderStatus.PROCESSING)
+        two_weeks_ago_processing = sum(1 for o in two_weeks_ago_orders if o.status == OrderStatus.PROCESSING)
+        
+        week_shipped = sum(1 for o in week_orders if o.status == OrderStatus.SHIPPED)
+        two_weeks_ago_shipped = sum(1 for o in two_weeks_ago_orders if o.status == OrderStatus.SHIPPED)
+        
+        week_delivered = sum(1 for o in week_orders if o.status == OrderStatus.DELIVERED)
+        two_weeks_ago_delivered = sum(1 for o in two_weeks_ago_orders if o.status == OrderStatus.DELIVERED)
+        
+        # 计算变化率（百分比）
+        def calc_change_rate(current, previous):
+            if previous == 0:
+                return 100.0 if current > 0 else 0.0
+            return ((current - previous) / previous * 100)
+        
+        week_changes['total'] = round(calc_change_rate(week_total, two_weeks_ago_total), 1)
+        week_changes['processing'] = round(calc_change_rate(week_processing, two_weeks_ago_processing), 1)
+        week_changes['shipped'] = round(calc_change_rate(week_shipped, two_weeks_ago_shipped), 1)
+        week_changes['delivered'] = round(calc_change_rate(week_delivered, two_weeks_ago_delivered), 1)
+    
     return OrderStatusStatistics(
         total_orders=total_orders,
         processing=processing,
         shipped=shipped,
         delivered=delivered,
         delayed_orders=delayed_orders,
-        delay_rate=delay_rate
+        delay_rate=round(delay_rate, 2),
+        trends=trends if trends else None,
+        today_changes=today_changes if today_changes else None,
+        week_changes=week_changes if week_changes else None
     )
 

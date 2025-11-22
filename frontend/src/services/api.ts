@@ -75,6 +75,15 @@ export const orderApi = {
   updateOrder: (id: number, data: any) => api.put(`/orders/${id}/`, data),
   deleteOrder: (id: number) => api.delete(`/orders/${id}/`),
   getStatusStatistics: (params?: any) => api.get('/orders/statistics/status', { params }),
+  // 批量操作API
+  batchExport: (orderIds: number[], format: 'csv' | 'excel') => 
+    api.post('/orders/batch/export', { order_ids: orderIds, format }, { responseType: 'blob' }),
+  batchTags: (orderIds: number[], tagName: string, action: 'add' | 'remove') =>
+    api.post('/orders/batch/tags', { order_ids: orderIds, tag_name: tagName, action }),
+  batchNotes: (orderIds: number[], noteContent: string) =>
+    api.post('/orders/batch/notes', { order_ids: orderIds, note_content: noteContent }),
+  batchStatus: (orderIds: number[], status: string) =>
+    api.post('/orders/batch/status', { order_ids: orderIds, status }),
 }
 
 // 商品API
@@ -186,6 +195,48 @@ export const aiConfigApi = {
     cache_ttl_days?: number
     daily_limit?: number
   }) => api.put('/system/ai-config/', data),
+}
+
+// 用户视图API
+export const userViewsApi = {
+  // 获取用户视图列表
+  getViews: (viewType?: string) => api.get('/user-views/', { params: { view_type: viewType } }),
+  
+  // 获取指定视图
+  getView: (viewId: number) => api.get(`/user-views/${viewId}`),
+  
+  // 创建视图
+  createView: (data: {
+    name: string
+    view_type?: string
+    description?: string
+    filters?: any
+    visible_columns?: string[]
+    column_order?: string[]
+    column_widths?: Record<string, number>
+    group_by?: string
+    is_default?: boolean
+    is_public?: boolean
+  }) => api.post('/user-views/', data),
+  
+  // 更新视图
+  updateView: (viewId: number, data: {
+    name?: string
+    description?: string
+    filters?: any
+    visible_columns?: string[]
+    column_order?: string[]
+    column_widths?: Record<string, number>
+    group_by?: string
+    is_default?: boolean
+    is_public?: boolean
+  }) => api.put(`/user-views/${viewId}`, data),
+  
+  // 删除视图
+  deleteView: (viewId: number) => api.delete(`/user-views/${viewId}`),
+  
+  // 获取默认视图
+  getDefaultView: (viewType: string) => api.get(`/user-views/default/${viewType}`),
 }
 
 export default api

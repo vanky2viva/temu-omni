@@ -6,6 +6,7 @@ from app.models.activity import Activity
 from app.models.import_history import ImportHistory
 from app.models.system_config import SystemConfig
 from app.models.user import User
+from app.models.user_view import UserView
 
 from app.models.temu_orders_raw import TemuOrdersRaw
 from app.models.temu_products_raw import TemuProductsRaw
