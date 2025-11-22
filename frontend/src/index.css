@@ -97,6 +97,48 @@ body {
   justify-content: space-between;
 }
 
+/* 订单列表表格沉浸式样式 */
+.order-list-table .ant-table {
+  background: transparent !important;
+}
+
+.order-list-table .ant-table-container {
+  border: none !important;
+  background: transparent !important;
+}
+
+.order-list-table .ant-table-thead > tr > th {
+  background: transparent !important;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)) !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+}
+
+.order-list-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.05)) !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+}
+
+.order-list-table .ant-table-tbody > tr:hover > td {
+  background: var(--hover-bg, rgba(255, 255, 255, 0.02)) !important;
+}
+
+/* 浅色主题 */
+.theme-light .order-list-table .ant-table-thead > tr > th {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+.theme-light .order-list-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03) !important;
+}
+
+.theme-light .order-list-table .ant-table-tbody > tr:hover > td {
+  background: rgba(0, 0, 0, 0.02) !important;
+}
+
 .theme-dark .stat-card .ant-statistic-content {
   display: flex;
   flex-direction: column;
@@ -490,6 +532,23 @@ body {
     -webkit-overflow-scrolling: touch;
   }
 
+  /* 订单列表表格在移动端优化 */
+  .order-list-table .ant-table-cell-fix-left {
+    position: relative !important;
+    z-index: 1;
+  }
+
+  .order-list-table .ant-table-fixed-left {
+    box-shadow: none;
+  }
+
+  /* 复制按钮在移动端更小 */
+  .order-list-table .ant-btn-icon-only {
+    padding: 2px !important;
+    min-width: 24px !important;
+    height: 24px !important;
+  }
+
   /* 卡片间距调整 */
   .ant-row {
     margin-left: -8px !important;
@@ -606,5 +665,61 @@ body {
   .ant-layout-sider-collapsed {
     width: 80px !important;
   }
+}
+
+/* ============================================
+   订单列表表格优化（全局样式）
+   ============================================ */
+
+/* 订单列表表格固定列优化，避免遮挡 */
+.order-list-table .ant-table-fixed-left {
+  z-index: 10 !important;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15) !important;
+}
+
+.order-list-table .ant-table-fixed-right {
+  z-index: 10 !important;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* 固定列背景色优化 */
+.order-list-table .ant-table-cell-fix-left {
+  background: var(--color-bg) !important;
+}
+
+.order-list-table .ant-table-cell-fix-right {
+  background: var(--color-bg) !important;
+}
+
+/* 固定列表头背景色 */
+.order-list-table .ant-table-thead .ant-table-cell-fix-left,
+.order-list-table .ant-table-thead .ant-table-cell-fix-right {
+  background: var(--color-bg) !important;
+}
+
+/* 表格滚动优化 */
+.order-list-table .ant-table-body {
+  overflow-x: auto !important;
+}
+
+/* 复制按钮样式 */
+.order-list-table .ant-btn-icon-only {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.order-list-table .ant-btn-icon-only:hover {
+  opacity: 1;
+}
+
+/* 深色主题下的固定列样式 */
+.theme-dark .order-list-table .ant-table-cell-fix-left,
+.theme-dark .order-list-table .ant-table-cell-fix-right {
+  background: #161b22 !important;
+}
+
+.theme-dark .order-list-table .ant-table-thead .ant-table-cell-fix-left,
+.theme-dark .order-list-table .ant-table-thead .ant-table-cell-fix-right {
+  background: #0d1117 !important;
 }
 

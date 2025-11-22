@@ -106,3 +106,13 @@ class OrderStatistics(BaseModel):
     avg_order_value: Decimal
     profit_margin: float
 
+
+class OrderStatusStatistics(BaseModel):
+    """订单状态统计模式"""
+    total_orders: int  # 总订单数（不含已取消）
+    processing: int  # 未发货
+    shipped: int  # 已发货
+    delivered: int  # 已送达
+    delayed_orders: int  # 延误订单数
+    delay_rate: float  # 延误率（百分比）
+

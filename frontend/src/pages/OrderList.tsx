@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Table, Space, Select, DatePicker, Tag, Tooltip } from 'antd'
+import { Table, Space, Select, DatePicker, Tag, Tooltip, Button, message, Card, Row, Col, Statistic, Input } from 'antd'
+import { CopyOutlined, SearchOutlined } from '@ant-design/icons'
 import { orderApi, shopApi } from '@/services/api'
 import dayjs from 'dayjs'
 
@@ -27,6 +28,10 @@ function OrderList() {
   const [shopId, setShopId] = useState<number | undefined>()
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null)
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
+  const [searchKeyword, setSearchKeyword] = useState<string>('')
+  const [orderSn, setOrderSn] = useState<string>('')
+  const [productName, setProductName] = useState<string>('')
+  const [productSku, setProductSku] = useState<string>('')
   
   // 检测是否为移动设备
   useEffect(() => {
@@ -50,6 +55,21 @@ function OrderList() {
     staleTime: 0,
   })
 
+  // 获取订单状态统计
+  const { data: statusStats, isLoading: isLoadingStats } = useQuery({
+    queryKey: ['order-status-statistics', shopId, dateRange],
+    queryFn: async () => {
+      const params: any = {}
+      if (shopId) params.shop_id = shopId
+      if (dateRange) {
+        params.start_date = dateRange[0].toISOString()
+        params.end_date = dateRange[1].toISOString()
+      }
+      return await orderApi.getStatusStatistics(params)
+    },
+    staleTime: 30000, // 30秒缓存
+  })
+
   // 分页状态
   const [pagination, setPagination] = useState({
     current: 1,
@@ -59,7 +79,7 @@ function OrderList() {
 
   // 获取订单列表（使用分页）
   const { data: ordersData, isLoading } = useQuery({
-    queryKey: ['orders', shopId, dateRange, statusFilter, pagination.current, pagination.pageSize],
+    queryKey: ['orders', shopId, dateRange, statusFilter, searchKeyword, orderSn, productName, productSku, pagination.current, pagination.pageSize],
     queryFn: async () => {
       const params: any = {
         skip: (pagination.current - 1) * pagination.pageSize,
@@ -71,6 +91,10 @@ function OrderList() {
         params.end_date = dateRange[1].toISOString()
       }
       if (statusFilter) params.status_filter = statusFilter
+      if (searchKeyword) params.search = searchKeyword
+      if (orderSn) params.order_sn = orderSn
+      if (productName) params.product_name = productName
+      if (productSku) params.product_sku = productSku
       const result = await orderApi.getOrders(params)
       return result
     },
@@ -155,17 +179,44 @@ function OrderList() {
     return result
   }, [orders])
 
+  // 复制到剪贴板
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      message.success('已复制到剪贴板')
+    }).catch(() => {
+      message.error('复制失败')
+    })
+  }
+
   const columns = [
     {
-      title: '父订单号',
+      title: '订单号',
       dataIndex: 'parent_order_sn',
       key: 'parent_order_sn',
-      width: 220,
+      width: 150,
       fixed: 'left' as const,
       render: (parentSn: string, record: any) => {
+        const displayValue = parentSn || record.order_sn || '-'
+        
         if (!record._hasParent) {
           return {
-            children: <span style={{ color: '#999' }}>-</span>,
+            children: (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+                <span style={{ fontFamily: 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {displayValue}
+                </span>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CopyOutlined style={{ fontSize: '12px' }} />}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    copyToClipboard(displayValue)
+                  }}
+                  style={{ padding: '0 4px', minWidth: 'auto', height: '20px', flexShrink: 0 }}
+                />
+              </div>
+            ),
             props: { rowSpan: 1 },
           }
         }
@@ -173,8 +224,20 @@ function OrderList() {
         if (record._isFirstInGroup && record._groupSize > 1) {
           return {
             children: (
-              <div style={{ fontSize: '12px', fontFamily: 'monospace', fontWeight: 'bold' }}>
-                {parentSn}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+                <span style={{ fontFamily: 'monospace', fontWeight: 'bold', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {displayValue}
+                </span>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CopyOutlined style={{ fontSize: '12px' }} />}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    copyToClipboard(displayValue)
+                  }}
+                  style={{ padding: '0 4px', minWidth: 'auto', height: '20px', flexShrink: 0 }}
+                />
               </div>
             ),
             props: { rowSpan: record._groupSize },
@@ -187,7 +250,21 @@ function OrderList() {
         }
         return {
           children: (
-            <div style={{ fontSize: '12px', fontFamily: 'monospace' }}>{parentSn}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+              <span style={{ fontFamily: 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {displayValue}
+              </span>
+              <Button
+                type="text"
+                size="small"
+                icon={<CopyOutlined style={{ fontSize: '12px' }} />}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  copyToClipboard(displayValue)
+                }}
+                style={{ padding: '0 4px', minWidth: 'auto', height: '20px', flexShrink: 0 }}
+              />
+            </div>
           ),
           props: { rowSpan: 1 },
         }
@@ -197,11 +274,44 @@ function OrderList() {
       title: '子订单号',
       dataIndex: 'order_sn',
       key: 'order_sn',
-      width: 220,
+      width: 150,
       fixed: 'left' as const,
-      render: (sn: string) => (
-        <div style={{ fontSize: '12px', fontFamily: 'monospace' }}>{sn}</div>
-      ),
+      render: (sn: string, record: any) => {
+        // 如果订单有父订单号，且不是第一行，不显示
+        if (record._hasParent && record._groupSize > 1 && !record._isFirstInGroup) {
+          return {
+            children: null,
+            props: { rowSpan: 0 },
+          }
+        }
+        
+        const displaySn = sn || '-'
+        
+        return {
+          children: (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+              <span style={{ fontFamily: 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {displaySn}
+              </span>
+              {sn && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CopyOutlined style={{ fontSize: '12px' }} />}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    copyToClipboard(sn)
+                  }}
+                  style={{ padding: '0 4px', minWidth: 'auto', height: '20px', flexShrink: 0 }}
+                />
+              )}
+            </div>
+          ),
+          props: record._hasParent && record._groupSize > 1 && record._isFirstInGroup 
+            ? { rowSpan: record._groupSize }
+            : { rowSpan: 1 },
+        }
+      },
     },
     {
       title: '商品名称',
@@ -378,26 +488,136 @@ function OrderList() {
   ]
 
   return (
-    <div style={{ 
-      background: 'var(--color-bg)',
-      borderRadius: '8px',
-      border: '1px solid var(--border-color, #e1e4e8)',
-      overflow: 'hidden'
-    }}>
-      <div style={{ 
-        padding: isMobile ? '16px' : '20px 24px',
-        borderBottom: '1px solid var(--border-color, #e1e4e8)',
-        background: 'var(--color-bg)'
+    <div>
+      <h2 style={{ 
+        margin: 0,
+        marginBottom: '16px',
+        fontSize: isMobile ? '18px' : '20px',
+        fontWeight: 600,
+        color: 'var(--color-fg)'
       }}>
-        <h2 style={{ 
-          margin: 0,
-          marginBottom: '16px',
-          fontSize: isMobile ? '18px' : '20px',
-          fontWeight: 600,
-          color: 'var(--color-fg)'
-        }}>
-          订单管理
-        </h2>
+        订单列表
+      </h2>
+      
+      <div style={{ marginBottom: '20px' }}>
+        {/* 统计卡片 */}
+        {statusStats && (
+          <Row gutter={[8, 8]}>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Card 
+                  size="small" 
+                  loading={isLoadingStats}
+                  style={{ height: '100%', minHeight: isMobile ? '80px' : '100px' }}
+                  bodyStyle={{ padding: isMobile ? '12px' : '16px' }}
+                >
+                  <Statistic
+                    title="总订单数"
+                    value={statusStats.total_orders || 0}
+                    valueStyle={{ fontSize: isMobile ? '18px' : '22px', lineHeight: '1.2' }}
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Card 
+                  size="small" 
+                  loading={isLoadingStats}
+                  style={{ height: '100%', minHeight: isMobile ? '80px' : '100px' }}
+                  bodyStyle={{ padding: isMobile ? '12px' : '16px' }}
+                >
+                  <Statistic
+                    title="未发货"
+                    value={statusStats.processing || 0}
+                    valueStyle={{ fontSize: isMobile ? '18px' : '22px', color: '#faad14', lineHeight: '1.2' }}
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Card 
+                  size="small" 
+                  loading={isLoadingStats}
+                  style={{ height: '100%', minHeight: isMobile ? '80px' : '100px' }}
+                  bodyStyle={{ padding: isMobile ? '12px' : '16px' }}
+                >
+                  <Statistic
+                    title="已发货"
+                    value={statusStats.shipped || 0}
+                    valueStyle={{ fontSize: isMobile ? '18px' : '22px', color: '#1890ff', lineHeight: '1.2' }}
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Card 
+                  size="small" 
+                  loading={isLoadingStats}
+                  style={{ height: '100%', minHeight: isMobile ? '80px' : '100px' }}
+                  bodyStyle={{ padding: isMobile ? '12px' : '16px' }}
+                >
+                  <Statistic
+                    title="已送达"
+                    value={statusStats.delivered || 0}
+                    valueStyle={{ fontSize: isMobile ? '18px' : '22px', color: '#52c41a', lineHeight: '1.2' }}
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Card 
+                  size="small" 
+                  loading={isLoadingStats}
+                  style={{ height: '100%', minHeight: isMobile ? '80px' : '100px' }}
+                  bodyStyle={{ padding: isMobile ? '12px' : '16px' }}
+                >
+                  <Statistic
+                    title="延误订单"
+                    value={statusStats.delayed_orders || 0}
+                    valueStyle={{ fontSize: isMobile ? '18px' : '22px', color: '#ff4d4f', lineHeight: '1.2' }}
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Card 
+                  size="small" 
+                  loading={isLoadingStats}
+                  style={{ height: '100%', minHeight: isMobile ? '80px' : '100px' }}
+                  bodyStyle={{ padding: isMobile ? '12px' : '16px' }}
+                >
+                  <Statistic
+                    title="延误率"
+                    value={statusStats.delay_rate || 0}
+                    precision={2}
+                    suffix="%"
+                    valueStyle={{ 
+                      fontSize: isMobile ? '18px' : '22px', 
+                      color: statusStats.delay_rate > 10 ? '#ff4d4f' : '#52c41a',
+                      lineHeight: '1.2',
+                      whiteSpace: 'nowrap'
+                    }}
+                  />
+                </Card>
+              </Col>
+            </Row>
+        )}
+      </div>
+      
+        {/* 模糊搜索 */}
+        <div style={{ marginBottom: '16px' }}>
+          <Input
+            placeholder="搜索订单号、商品名称或SKU..."
+            prefix={<SearchOutlined />}
+            allowClear
+            value={searchKeyword}
+            onChange={(e) => {
+              setSearchKeyword(e.target.value)
+              handleFilterChange()
+            }}
+            onPressEnter={() => handleFilterChange()}
+            style={{ 
+              width: isMobile ? '100%' : '400px',
+              maxWidth: '100%'
+            }}
+          />
+        </div>
+
+        {/* 详细筛选条件 */}
         <Space 
           size={isMobile ? "small" : "middle"} 
           wrap 
@@ -444,6 +664,7 @@ function OrderList() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: isMobile ? '100%' : 'auto' }}>
             <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px', minWidth: isMobile ? '60px' : 'auto' }}>日期：</span>
             <RangePicker
+              value={dateRange}
               onChange={(dates) => {
                 setDateRange(dates as any)
                 handleFilterChange()
@@ -452,16 +673,61 @@ function OrderList() {
               style={{ width: isMobile ? '100%' : 240 }}
             />
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: isMobile ? '100%' : 'auto' }}>
+            <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px', minWidth: isMobile ? '60px' : 'auto' }}>订单号：</span>
+            <Input
+              placeholder="订单号"
+              allowClear
+              value={orderSn}
+              onChange={(e) => {
+                setOrderSn(e.target.value)
+                handleFilterChange()
+              }}
+              onPressEnter={() => handleFilterChange()}
+              style={{ width: isMobile ? '100%' : 200 }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: isMobile ? '100%' : 'auto' }}>
+            <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px', minWidth: isMobile ? '60px' : 'auto' }}>商品名称：</span>
+            <Input
+              placeholder="商品名称"
+              allowClear
+              value={productName}
+              onChange={(e) => {
+                setProductName(e.target.value)
+                handleFilterChange()
+              }}
+              onPressEnter={() => handleFilterChange()}
+              style={{ width: isMobile ? '100%' : 200 }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: isMobile ? '100%' : 'auto' }}>
+            <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px', minWidth: isMobile ? '60px' : 'auto' }}>SKU：</span>
+            <Input
+              placeholder="SKU"
+              allowClear
+              value={productSku}
+              onChange={(e) => {
+                setProductSku(e.target.value)
+                handleFilterChange()
+              }}
+              onPressEnter={() => handleFilterChange()}
+              style={{ width: isMobile ? '100%' : 200 }}
+            />
+          </div>
         </Space>
-      </div>
-
-      <div style={{ padding: '0' }}>
+      
+      <div style={{ marginTop: '20px', overflowX: 'auto' }}>
         <Table
           columns={columns}
           dataSource={processedOrders}
           rowKey="id"
           loading={isLoading}
-          scroll={{ x: 2000 }}
+          bordered={false}
+          scroll={{ 
+            x: 'max-content',
+            y: isMobile ? undefined : 'calc(100vh - 400px)',
+          }}
           pagination={pagination.total > 0 ? {
             current: pagination.current,
             pageSize: pagination.pageSize,
@@ -486,13 +752,12 @@ function OrderList() {
               }))
             },
             style: { 
-              padding: '16px 24px',
-              background: 'var(--color-bg)',
-              borderTop: '1px solid var(--border-color, #e1e4e8)'
+              marginTop: '16px',
+              background: 'transparent'
             }
           } : false}
           style={{
-            background: 'var(--color-bg)',
+            background: 'transparent',
           }}
           className="order-list-table"
         />

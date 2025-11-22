@@ -7,9 +7,6 @@ import {
   ShoppingOutlined,
   ProductOutlined,
   BarChartOutlined,
-  TableOutlined,
-  FundOutlined,
-  CrownOutlined,
   CarOutlined,
   WalletOutlined,
   LogoutOutlined,
@@ -35,7 +32,7 @@ const menuItems = [
   {
     key: '/orders',
     icon: <ShoppingOutlined />,
-    label: '订单管理',
+    label: '订单列表',
   },
   {
     key: '/products',
@@ -56,21 +53,6 @@ const menuItems = [
     key: '/finance',
     icon: <WalletOutlined />,
     label: '财务管理',
-  },
-  {
-    key: '/gmv-table',
-    icon: <TableOutlined />,
-    label: 'GMV表格',
-  },
-  {
-    key: '/sku-analysis',
-    icon: <FundOutlined />,
-    label: 'SKU分析',
-  },
-  {
-    key: '/hot-seller',
-    icon: <CrownOutlined />,
-    label: '爆单榜',
   },
   {
     key: '/forggpt',

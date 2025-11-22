@@ -74,6 +74,7 @@ export const orderApi = {
   createOrder: (data: any) => api.post('/orders/', data),
   updateOrder: (id: number, data: any) => api.put(`/orders/${id}/`, data),
   deleteOrder: (id: number) => api.delete(`/orders/${id}/`),
+  getStatusStatistics: (params?: any) => api.get('/orders/statistics/status', { params }),
 }
 
 // 商品API
