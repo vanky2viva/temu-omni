@@ -24,6 +24,11 @@ import {
   SendOutlined,
   SettingOutlined,
   CopyOutlined,
+  EditOutlined,
+  ReloadOutlined,
+  StopOutlined,
+  CheckOutlined,
+  CloseOutlined,
 } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -79,6 +84,10 @@ export default function ForgGPT() {
   const [selectedShopId, setSelectedShopId] = useState<number | null>(null)
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
   const [settingsForm] = Form.useForm()
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState('')
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
+  const [abortController, setAbortController] = useState<AbortController | null>(null)
   // 文件上传相关状态
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; name: string; type: string; size: number; url?: string; desc?: string }>>([])
   const [isDragging, setIsDragging] = useState(false)
@@ -271,19 +280,36 @@ export default function ForgGPT() {
   }, [thinkingContent, showThinking])
 
   // 发送消息
-  const handleSend = async () => {
-    if (!input.trim() || loading) return
+  const handleSend = async (messageToSend?: string, editMessageId?: string) => {
+    const messageContent = messageToSend || input.trim()
+    if (!messageContent || loading) return
+
+    // 创建新的 AbortController
+    const controller = new AbortController()
+    setAbortController(controller)
+
+    // 如果是编辑消息，删除编辑的消息及其后的所有消息
+    let messagesToKeep = [...messages]
+    if (editMessageId) {
+      const editIndex = messagesToKeep.findIndex((msg) => msg.id === editMessageId)
+      if (editIndex !== -1) {
+        messagesToKeep = messagesToKeep.slice(0, editIndex)
+      }
+      setEditingMessageId(null)
+      setEditingContent('')
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input.trim(),
+      content: messageContent,
       createdAt: dayjs().format('HH:mm'),
     }
 
-    setMessages((prev) => [...prev, userMessage])
-    const currentInput = input.trim()
-    setInput('')
+    setMessages([...messagesToKeep, userMessage])
+    if (!editMessageId) {
+      setInput('')
+    }
     setLoading(true)
     setIsStreaming(false)
     setStreamingContent('')
@@ -292,7 +318,7 @@ export default function ForgGPT() {
     setThinkingCompleted(false)
 
     try {
-      const history = messages.map((msg) => ({
+      const history = messagesToKeep.map((msg) => ({
         role: msg.role,
         content: msg.content,
       }))
@@ -303,8 +329,9 @@ export default function ForgGPT() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
+        signal: controller.signal,
         body: JSON.stringify({
-          message: currentInput,
+          message: messageContent,
           session_id: sessionId,
           shop_ids: selectedShopId ? [selectedShopId] : undefined,
           date_range: dateRange,
@@ -332,6 +359,11 @@ export default function ForgGPT() {
         throw new Error('无法读取响应流')
       }
 
+      // 检查是否已取消
+      if (controller.signal.aborted) {
+        return
+      }
+
       setIsStreaming(true)
       let currentSessionId = sessionId
       let assistantMessageId = (Date.now() + 1).toString()
@@ -339,6 +371,12 @@ export default function ForgGPT() {
       let currentThinking = ''
 
       while (true) {
+        // 检查是否已取消
+        if (controller.signal.aborted) {
+          reader.cancel()
+          break
+        }
+        
         const { done, value } = await reader.read()
         if (done) break
 
@@ -385,11 +423,11 @@ export default function ForgGPT() {
                 setIsStreaming(false)
                 // 保存历史
                 await forggptApi.chat({
-                  message: currentInput,
+                  message: messageContent,
                   session_id: currentSessionId,
                   history: [
                     ...history,
-                    { role: 'user', content: currentInput },
+                    { role: 'user', content: messageContent },
                     { role: 'assistant', content: fullContent },
                   ],
                   stream: false,
@@ -405,23 +443,93 @@ export default function ForgGPT() {
         }
       }
     } catch (error: any) {
-      message.error(error.message || '发送消息失败')
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: `抱歉，发生了错误：${error.message || '未知错误'}`,
-        createdAt: dayjs().format('HH:mm'),
+      // 如果是用户主动取消，不显示错误
+      if (error.name === 'AbortError' || controller.signal.aborted) {
+        setMessages((prev) => {
+          // 移除最后一条用户消息（如果还在流式输出中）
+          if (prev.length > 0 && prev[prev.length - 1].role === 'user') {
+            return prev.slice(0, -1)
+          }
+          return prev
+        })
+        setStreamingContent('')
+        message.info('已停止生成')
+      } else {
+        message.error(error.message || '发送消息失败')
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `抱歉，发生了错误：${error.message || '未知错误'}`,
+          createdAt: dayjs().format('HH:mm'),
+        }
+        setMessages((prev) => [...prev, errorMessage])
       }
-      setMessages((prev) => [...prev, errorMessage])
     } finally {
       setLoading(false)
       setIsStreaming(false)
+      setAbortController(null)
       // 如果思考过程还在显示且未完成，确保标记为完成并折叠
       if (showThinking && !thinkingCompleted) {
         setThinkingCompleted(true)
         setTimeout(() => {
           setShowThinking(false)
         }, 500)
+      }
+    }
+  }
+
+  // 停止生成
+  const handleStop = () => {
+    if (abortController) {
+      abortController.abort()
+      setAbortController(null)
+    }
+  }
+
+  // 复制消息
+  const handleCopyMessage = (content: string) => {
+    navigator.clipboard.writeText(content)
+    message.success('已复制到剪贴板')
+  }
+
+  // 编辑消息
+  const handleEditMessage = (messageId: string, content: string) => {
+    setEditingMessageId(messageId)
+    setEditingContent(content)
+    // 滚动到输入框
+    setTimeout(() => {
+      const inputElement = document.querySelector('textarea')
+      inputElement?.focus()
+    }, 100)
+  }
+
+  // 确认编辑
+  const handleConfirmEdit = () => {
+    if (editingMessageId && editingContent.trim()) {
+      handleSend(editingContent.trim(), editingMessageId)
+    }
+  }
+
+  // 取消编辑
+  const handleCancelEdit = () => {
+    setEditingMessageId(null)
+    setEditingContent('')
+  }
+
+  // 重新生成
+  const handleRegenerate = (messageId: string) => {
+    // 找到这条消息的前一条用户消息
+    const messageIndex = messages.findIndex((msg) => msg.id === messageId)
+    if (messageIndex > 0) {
+      const previousUserMessage = messages[messageIndex - 1]
+      if (previousUserMessage.role === 'user') {
+        // 删除当前消息，然后重新发送用户消息
+        const messagesToKeep = messages.slice(0, messageIndex - 1)
+        setMessages(messagesToKeep)
+        // 使用 setTimeout 确保状态更新后再发送
+        setTimeout(() => {
+          handleSend(previousUserMessage.content, previousUserMessage.id)
+        }, 0)
       }
     }
   }
@@ -1285,32 +1393,34 @@ export default function ForgGPT() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   textAlign: 'center',
-                  padding: '20px 16px',
+                  padding: '40px 16px',
+                  minHeight: '400px',
                 }}
               >
                 <div
                   style={{
-                    width: '64px',
-                    height: '64px',
-                    borderRadius: '12px',
+                    width: '80px',
+                    height: '80px',
+                    borderRadius: '16px',
                     background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: '32px',
-                    marginBottom: '16px',
+                    fontSize: '40px',
+                    marginBottom: '24px',
                     border: '2px solid rgba(34, 197, 94, 0.3)',
-                    boxShadow: '0 0 30px rgba(34, 197, 94, 0.2)',
+                    boxShadow: '0 0 40px rgba(34, 197, 94, 0.3)',
+                    animation: 'pulse 2s ease-in-out infinite',
                   }}
                 >
                   🐸
                 </div>
                 <div
                   style={{
-                    fontSize: '18px',
-                    fontWeight: 600,
+                    fontSize: '24px',
+                    fontWeight: 700,
                     color: '#e5e7eb',
-                    marginBottom: '6px',
+                    marginBottom: '12px',
                     letterSpacing: '0.5px',
                   }}
                 >
@@ -1318,29 +1428,44 @@ export default function ForgGPT() {
                 </div>
                 <div
                   style={{
-                    fontSize: '12px',
+                    fontSize: '14px',
                     color: '#94a3b8',
-                    lineHeight: '1.5',
+                    lineHeight: '1.8',
                     maxWidth: '450px',
-                    marginBottom: '16px',
+                    marginBottom: '32px',
                   }}
                 >
                   我可以帮你分析运营数据，提供经营建议，也可以处理你上传的表格和文档。
+                  <br />
+                  试试下面的快捷问题，或直接输入你的问题。
                 </div>
-                <Space wrap size={6}>
+                <Space wrap size={8} style={{ maxWidth: '450px' }}>
                   {quickPrompts.map((q) => (
                     <Button
                       key={q}
                       size="small"
                       onClick={() => handleQuickClick(q)}
                       style={{
-                        borderRadius: '6px',
+                        borderRadius: '8px',
                         background: 'rgba(99, 102, 241, 0.1)',
                         border: '1px solid rgba(99, 102, 241, 0.3)',
                         color: '#cbd5e1',
-                        fontSize: '12px',
-                        height: '28px',
-                        padding: '0 12px',
+                        fontSize: '13px',
+                        height: '36px',
+                        padding: '0 16px',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(99, 102, 241, 0.2)'
+                        e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.5)'
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.3)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)'
+                        e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.3)'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                        e.currentTarget.style.boxShadow = 'none'
                       }}
                     >
                       {q}
@@ -1350,8 +1475,18 @@ export default function ForgGPT() {
               </div>
             ) : (
               <>
-                {messages.map((msg) => (
-                  <ChatBubble key={msg.id} message={msg} />
+                {messages.map((msg, index) => (
+                  <ChatBubble
+                    key={msg.id}
+                    message={msg}
+                    isStreaming={isStreaming && index === messages.length}
+                    onCopy={() => handleCopyMessage(msg.content)}
+                    onEdit={msg.role === 'user' ? () => handleEditMessage(msg.id, msg.content) : undefined}
+                    onRegenerate={msg.role === 'assistant' && index > 0 ? () => handleRegenerate(msg.id) : undefined}
+                    isHovered={hoveredMessageId === msg.id}
+                    onMouseEnter={() => setHoveredMessageId(msg.id)}
+                    onMouseLeave={() => setHoveredMessageId(null)}
+                  />
                 ))}
                 {/* 思考过程 - 如果已完成但被折叠，显示展开按钮 */}
                 {thinkingCompleted && !showThinking && thinkingContent && (
@@ -1448,6 +1583,10 @@ export default function ForgGPT() {
                       createdAt: dayjs().format('HH:mm'),
                     }}
                     isStreaming={true}
+                    onCopy={() => handleCopyMessage(streamingContent)}
+                    isHovered={hoveredMessageId === 'streaming'}
+                    onMouseEnter={() => setHoveredMessageId('streaming')}
+                    onMouseLeave={() => setHoveredMessageId(null)}
                   />
                 )}
                 {loading && !isStreaming && (
@@ -1466,6 +1605,23 @@ export default function ForgGPT() {
                     </div>
                   </div>
                 )}
+                {/* 停止生成按钮 */}
+                {isStreaming && (
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: '8px' }}>
+                    <Button
+                      size="small"
+                      icon={<StopOutlined />}
+                      onClick={handleStop}
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        color: '#ef4444',
+                      }}
+                    >
+                      停止生成
+                    </Button>
+                  </div>
+                )}
                 <div ref={messagesEndRef} />
               </>
             )}
@@ -1480,6 +1636,50 @@ export default function ForgGPT() {
               flexShrink: 0,
             }}
           >
+            {/* 编辑模式提示 */}
+            {editingMessageId && (
+              <div
+                style={{
+                  marginBottom: '8px',
+                  padding: '8px 12px',
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Text style={{ fontSize: '12px', color: '#818cf8' }}>正在编辑消息</Text>
+                <Space size={8}>
+                  <Button
+                    size="small"
+                    icon={<CheckOutlined />}
+                    onClick={handleConfirmEdit}
+                    disabled={!editingContent.trim()}
+                    style={{
+                      background: 'rgba(34, 197, 94, 0.1)',
+                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                      color: '#22c55e',
+                    }}
+                  >
+                    确认
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<CloseOutlined />}
+                    onClick={handleCancelEdit}
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      color: '#ef4444',
+                    }}
+                  >
+                    取消
+                  </Button>
+                </Space>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
               <div style={{ flex: 1 }}>
                 <div style={{ marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'space-between' }}>
@@ -1509,12 +1709,29 @@ export default function ForgGPT() {
                   </Text>
                 </div>
                 <TextArea
-                  rows={5}
-                  value={input}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder="输入你的问题，或拖拽文件/粘贴图片/链接到此处..."
-                  disabled={loading}
+                  autoSize={{ minRows: 1, maxRows: 8 }}
+                  value={editingMessageId ? editingContent : input}
+                  onChange={(e) => {
+                    if (editingMessageId) {
+                      setEditingContent(e.target.value)
+                    } else {
+                      handleInputChange(e)
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (editingMessageId) {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        handleConfirmEdit()
+                      } else if (e.key === 'Escape') {
+                        handleCancelEdit()
+                      }
+                    } else {
+                      handleKeyDown(e)
+                    }
+                  }}
+                  placeholder={editingMessageId ? "编辑消息..." : "输入你的问题，或拖拽文件/粘贴图片/链接到此处..."}
+                  disabled={loading && !editingMessageId}
                   style={{
                     background: 'rgba(15, 23, 42, 0.8)',
                     border: '1px solid rgba(99, 102, 241, 0.3)',
@@ -1554,18 +1771,28 @@ export default function ForgGPT() {
                 <Button
                   type="primary"
                   icon={<SendOutlined />}
-                  onClick={handleSend}
-                  disabled={!input.trim() || loading}
+                  onClick={() => {
+                    if (editingMessageId) {
+                      handleConfirmEdit()
+                    } else {
+                      handleSend()
+                    }
+                  }}
+                  disabled={
+                    editingMessageId
+                      ? !editingContent.trim() || loading
+                      : !input.trim() || loading
+                  }
                   style={{
                     background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
                     border: 'none',
-                    height: input.match(/https?:\/\/[^\s]+/g) ? '110px' : '120px',
+                    minHeight: '36px',
                     borderRadius: '8px',
                     boxShadow: '0 2px 8px rgba(99, 102, 241, 0.4)',
                     fontSize: '13px',
                   }}
                 >
-                  发送
+                  {editingMessageId ? '确认' : '发送'}
                 </Button>
               </div>
             </div>
@@ -1723,15 +1950,39 @@ const FileItem: React.FC<{
   )
 }
 
-const ChatBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({
+const ChatBubble: React.FC<{
+  message: Message
+  isStreaming?: boolean
+  onCopy?: () => void
+  onEdit?: () => void
+  onRegenerate?: () => void
+  isHovered?: boolean
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
+}> = ({
   message: messageData,
   isStreaming,
+  onCopy,
+  onEdit,
+  onRegenerate,
+  isHovered,
+  onMouseEnter,
+  onMouseLeave,
 }) => {
   const isUser = messageData.role === 'user'
 
   if (isUser) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          marginBottom: '8px',
+          position: 'relative',
+        }}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      >
         <div
           style={{
             maxWidth: '75%',
@@ -1744,9 +1995,65 @@ const ChatBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({
             lineHeight: '1.6',
             boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)',
             border: '1px solid rgba(255, 255, 255, 0.1)',
+            position: 'relative',
           }}
         >
           {messageData.content}
+          {/* 操作按钮 */}
+          {isHovered && (onCopy || onEdit) && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '-32px',
+                right: '0',
+                display: 'flex',
+                gap: '4px',
+                background: 'rgba(15, 23, 42, 0.95)',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                borderRadius: '6px',
+                padding: '4px',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+              }}
+            >
+              {onCopy && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onCopy()
+                  }}
+                  style={{
+                    color: '#cbd5e1',
+                    fontSize: '12px',
+                    height: '24px',
+                    padding: '0 8px',
+                  }}
+                  title="复制"
+                />
+              )}
+              {onEdit && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onEdit()
+                  }}
+                  style={{
+                    color: '#cbd5e1',
+                    fontSize: '12px',
+                    height: '24px',
+                    padding: '0 8px',
+                  }}
+                  title="编辑"
+                />
+              )}
+            </div>
+          )}
           <div
             style={{
               textAlign: 'right',
@@ -1764,7 +2071,17 @@ const ChatBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '8px' }}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '10px',
+        marginBottom: '8px',
+        position: 'relative',
+      }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
       <Avatar
         size={32}
         style={{
@@ -1787,8 +2104,64 @@ const ChatBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({
           lineHeight: '1.6',
           border: '1px solid rgba(99, 102, 241, 0.2)',
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
+          position: 'relative',
         }}
       >
+        {/* 操作按钮 */}
+        {isHovered && (onCopy || onRegenerate) && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '-32px',
+              left: '0',
+              display: 'flex',
+              gap: '4px',
+              background: 'rgba(15, 23, 42, 0.95)',
+              border: '1px solid rgba(99, 102, 241, 0.3)',
+              borderRadius: '6px',
+              padding: '4px',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            {onCopy && (
+              <Button
+                type="text"
+                size="small"
+                icon={<CopyOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCopy()
+                }}
+                style={{
+                  color: '#cbd5e1',
+                  fontSize: '12px',
+                  height: '24px',
+                  padding: '0 8px',
+                }}
+                title="复制"
+              />
+            )}
+            {onRegenerate && (
+              <Button
+                type="text"
+                size="small"
+                icon={<ReloadOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRegenerate()
+                }}
+                style={{
+                  color: '#cbd5e1',
+                  fontSize: '12px',
+                  height: '24px',
+                  padding: '0 8px',
+                }}
+                title="重新生成"
+              />
+            )}
+          </div>
+        )}
         {messageData.title && (
           <div
             style={{

@@ -3,7 +3,7 @@ import { Table, Card, Row, Col, Statistic, Spin, Tabs, Button, message } from 'a
 import { DollarOutlined, RiseOutlined, CalculatorOutlined, SyncOutlined, ShoppingOutlined, FundOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import ReactECharts from 'echarts-for-react'
-import { analyticsApi } from '@/services/api'
+import { analyticsApi, orderApi } from '@/services/api'
 import { calculateOrderCosts, getDailyCollectionForecast } from '@/services/orderCostApi'
 import { statisticsApi } from '@/services/statisticsApi'
 import dayjs from 'dayjs'
@@ -45,6 +45,13 @@ function Finance() {
   const { data: dailyForecastData, isLoading: forecastLoading, refetch: refetchForecast } = useQuery({
     queryKey: ['daily-collection-forecast'],
     queryFn: () => getDailyCollectionForecast(),
+    staleTime: 0,
+  })
+
+  // 获取订单状态统计数据
+  const { data: orderStatusStats, isLoading: orderStatusStatsLoading } = useQuery({
+    queryKey: ['order-status-statistics'],
+    queryFn: () => orderApi.getStatusStatistics(),
     staleTime: 0,
   })
 
