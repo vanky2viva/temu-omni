@@ -273,14 +273,14 @@ function SalesStatistics() {
     }
   }, [salesOverview])
 
-  // 准备每日销量表格数据
+  // 准备每日销量表格数据（按日期倒序排序，最新日期在前）
   const dailySalesTableData = useMemo(() => {
     if (!salesOverview) return []
     const dailyTrends = salesOverview.daily_trends || []
     const shopTrends = salesOverview.shop_trends || {}
     const shopNames = Object.keys(shopTrends)
 
-    return dailyTrends.map((day: any) => {
+    const tableData = dailyTrends.map((day: any) => {
       const row: any = {
         key: day.date,
         date: day.date,
@@ -295,6 +295,11 @@ function SalesStatistics() {
       })
       
       return row
+    })
+    
+    // 按日期倒序排序（最新的日期在前）
+    return tableData.sort((a: any, b: any) => {
+      return dayjs(b.date).valueOf() - dayjs(a.date).valueOf()
     })
   }, [salesOverview])
 
