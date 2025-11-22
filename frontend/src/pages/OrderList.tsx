@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Table, Space, Select, DatePicker, Tag, Tooltip, Button, message, Row, Col, Input, Collapse, Modal, Dropdown } from 'antd'
-import { CopyOutlined, SearchOutlined, FilterOutlined, DownOutlined, UpOutlined, ReloadOutlined, SaveOutlined, FolderOutlined, DeleteOutlined, ExportOutlined, TagOutlined, FileTextOutlined, CheckCircleOutlined, CloseCircleOutlined, ShoppingOutlined, InboxOutlined, CheckCircleFilled, WarningOutlined, PercentageOutlined } from '@ant-design/icons'
+import { CopyOutlined, SearchOutlined, FilterOutlined, DownOutlined, UpOutlined, ReloadOutlined, SaveOutlined, FolderOutlined, DeleteOutlined, ExportOutlined, TagOutlined, FileTextOutlined, CheckCircleOutlined, CloseCircleOutlined, ShoppingOutlined, InboxOutlined, CheckCircleFilled, WarningOutlined } from '@ant-design/icons'
 import { orderApi, shopApi, userViewsApi } from '@/services/api'
 import EnhancedKPICard from '@/components/EnhancedKPICard'
 import OrderDetailDrawer from '@/components/OrderDetailDrawer'
+import PercentagePieIcon from '@/components/PercentagePieIcon'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -908,7 +909,14 @@ function OrderList() {
                   precision: 2,
                   suffix: '%',
                   color: ((statusStats as any)?.delay_rate ?? 0) > 10 ? '#ff4d4f' : '#52c41a',
-                  icon: <PercentageOutlined style={{ fontSize: '20px', color: '#fff' }} />,
+                  icon: (
+                    <PercentagePieIcon
+                      percentage={(statusStats as any)?.delay_rate ?? 0}
+                      size={36}
+                      color={((statusStats as any)?.delay_rate ?? 0) > 10 ? '#ff4d4f' : '#52c41a'}
+                      backgroundColor="rgba(255, 255, 255, 0.08)"
+                    />
+                  ),
                   description: '延误订单占比',
                 }}
               />
