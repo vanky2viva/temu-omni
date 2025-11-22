@@ -97,7 +97,7 @@ body {
   justify-content: space-between;
 }
 
-/* 订单列表表格沉浸式样式 */
+/* 订单列表表格 - Bulma 风格 */
 .order-list-table .ant-table {
   background: transparent !important;
 }
@@ -109,34 +109,64 @@ body {
 
 .order-list-table .ant-table-thead > tr > th {
   background: transparent !important;
-  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)) !important;
+  border-bottom: 2px solid var(--border-color, rgba(0, 209, 178, 0.2)) !important;
   border-top: none !important;
   border-left: none !important;
   border-right: none !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  font-size: 12px !important;
+  letter-spacing: 0.5px !important;
+  color: var(--color-fg) !important;
+  opacity: 0.8 !important;
+  padding: 16px !important;
+  transition: all 0.2s ease !important;
 }
 
 .order-list-table .ant-table-tbody > tr > td {
-  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.05)) !important;
+  border-bottom: 1px solid var(--border-color, rgba(0, 209, 178, 0.1)) !important;
   border-top: none !important;
   border-left: none !important;
   border-right: none !important;
+  padding: 16px !important;
+  transition: all 0.2s ease !important;
+}
+
+.order-list-table .ant-table-tbody > tr {
+  transition: all 0.2s ease !important;
 }
 
 .order-list-table .ant-table-tbody > tr:hover > td {
-  background: var(--hover-bg, rgba(255, 255, 255, 0.02)) !important;
+  background: var(--hover-bg, rgba(0, 209, 178, 0.05)) !important;
+  transform: translateX(2px) !important;
 }
 
 /* 浅色主题 */
 .theme-light .order-list-table .ant-table-thead > tr > th {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border-bottom: 2px solid rgba(0, 209, 178, 0.2) !important;
+  color: #363636 !important;
 }
 
 .theme-light .order-list-table .ant-table-tbody > tr > td {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-bottom: 1px solid rgba(0, 209, 178, 0.1) !important;
 }
 
 .theme-light .order-list-table .ant-table-tbody > tr:hover > td {
-  background: rgba(0, 0, 0, 0.02) !important;
+  background: rgba(0, 209, 178, 0.05) !important;
+}
+
+/* 深色主题 */
+.theme-dark .order-list-table .ant-table-thead > tr > th {
+  border-bottom: 2px solid rgba(88, 166, 255, 0.2) !important;
+  color: #c9d1d9 !important;
+}
+
+.theme-dark .order-list-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid rgba(88, 166, 255, 0.1) !important;
+}
+
+.theme-dark .order-list-table .ant-table-tbody > tr:hover > td {
+  background: rgba(88, 166, 255, 0.05) !important;
 }
 
 .theme-dark .stat-card .ant-statistic-content {
@@ -403,6 +433,346 @@ body {
 .theme-dark h2 {
   font-size: 20px !important;
   margin-bottom: 16px !important;
+}
+
+/* ============================================
+   Bulma 风格设计增强
+   ============================================ */
+
+/* Bulma 风格的卡片容器 */
+.bulma-card {
+  background: var(--color-bg);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.theme-dark .bulma-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.bulma-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.theme-dark .bulma-card:hover {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  border-color: #58a6ff;
+}
+
+/* Bulma 风格的标签 */
+.bulma-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.bulma-tag-primary {
+  background: linear-gradient(135deg, #00d1b2 0%, #00c4a7 100%);
+  color: #fff;
+  box-shadow: 0 2px 4px rgba(0, 209, 178, 0.3);
+}
+
+.bulma-tag-success {
+  background: linear-gradient(135deg, #48c774 0%, #3ec46d 100%);
+  color: #fff;
+  box-shadow: 0 2px 4px rgba(72, 199, 116, 0.3);
+}
+
+.bulma-tag-warning {
+  background: linear-gradient(135deg, #ffdd57 0%, #ffd83d 100%);
+  color: #363636;
+  box-shadow: 0 2px 4px rgba(255, 221, 87, 0.3);
+}
+
+.bulma-tag-danger {
+  background: linear-gradient(135deg, #f14668 0%, #ef2e55 100%);
+  color: #fff;
+  box-shadow: 0 2px 4px rgba(241, 70, 104, 0.3);
+}
+
+.bulma-tag-info {
+  background: linear-gradient(135deg, #3273dc 0%, #2366d1 100%);
+  color: #fff;
+  box-shadow: 0 2px 4px rgba(50, 115, 220, 0.3);
+}
+
+/* Bulma 风格的按钮增强 */
+.bulma-button {
+  border-radius: 6px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.bulma-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.bulma-button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Bulma 风格的输入框 */
+.bulma-input {
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.bulma-input:focus {
+  border-color: #00d1b2;
+  box-shadow: 0 0 0 3px rgba(0, 209, 178, 0.1);
+}
+
+.theme-dark .bulma-input {
+  border-color: #30363d;
+  background: #0d1117;
+}
+
+.theme-dark .bulma-input:focus {
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+}
+
+/* Bulma 风格的分隔线 */
+.bulma-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.1) 50%, transparent 100%);
+  margin: 24px 0;
+  border: none;
+}
+
+.theme-dark .bulma-divider {
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.1) 50%, transparent 100%);
+}
+
+/* Bulma 风格的标题 */
+.bulma-title {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-fg);
+  margin-bottom: 16px;
+}
+
+.bulma-subtitle {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-fg);
+  opacity: 0.8;
+  margin-bottom: 12px;
+}
+
+/* 科技感网格背景 */
+.bulma-grid-bg {
+  position: relative;
+}
+
+.bulma-grid-bg::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(rgba(0, 209, 178, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 209, 178, 0.03) 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.theme-dark .bulma-grid-bg::before {
+  background-image: 
+    linear-gradient(rgba(88, 166, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(88, 166, 255, 0.05) 1px, transparent 1px);
+}
+
+/* 发光效果 */
+.bulma-glow {
+  position: relative;
+}
+
+.bulma-glow::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(45deg, transparent, rgba(0, 209, 178, 0.3), transparent);
+  border-radius: inherit;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.bulma-glow:hover::after {
+  opacity: 1;
+}
+
+/* 数据展示增强 */
+.bulma-stat-value {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-weight: 700;
+  background: linear-gradient(135deg, #00d1b2 0%, #3273dc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.theme-dark .bulma-stat-value {
+  background: linear-gradient(135deg, #58a6ff 0%, #00d1b2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 响应式间距 */
+.bulma-section {
+  padding: 24px;
+}
+
+@media (max-width: 768px) {
+  .bulma-section {
+    padding: 16px;
+  }
+  
+  .bulma-title {
+    font-size: 24px;
+  }
+  
+  .bulma-subtitle {
+    font-size: 18px;
+  }
+}
+
+/* Bulma 风格的 KPI 卡片 */
+.bulma-kpi-card {
+  /* 参考 Bulma card 样式 */
+  border-radius: 0.75rem !important; /* Bulma card-radius */
+}
+
+.bulma-kpi-card .ant-card-body {
+  /* 确保内容区域使用 flex 布局 */
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center !important;
+  overflow: visible !important;
+}
+
+.bulma-kpi-card .ant-card-body > * {
+  /* 所有直接子元素都有适当的宽度 */
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* 确保数字不会溢出 */
+.bulma-kpi-card .ant-card-body > div {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Bulma 风格的按钮增强 */
+.theme-dark .ant-btn-primary {
+  background: linear-gradient(135deg, #00d1b2 0%, #00c4a7 100%) !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(0, 209, 178, 0.3) !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+
+.theme-dark .ant-btn-primary:hover {
+  background: linear-gradient(135deg, #00c4a7 0%, #00b89a 100%) !important;
+  box-shadow: 0 4px 12px rgba(0, 209, 178, 0.4) !important;
+  transform: translateY(-1px) !important;
+}
+
+.theme-light .ant-btn-primary {
+  background: linear-gradient(135deg, #00d1b2 0%, #00c4a7 100%) !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(0, 209, 178, 0.3) !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+
+.theme-light .ant-btn-primary:hover {
+  background: linear-gradient(135deg, #00c4a7 0%, #00b89a 100%) !important;
+  box-shadow: 0 4px 12px rgba(0, 209, 178, 0.4) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Bulma 风格的标签增强 */
+.theme-dark .ant-tag {
+  border-radius: 6px !important;
+  padding: 4px 12px !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  border: none !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+  transition: all 0.2s ease !important;
+}
+
+.theme-dark .ant-tag:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+.theme-dark .ant-tag-success {
+  background: linear-gradient(135deg, #48c774 0%, #3ec46d 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 4px rgba(72, 199, 116, 0.3) !important;
+}
+
+.theme-dark .ant-tag-warning {
+  background: linear-gradient(135deg, #ffdd57 0%, #ffd83d 100%) !important;
+  color: #363636 !important;
+  box-shadow: 0 2px 4px rgba(255, 221, 87, 0.3) !important;
+}
+
+.theme-dark .ant-tag-error {
+  background: linear-gradient(135deg, #f14668 0%, #ef2e55 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 4px rgba(241, 70, 104, 0.3) !important;
+}
+
+.theme-dark .ant-tag-processing {
+  background: linear-gradient(135deg, #3273dc 0%, #2366d1 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 4px rgba(50, 115, 220, 0.3) !important;
+}
+
+/* 输入框和选择器增强 */
+.theme-dark .ant-input:focus,
+.theme-dark .ant-select-focused .ant-select-selector {
+  border-color: #00d1b2 !important;
+  box-shadow: 0 0 0 3px rgba(0, 209, 178, 0.1) !important;
+}
+
+.theme-light .ant-input:focus,
+.theme-light .ant-select-focused .ant-select-selector {
+  border-color: #00d1b2 !important;
+  box-shadow: 0 0 0 3px rgba(0, 209, 178, 0.1) !important;
 }
 
 /* 侧边栏与菜单 */

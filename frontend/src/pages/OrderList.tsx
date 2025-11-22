@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Table, Space, Select, DatePicker, Tag, Tooltip, Button, message, Row, Col, Input, Collapse, Modal, Dropdown } from 'antd'
-import { CopyOutlined, SearchOutlined, FilterOutlined, DownOutlined, UpOutlined, ReloadOutlined, SaveOutlined, FolderOutlined, DeleteOutlined, ExportOutlined, TagOutlined, FileTextOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import { CopyOutlined, SearchOutlined, FilterOutlined, DownOutlined, UpOutlined, ReloadOutlined, SaveOutlined, FolderOutlined, DeleteOutlined, ExportOutlined, TagOutlined, FileTextOutlined, CheckCircleOutlined, CloseCircleOutlined, ShoppingOutlined, InboxOutlined, CheckCircleFilled, WarningOutlined, PercentageOutlined } from '@ant-design/icons'
 import { orderApi, shopApi, userViewsApi } from '@/services/api'
 import EnhancedKPICard from '@/components/EnhancedKPICard'
 import OrderDetailDrawer from '@/components/OrderDetailDrawer'
@@ -385,10 +385,11 @@ function OrderList() {
         params.end_date = dateRange[1].toISOString()
       }
       // 优先使用多选状态，如果没有则使用单选
-      if (statusFilters && statusFilters.length > 0) {
-        params.status_filters = statusFilters
-      } else if (statusFilter) {
+      // 状态筛选：优先使用单选，如果没有则使用多选
+      if (statusFilter) {
         params.status_filter = statusFilter
+      } else if (statusFilters && statusFilters.length > 0) {
+        params.status_filters = statusFilters
       }
       if (searchKeyword) params.search = searchKeyword
       if (orderSn) params.order_sn = orderSn
@@ -794,20 +795,32 @@ function OrderList() {
   ]
 
   return (
-    <div>
-        <h2 style={{ 
-          margin: 0,
-          marginBottom: '16px',
-        fontSize: isMobile ? '18px' : '20px',
-          fontWeight: 600,
-          color: 'var(--color-fg)'
-        }}>
-        订单列表
-        </h2>
+    <div className="bulma-section" style={{ position: 'relative' }}>
+        <div style={{ marginBottom: '24px' }}>
+          <h1 className="bulma-title" style={{ 
+            fontSize: isMobile ? '24px' : '32px',
+            marginBottom: '8px',
+          }}>
+            订单列表
+          </h1>
+          <p className="bulma-subtitle" style={{ 
+            fontSize: isMobile ? '14px' : '16px',
+            marginBottom: 0,
+            opacity: 0.7,
+          }}>
+            实时监控订单状态，高效管理运营数据
+          </p>
+        </div>
       
-      <div style={{ marginBottom: '20px' }}>
+      <div className="bulma-card" style={{ 
+        marginBottom: '24px',
+        padding: isMobile ? '16px' : '24px',
+        background: 'transparent',
+        border: 'none',
+        boxShadow: 'none',
+      }}>
         {/* 增强的KPI统计卡片 */}
-        <Row gutter={[8, 8]}>
+        <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} md={8} lg={4}>
               <EnhancedKPICard
                 isMobile={isMobile}
@@ -818,7 +831,9 @@ function OrderList() {
                   trend: (statusStats as any)?.trends?.total || [],
                   todayChange: (statusStats as any)?.today_changes?.total,
                   weekChange: (statusStats as any)?.week_changes?.total,
-                  color: '#1677ff',
+                  color: '#fa8c16',
+                  icon: <ShoppingOutlined style={{ fontSize: '20px', color: '#fff' }} />,
+                  description: '累计订单总数',
                 }}
               />
             </Col>
@@ -833,7 +848,8 @@ function OrderList() {
                   todayChange: (statusStats as any)?.today_changes?.processing,
                   weekChange: (statusStats as any)?.week_changes?.processing,
                   color: '#faad14',
-                  valueStyle: { color: '#faad14' },
+                  icon: <InboxOutlined style={{ fontSize: '20px', color: '#fff' }} />,
+                  description: '待处理订单',
                 }}
               />
             </Col>
@@ -846,9 +862,10 @@ function OrderList() {
                   value: (statusStats as any)?.shipped ?? 0,
                   trend: [], // 不显示趋势图表
                   todayChange: (statusStats as any)?.today_changes?.shipped,
-                  weekChange: (statusStats as any)?.week_changes?.shipped,
-                  color: '#1890ff',
-                  valueStyle: { color: '#1890ff' },
+                  showWeekChange: false, // 不显示周变化
+                  color: '#58a6ff',
+                  icon: <CheckCircleFilled style={{ fontSize: '20px', color: '#fff' }} />,
+                  description: '已发货订单',
                 }}
               />
             </Col>
@@ -861,9 +878,10 @@ function OrderList() {
                   value: (statusStats as any)?.delivered ?? 0,
                   trend: [], // 不显示趋势图表
                   todayChange: (statusStats as any)?.today_changes?.delivered,
-                  weekChange: (statusStats as any)?.week_changes?.delivered,
+                  showWeekChange: false, // 不显示周变化
                   color: '#52c41a',
-                  valueStyle: { color: '#52c41a' },
+                  icon: <CheckCircleOutlined style={{ fontSize: '20px', color: '#fff' }} />,
+                  description: '已完成订单',
                 }}
               />
             </Col>
@@ -875,7 +893,8 @@ function OrderList() {
                   title: '延误订单',
                   value: (statusStats as any)?.delayed_orders ?? 0,
                   color: '#ff4d4f',
-                  valueStyle: { color: '#ff4d4f' },
+                  icon: <WarningOutlined style={{ fontSize: '20px', color: '#fff' }} />,
+                  description: '需要关注',
                 }}
               />
             </Col>
@@ -889,10 +908,8 @@ function OrderList() {
                   precision: 2,
                   suffix: '%',
                   color: ((statusStats as any)?.delay_rate ?? 0) > 10 ? '#ff4d4f' : '#52c41a',
-                  valueStyle: { 
-                    color: ((statusStats as any)?.delay_rate ?? 0) > 10 ? '#ff4d4f' : '#52c41a',
-                    whiteSpace: 'nowrap',
-                  },
+                  icon: <PercentageOutlined style={{ fontSize: '20px', color: '#fff' }} />,
+                  description: '延误订单占比',
                 }}
               />
             </Col>
@@ -943,10 +960,16 @@ function OrderList() {
         </Modal>
 
         {/* 常用筛选和搜索（一行显示） */}
-        <div style={{ marginBottom: '16px' }}>
+        <div className="bulma-card" style={{ 
+          marginBottom: '16px',
+          padding: isMobile ? '16px' : '20px',
+          background: 'transparent',
+          border: 'none',
+          boxShadow: 'none',
+        }}>
           <Space 
             size={isMobile ? "small" : "middle"} 
-            wrap 
+            wrap={isMobile}
             direction={isMobile ? "vertical" : "horizontal"}
             style={{ width: '100%' }}
           >
@@ -1041,19 +1064,17 @@ function OrderList() {
             />
           </div>
             
-            {/* 状态筛选 */}
+            {/* 状态筛选 - 单选 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: isMobile ? '100%' : 'auto' }}>
               <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px', minWidth: isMobile ? '60px' : 'auto' }}>状态：</span>
             <Select
-                mode="multiple"
-                style={{ width: isMobile ? '100%' : 180 }}
+                style={{ width: isMobile ? '100%' : 150 }}
               placeholder="全部状态"
               allowClear
-                value={statusFilters.length > 0 ? statusFilters : undefined}
-                onChange={(values) => {
-                  setStatusFilters(values || [])
-                  // 兼容单选逻辑
-                  setStatusFilter(values && values.length === 1 ? values[0] : undefined)
+              value={statusFilter}
+              onChange={(value) => {
+                setStatusFilter(value)
+                  setStatusFilters(value ? [value] : [])
                 handleFilterChange()
               }}
               options={[
@@ -1066,76 +1087,74 @@ function OrderList() {
             />
           </div>
             
-            {/* 日期筛选 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: isMobile ? '100%' : 'auto' }}>
+            {/* 日期筛选 - 同一行 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: isMobile ? '100%' : 'auto', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
               <span style={{ color: 'var(--color-fg)', opacity: 0.7, fontSize: '14px', minWidth: isMobile ? '60px' : 'auto' }}>日期：</span>
-              <Space size="small" wrap>
-                {/* 快捷时间选择下拉框 */}
-                <Select
-                  placeholder="快捷选择"
-                  allowClear
-                  style={{ width: isMobile ? '100%' : 120 }}
-                  onChange={(value) => {
-                    if (!value) {
-                      setDateRange(null)
-                      handleFilterChange()
-                      return
-                    }
-                    
-                    let start: dayjs.Dayjs
-                    let end: dayjs.Dayjs = dayjs()
-                    
-                    switch (value) {
-                      case 'today':
-                        start = dayjs().startOf('day')
-                        end = dayjs().endOf('day')
-                        break
-                      case 'yesterday':
-                        start = dayjs().subtract(1, 'day').startOf('day')
-                        end = dayjs().subtract(1, 'day').endOf('day')
-                        break
-                      case 'last7days':
-                        start = dayjs().subtract(6, 'day').startOf('day')
-                        end = dayjs().endOf('day')
-                        break
-                      case 'last30days':
-                        start = dayjs().subtract(29, 'day').startOf('day')
-                        end = dayjs().endOf('day')
-                        break
-                      case 'thisMonth':
-                        start = dayjs().startOf('month')
-                        end = dayjs().endOf('month')
-                        break
-                      case 'lastMonth':
-                        start = dayjs().subtract(1, 'month').startOf('month')
-                        end = dayjs().subtract(1, 'month').endOf('month')
-                        break
-                      default:
-                        return
-                    }
-                    
-                    setDateRange([start, end])
+              {/* 快捷时间选择下拉框 */}
+              <Select
+                placeholder="快捷选择"
+                allowClear
+                style={{ width: isMobile ? '100%' : 120 }}
+                onChange={(value) => {
+                  if (!value) {
+                    setDateRange(null)
                     handleFilterChange()
-                  }}
-                  options={[
-                    { label: '今天', value: 'today' },
-                    { label: '昨天', value: 'yesterday' },
-                    { label: '最近7天', value: 'last7days' },
-                    { label: '最近30天', value: 'last30days' },
-                    { label: '本月', value: 'thisMonth' },
-                    { label: '上月', value: 'lastMonth' },
-                  ]}
-                />
+                    return
+                  }
+                  
+                  let start: dayjs.Dayjs
+                  let end: dayjs.Dayjs = dayjs()
+                  
+                  switch (value) {
+                    case 'today':
+                      start = dayjs().startOf('day')
+                      end = dayjs().endOf('day')
+                      break
+                    case 'yesterday':
+                      start = dayjs().subtract(1, 'day').startOf('day')
+                      end = dayjs().subtract(1, 'day').endOf('day')
+                      break
+                    case 'last7days':
+                      start = dayjs().subtract(6, 'day').startOf('day')
+                      end = dayjs().endOf('day')
+                      break
+                    case 'last30days':
+                      start = dayjs().subtract(29, 'day').startOf('day')
+                      end = dayjs().endOf('day')
+                      break
+                    case 'thisMonth':
+                      start = dayjs().startOf('month')
+                      end = dayjs().endOf('month')
+                      break
+                    case 'lastMonth':
+                      start = dayjs().subtract(1, 'month').startOf('month')
+                      end = dayjs().subtract(1, 'month').endOf('month')
+                      break
+                    default:
+                      return
+                  }
+                  
+                  setDateRange([start, end])
+                  handleFilterChange()
+                }}
+                options={[
+                  { label: '今天', value: 'today' },
+                  { label: '昨天', value: 'yesterday' },
+                  { label: '最近7天', value: 'last7days' },
+                  { label: '最近30天', value: 'last30days' },
+                  { label: '本月', value: 'thisMonth' },
+                  { label: '上月', value: 'lastMonth' },
+                ]}
+              />
             <RangePicker
-                  value={dateRange}
+                value={dateRange}
               onChange={(dates) => {
                 setDateRange(dates as any)
                 handleFilterChange()
               }}
               format="YYYY-MM-DD"
-                  style={{ width: isMobile ? '100%' : 240 }}
+                style={{ width: isMobile ? '100%' : 240 }}
             />
-              </Space>
           </div>
             
             {/* 重置按钮 */}
@@ -1163,10 +1182,17 @@ function OrderList() {
       </div>
 
         {/* 高级筛选（可折叠） */}
+        <div className="bulma-card" style={{ 
+          marginBottom: '16px',
+          padding: 0,
+          background: 'transparent',
+          border: 'none',
+          boxShadow: 'none',
+        }}>
         <Collapse
           activeKey={showAdvancedFilters ? ['advanced'] : []}
           onChange={(keys) => setShowAdvancedFilters(keys.length > 0)}
-          style={{ marginBottom: '16px', background: 'transparent', border: 'none' }}
+          style={{ marginBottom: 0, background: 'transparent', border: 'none' }}
           items={[
             {
               key: 'advanced',
@@ -1249,6 +1275,7 @@ function OrderList() {
             },
           ]}
         />
+        </div>
 
       {/* 批量操作工具栏 */}
       {selectedRowKeys.length > 0 && (
@@ -1350,7 +1377,36 @@ function OrderList() {
         </div>
       )}
       
-      <div style={{ marginTop: '20px', overflowX: 'auto' }}>
+      <div className="bulma-card" style={{ 
+        marginTop: '20px',
+        padding: 0,
+        overflow: 'hidden',
+      }}>
+        {/* 表格顶部：订单总计 */}
+        {pagination.total > 0 && (
+          <div style={{
+            padding: '12px 16px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          }}>
+            <span style={{ 
+              color: 'var(--color-fg)', 
+              fontSize: '14px', 
+              fontWeight: 600,
+            }}>
+              订单列表
+            </span>
+            <span style={{
+              color: 'var(--color-fg)',
+              fontSize: '14px',
+              opacity: 0.8,
+            }}>
+              共 {pagination.total.toLocaleString()} 条订单，显示 {((pagination.current - 1) * pagination.pageSize + 1).toLocaleString()}-{Math.min(pagination.current * pagination.pageSize, pagination.total).toLocaleString()} 条
+            </span>
+          </div>
+        )}
         <Table
           columns={columns}
           dataSource={processedOrders}
@@ -1377,7 +1433,7 @@ function OrderList() {
             showSizeChanger: true,
             showQuickJumper: true,
             showLessItems: false,
-            showTotal: (total, range) => `共 ${total} 条订单，显示 ${range[0]}-${range[1]} 条`,
+            // showTotal 不设置，已移到表格上方显示
             pageSizeOptions: ['20', '50', '100', '200'],
             onChange: (page, pageSize) => {
               setPagination(prev => ({
