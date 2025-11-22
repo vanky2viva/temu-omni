@@ -963,7 +963,7 @@ function SalesStatistics() {
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
             }}>
-              {totalGmv > 0 ? `¥${totalGmv.toLocaleString()}` : '暂无数据'}
+              {totalGmv > 0 ? `¥${(totalGmv / 1000).toFixed(1)}k` : '暂无数据'}
             </div>
             <div style={{ color: '#8b949e', fontSize: '12px' }}>
               {totalGmv > 0 && `平均订单: ¥${avgOrderValue}`}
@@ -1026,7 +1026,7 @@ function SalesStatistics() {
               backgroundClip: 'text',
             }}>
               {totalProfit !== null && totalProfit !== undefined 
-                ? `¥${totalProfit.toLocaleString()}` 
+                ? `¥${(totalProfit / 1000).toFixed(1)}k` 
                 : '暂无数据'}
             </div>
             <div style={{ 
@@ -1051,25 +1051,25 @@ function SalesStatistics() {
       <div style={{ 
         display: 'grid',
         gridTemplateColumns: isMobile ? '1fr' : '0.8fr 1.2fr',
-        gap: 16,
+        gap: 12,
         marginBottom: 24,
       }}>
         {/* 左侧：每日销量表格 */}
         <div className="bulma-card" style={{ 
-          padding: '12px',
+          padding: '8px',
         }}>
           <header style={{
             display: 'flex',
             alignItems: 'center',
-            marginBottom: 12,
-            paddingBottom: 8,
+            marginBottom: 8,
+            paddingBottom: 6,
             borderBottom: '1px solid #30363d',
           }}>
-            <BarChartOutlined style={{ color: '#00d1b2', fontSize: '14px', marginRight: 6 }} />
+            <BarChartOutlined style={{ color: '#00d1b2', fontSize: '12px', marginRight: 6 }} />
             <span style={{ 
               color: '#c9d1d9', 
               fontWeight: 600,
-              fontSize: '14px',
+              fontSize: '13px',
             }}>
               每日店铺销量
             </span>
@@ -1090,20 +1090,20 @@ function SalesStatistics() {
         {/* 右侧：销量趋势图表 */}
       {chartOption && (
           <div className="bulma-card" style={{ 
-            padding: '20px',
+            padding: '12px',
           }}>
             <header style={{
               display: 'flex',
               alignItems: 'center',
-              marginBottom: 16,
-              paddingBottom: 12,
+              marginBottom: 10,
+              paddingBottom: 8,
               borderBottom: '1px solid #30363d',
             }}>
-              <LineChartOutlined style={{ color: '#00d1b2', fontSize: '18px', marginRight: 8 }} />
+              <LineChartOutlined style={{ color: '#00d1b2', fontSize: '14px', marginRight: 6 }} />
               <span style={{ 
                 color: '#c9d1d9', 
                 fontWeight: 600,
-                fontSize: '16px',
+                fontSize: '14px',
               }}>
                 店铺业绩对比
               </span>
@@ -1111,7 +1111,7 @@ function SalesStatistics() {
             <div>
           <ReactECharts 
             option={chartOption} 
-                style={{ height: isMobile ? '300px' : '500px' }}
+                style={{ height: isMobile ? '300px' : '480px' }}
             opts={{ renderer: 'svg' }}
           />
             </div>

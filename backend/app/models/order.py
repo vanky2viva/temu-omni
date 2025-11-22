@@ -45,15 +45,15 @@ class Order(Base):
         {'comment': '订单表，同一订单号可以包含多个SKU/SPU'}
     )
     
-    # 价格信息
-    unit_price = Column(Numeric(10, 2), nullable=False, comment="单价")
-    total_price = Column(Numeric(10, 2), nullable=False, comment="订单总价")
-    currency = Column(String(10), default="USD", comment="货币")
+    # 价格信息（统一存储为CNY）
+    unit_price = Column(Numeric(10, 2), nullable=False, comment="单价（供货价，CNY）")
+    total_price = Column(Numeric(10, 2), nullable=False, comment="GMV（订单总价，供货价×数量，CNY）")
+    currency = Column(String(10), default="USD", comment="原始货币（USD/CNY等，仅用于记录，价格已统一为CNY）")
     
-    # 成本和利润
-    unit_cost = Column(Numeric(10, 2), comment="单位成本")
-    total_cost = Column(Numeric(10, 2), comment="总成本")
-    profit = Column(Numeric(10, 2), comment="利润")
+    # 成本和利润（统一存储为CNY）
+    unit_cost = Column(Numeric(10, 2), comment="单位成本（CNY）")
+    total_cost = Column(Numeric(10, 2), comment="总成本（单位成本×数量，CNY）")
+    profit = Column(Numeric(10, 2), comment="利润（GMV-总成本，CNY）")
     
     # 订单状态
     status = Column(Enum(OrderStatus), default=OrderStatus.PENDING, index=True, comment="订单状态")

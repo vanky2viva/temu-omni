@@ -1,16 +1,21 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Table, Card, Row, Col, Statistic, Spin, Tabs, Button, message } from 'antd'
-import { DollarOutlined, RiseOutlined, CalculatorOutlined, SyncOutlined, ShoppingOutlined, FundOutlined } from '@ant-design/icons'
+import { Table, Card, Row, Col, Statistic, Spin, Tabs, Button, message, Select, Space, DatePicker } from 'antd'
+import { DollarOutlined, RiseOutlined, CalculatorOutlined, SyncOutlined, ShoppingOutlined, FundOutlined, CalendarOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import type { Dayjs } from 'dayjs'
 import ReactECharts from 'echarts-for-react'
-import { analyticsApi } from '@/services/api'
+import { analyticsApi, orderApi } from '@/services/api'
 import { calculateOrderCosts, getDailyCollectionForecast } from '@/services/orderCostApi'
 import { statisticsApi } from '@/services/statisticsApi'
 import dayjs from 'dayjs'
 import { useEffect, useState } from 'react'
 
+const { RangePicker } = DatePicker
+
 function Finance() {
   const [isMobile, setIsMobile] = useState(false)
+  // 日期范围状态，默认显示全部数据
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null)
 
   // 检测是否为移动设备
   useEffect(() => {
@@ -21,17 +26,34 @@ function Finance() {
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
-  // 获取本月统计数据
+  
+  // 获取统计数据
   // 使用与销量统计页面相同的数据源，确保数据一致
-  const currentMonth = dayjs().startOf('month').format('YYYY-MM-DD')
-  const currentMonthEnd = dayjs().endOf('month').format('YYYY-MM-DD')
   const { data: monthlyStats, isLoading: monthlyStatsLoading } = useQuery({
-    queryKey: ['sales-overview', currentMonth, currentMonthEnd],
-    queryFn: () => analyticsApi.getSalesOverview({
-      start_date: currentMonth,
-      end_date: currentMonthEnd,
-    }),
+    queryKey: ['sales-overview', dateRange],
+    queryFn: () => {
+      const startDate = dateRange?.[0]?.format('YYYY-MM-DD')
+      const endDate = dateRange?.[1]?.format('YYYY-MM-DD')
+      return analyticsApi.getSalesOverview({
+        start_date: startDate || undefined,
+        end_date: endDate || undefined,
+      })
+    },
     staleTime: 0,
+  })
+
+  // 获取订单状态统计（用于显示总订单数和已送达订单数）
+  const { data: orderStatusStats, isLoading: orderStatusStatsLoading } = useQuery({
+    queryKey: ['order-status-statistics', dateRange],
+    queryFn: () => {
+      const params: any = {}
+      if (dateRange) {
+        params.start_date = dateRange[0].toISOString()
+        params.end_date = dateRange[1].toISOString()
+      }
+      return orderApi.getStatusStatistics(params)
+    },
+    staleTime: 30000, // 30秒缓存
   })
 
   // 获取回款统计数据
@@ -243,17 +265,104 @@ function Finance() {
       </h2>
         {!isMobile && (
           <span style={{ color: '#8b949e', fontSize: '14px' }}>
-            {dayjs().format('YYYY年MM月')} 财务数据
+            {dateRange 
+              ? `${dateRange[0].format('YYYY年MM月DD日')} - ${dateRange[1].format('YYYY年MM月DD日')} 财务数据`
+              : `${dayjs().format('YYYY年MM月')} 财务数据`
+            }
           </span>
         )}
         {isMobile && (
           <span style={{ color: '#8b949e', fontSize: '12px' }}>
-            {dayjs().format('MM月')} 数据
+            {dateRange 
+              ? `${dateRange[0].format('MM-DD')} - ${dateRange[1].format('MM-DD')}`
+              : `${dayjs().format('MM月')} 数据`
+            }
           </span>
         )}
       </div>
       
-      {/* 本月财务概览 */}
+      {/* 日期范围选择器 */}
+      <div style={{ marginBottom: 24 }}>
+        <Card 
+          bordered={false}
+          style={{ 
+            background: 'transparent',
+            border: '1px solid #30363d',
+          }}
+        >
+          <Space size="large" wrap style={{ width: '100%' }}>
+            <Space>
+              <CalendarOutlined style={{ color: '#00d1b2' }} />
+              <span style={{ color: '#c9d1d9', fontWeight: 500 }}>时间范围：</span>
+              {/* 快捷时间选择下拉框 */}
+              <Select
+                placeholder="快捷选择"
+                allowClear
+                style={{ width: 120 }}
+                onChange={(value) => {
+                  if (!value) {
+                    // 清除时恢复默认全部数据
+                    setDateRange(null)
+                    return
+                  }
+                  
+                  let start: Dayjs
+                  let end: Dayjs = dayjs()
+                  
+                  switch (value) {
+                    case 'today':
+                      start = dayjs().startOf('day')
+                      end = dayjs().endOf('day')
+                      break
+                    case 'yesterday':
+                      start = dayjs().subtract(1, 'day').startOf('day')
+                      end = dayjs().subtract(1, 'day').endOf('day')
+                      break
+                    case 'last7days':
+                      start = dayjs().subtract(6, 'day').startOf('day')
+                      end = dayjs().endOf('day')
+                      break
+                    case 'last30days':
+                      start = dayjs().subtract(29, 'day').startOf('day')
+                      end = dayjs().endOf('day')
+                      break
+                    case 'thisMonth':
+                      start = dayjs().startOf('month')
+                      end = dayjs().endOf('month')
+                      break
+                    case 'lastMonth':
+                      start = dayjs().subtract(1, 'month').startOf('month')
+                      end = dayjs().subtract(1, 'month').endOf('month')
+                      break
+                    default:
+                      return
+                  }
+                  
+                  setDateRange([start, end])
+                }}
+                options={[
+                  { label: '今天', value: 'today' },
+                  { label: '昨天', value: 'yesterday' },
+                  { label: '最近7天', value: 'last7days' },
+                  { label: '最近30天', value: 'last30days' },
+                  { label: '本月', value: 'thisMonth' },
+                  { label: '上月', value: 'lastMonth' },
+                ]}
+              />
+              <RangePicker
+                value={dateRange}
+                onChange={(dates) => setDateRange(dates)}
+                format="YYYY-MM-DD"
+                placeholder={['开始日期', '结束日期']}
+                allowClear
+                style={{ width: 240 }}
+              />
+            </Space>
+          </Space>
+        </Card>
+      </div>
+      
+      {/* 财务概览 */}
       <div style={{ marginBottom: 32 }}>
         <h3 style={{ 
           color: '#8b949e', 
@@ -263,7 +372,7 @@ function Finance() {
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
         }}>
-          本月概览
+          财务概览
         </h3>
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} md={8} lg={8}>
@@ -311,7 +420,7 @@ function Finance() {
                     fontWeight: 500,
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase',
-                  }}>本月总收入</span>
+                  }}>总收入</span>
                 </div>
                 <div>
                   <div style={{ 
@@ -380,7 +489,7 @@ function Finance() {
                     fontWeight: 500,
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase',
-                  }}>本月总利润</span>
+                  }}>总利润</span>
                 </div>
                 <div>
                   <div style={{ 
@@ -508,234 +617,179 @@ function Finance() {
             汇总统计
           </h3>
 
-          {/* 每日预估回款统计 - 汇总卡片 */}
-          {forecastLoading ? (
-            <Card className="chart-card" style={{ marginBottom: 24 }}>
-              <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
-            </Card>
-          ) : dailyForecastData && dailyForecastData.length > 0 ? (
-            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-              <Col span={6}>
-                <Card 
-                  className="stat-card" 
-                  bordered={false} 
-                  style={{ 
-                    height: '140px',
-                    background: 'linear-gradient(135deg, rgba(250, 140, 22, 0.12) 0%, rgba(250, 140, 22, 0.04) 100%)',
-                    border: '1px solid rgba(250, 140, 22, 0.25)',
-                    boxShadow: '0 6px 24px rgba(250, 140, 22, 0.12)',
-                    backdropFilter: 'blur(8px)',
-                    transition: 'all 0.3s ease',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-3px)';
-                    e.currentTarget.style.boxShadow = '0 10px 36px rgba(250, 140, 22, 0.2)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 6px 24px rgba(250, 140, 22, 0.12)';
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                    <div style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '8px',
-                      background: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 3px 10px rgba(250, 140, 22, 0.35)',
-                    }}>
-                      <ShoppingOutlined style={{ fontSize: '18px', color: '#fff' }} />
-                    </div>
-                    <span style={{ color: '#8b949e', fontSize: '12px', fontWeight: 500 }}>总订单数</span>
-                  </div>
-                  <div style={{ 
-                    color: '#fa8c16',
-                    fontSize: isMobile ? '24px' : '28px',
-                    fontWeight: 700,
-                    fontFamily: 'JetBrains Mono, monospace',
-                    lineHeight: '1.3',
-                    textShadow: '0 0 15px rgba(250, 140, 22, 0.4)',
+          {/* 订单统计卡片 - 总订单数、已送达订单数和送达率 */}
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            <Col xs={24} sm={12} md={8} lg={8}>
+              <Card 
+                className="stat-card" 
+                bordered={false} 
+                style={{ 
+                  height: '140px',
+                  background: 'linear-gradient(135deg, rgba(250, 140, 22, 0.12) 0%, rgba(250, 140, 22, 0.04) 100%)',
+                  border: '1px solid rgba(250, 140, 22, 0.25)',
+                  boxShadow: '0 6px 24px rgba(250, 140, 22, 0.12)',
+                  backdropFilter: 'blur(8px)',
+                  transition: 'all 0.3s ease',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.boxShadow = '0 10px 36px rgba(250, 140, 22, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 6px 24px rgba(250, 140, 22, 0.12)';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 3px 10px rgba(250, 140, 22, 0.35)',
                   }}>
-                    {dailyForecastData.reduce((sum, item) => sum + item.order_count, 0).toLocaleString('zh-CN')}
-                    <span style={{ fontSize: isMobile ? '12px' : '14px', marginLeft: '4px', color: '#8b949e' }}>单</span>
+                    <ShoppingOutlined style={{ fontSize: '18px', color: '#fff' }} />
                   </div>
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} md={6} lg={6}>
-                <Card 
-                  className="stat-card" 
-                  bordered={false} 
-                  style={{ 
-                    height: isMobile ? '120px' : '140px',
-                    background: 'linear-gradient(135deg, rgba(24, 144, 255, 0.12) 0%, rgba(24, 144, 255, 0.04) 100%)',
-                    border: '1px solid rgba(24, 144, 255, 0.25)',
-                    boxShadow: '0 6px 24px rgba(24, 144, 255, 0.12)',
-                    backdropFilter: 'blur(8px)',
-                    transition: 'all 0.3s ease',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-3px)';
-                    e.currentTarget.style.boxShadow = '0 10px 36px rgba(24, 144, 255, 0.2)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 6px 24px rgba(24, 144, 255, 0.12)';
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                    <div style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '8px',
-                      background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 3px 10px rgba(24, 144, 255, 0.35)',
-                    }}>
-                      <FundOutlined style={{ fontSize: '18px', color: '#fff' }} />
-                    </div>
-                    <span style={{ color: '#8b949e', fontSize: '12px', fontWeight: 500 }}>总销售额</span>
-                  </div>
-                  <div style={{ 
-                    color: '#1890ff',
-                    fontSize: isMobile ? '20px' : '24px',
-                    fontWeight: 700,
-                    fontFamily: 'JetBrains Mono, monospace',
-                    lineHeight: '1.3',
-                    textShadow: '0 0 15px rgba(24, 144, 255, 0.4)',
+                  <span style={{ color: '#8b949e', fontSize: '12px', fontWeight: 500 }}>总订单数</span>
+                </div>
+                <div style={{ 
+                  color: '#fa8c16',
+                  fontSize: isMobile ? '24px' : '28px',
+                  fontWeight: 700,
+                  fontFamily: 'JetBrains Mono, monospace',
+                  lineHeight: '1.3',
+                  textShadow: '0 0 15px rgba(250, 140, 22, 0.4)',
+                }}>
+                  {orderStatusStatsLoading ? (
+                    <span style={{ fontSize: isMobile ? '12px' : '14px', color: '#8b949e' }}>加载中...</span>
+                  ) : (
+                    <>
+                      {(orderStatusStats?.total_orders || 0).toLocaleString('zh-CN')}
+                      <span style={{ fontSize: isMobile ? '12px' : '14px', marginLeft: '4px', color: '#8b949e' }}>单</span>
+                    </>
+                  )}
+                </div>
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={8}>
+              <Card 
+                className="stat-card" 
+                bordered={false} 
+                style={{ 
+                  height: '140px',
+                  background: 'linear-gradient(135deg, rgba(82, 196, 26, 0.12) 0%, rgba(82, 196, 26, 0.04) 100%)',
+                  border: '1px solid rgba(82, 196, 26, 0.25)',
+                  boxShadow: '0 6px 24px rgba(82, 196, 26, 0.12)',
+                  backdropFilter: 'blur(8px)',
+                  transition: 'all 0.3s ease',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.boxShadow = '0 10px 36px rgba(82, 196, 26, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 6px 24px rgba(82, 196, 26, 0.12)';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #52c41a 0%, #389e0d 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 3px 10px rgba(82, 196, 26, 0.35)',
                   }}>
-                    ¥{(dailyForecastData.reduce((sum, item) => sum + item.total_amount, 0) / 1000).toFixed(1)}k
-                    {!isMobile && (
-                      <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '2px', fontWeight: 400 }}>
-                        {dailyForecastData.reduce((sum, item) => sum + item.total_amount, 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })} CNY
-                      </div>
-                    )}
+                    <RiseOutlined style={{ fontSize: '18px', color: '#fff' }} />
                   </div>
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} md={6} lg={6}>
-                <Card 
-                  className="stat-card" 
-                  bordered={false} 
-                  style={{ 
-                    height: isMobile ? '120px' : '140px',
-                    background: 'linear-gradient(135deg, rgba(245, 34, 45, 0.12) 0%, rgba(245, 34, 45, 0.04) 100%)',
-                    border: '1px solid rgba(245, 34, 45, 0.25)',
-                    boxShadow: '0 6px 24px rgba(245, 34, 45, 0.12)',
-                    backdropFilter: 'blur(8px)',
-                    transition: 'all 0.3s ease',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-3px)';
-                    e.currentTarget.style.boxShadow = '0 10px 36px rgba(245, 34, 45, 0.2)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 6px 24px rgba(245, 34, 45, 0.12)';
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                    <div style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '8px',
-                      background: 'linear-gradient(135deg, #f5222d 0%, #cf1322 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 3px 10px rgba(245, 34, 45, 0.35)',
-                    }}>
-                      <DollarOutlined style={{ fontSize: '18px', color: '#fff' }} />
-                    </div>
-                    <span style={{ color: '#8b949e', fontSize: '12px', fontWeight: 500 }}>总成本</span>
-                  </div>
-                  <div style={{ 
-                    color: '#f5222d',
-                    fontSize: isMobile ? '20px' : '24px',
-                    fontWeight: 700,
-                    fontFamily: 'JetBrains Mono, monospace',
-                    lineHeight: '1.3',
-                    textShadow: '0 0 15px rgba(245, 34, 45, 0.4)',
+                  <span style={{ color: '#8b949e', fontSize: '12px', fontWeight: 500 }}>已送达订单数</span>
+                </div>
+                <div style={{ 
+                  color: '#52c41a',
+                  fontSize: isMobile ? '24px' : '28px',
+                  fontWeight: 700,
+                  fontFamily: 'JetBrains Mono, monospace',
+                  lineHeight: '1.3',
+                  textShadow: '0 0 15px rgba(82, 196, 26, 0.4)',
+                }}>
+                  {orderStatusStatsLoading ? (
+                    <span style={{ fontSize: isMobile ? '12px' : '14px', color: '#8b949e' }}>加载中...</span>
+                  ) : (
+                    <>
+                      {(orderStatusStats?.delivered || 0).toLocaleString('zh-CN')}
+                      <span style={{ fontSize: isMobile ? '12px' : '14px', marginLeft: '4px', color: '#8b949e' }}>单</span>
+                    </>
+                  )}
+                </div>
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={8}>
+              <Card 
+                className="stat-card" 
+                bordered={false} 
+                style={{ 
+                  height: '140px',
+                  background: 'linear-gradient(135deg, rgba(24, 144, 255, 0.12) 0%, rgba(24, 144, 255, 0.04) 100%)',
+                  border: '1px solid rgba(24, 144, 255, 0.25)',
+                  boxShadow: '0 6px 24px rgba(24, 144, 255, 0.12)',
+                  backdropFilter: 'blur(8px)',
+                  transition: 'all 0.3s ease',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.boxShadow = '0 10px 36px rgba(24, 144, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 6px 24px rgba(24, 144, 255, 0.12)';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 3px 10px rgba(24, 144, 255, 0.35)',
                   }}>
-                    ¥{(dailyForecastData.reduce((sum, item) => sum + item.total_cost, 0) / 1000).toFixed(1)}k
-                    {!isMobile && (
-                      <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '2px', fontWeight: 400 }}>
-                        {dailyForecastData.reduce((sum, item) => sum + item.total_cost, 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })} CNY
-                      </div>
-                    )}
+                    <CheckCircleOutlined style={{ fontSize: '18px', color: '#fff' }} />
                   </div>
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} md={6} lg={6}>
-                <Card 
-                  className="stat-card" 
-                  bordered={false} 
-                  style={{ 
-                    height: isMobile ? '120px' : '140px',
-                    background: 'linear-gradient(135deg, rgba(82, 196, 26, 0.12) 0%, rgba(82, 196, 26, 0.04) 100%)',
-                    border: '1px solid rgba(82, 196, 26, 0.25)',
-                    boxShadow: '0 6px 24px rgba(82, 196, 26, 0.12)',
-                    backdropFilter: 'blur(8px)',
-                    transition: 'all 0.3s ease',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-3px)';
-                    e.currentTarget.style.boxShadow = '0 10px 36px rgba(82, 196, 26, 0.2)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 6px 24px rgba(82, 196, 26, 0.12)';
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                    <div style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '8px',
-                      background: 'linear-gradient(135deg, #52c41a 0%, #389e0d 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 3px 10px rgba(82, 196, 26, 0.35)',
-                    }}>
-                      <RiseOutlined style={{ fontSize: '18px', color: '#fff' }} />
-                    </div>
-                    <span style={{ color: '#8b949e', fontSize: '12px', fontWeight: 500 }}>总利润</span>
-                  </div>
-                  <div style={{ 
-                    color: '#52c41a',
-                    fontSize: isMobile ? '20px' : '24px',
-                    fontWeight: 700,
-                    fontFamily: 'JetBrains Mono, monospace',
-                    lineHeight: '1.3',
-                    textShadow: '0 0 15px rgba(82, 196, 26, 0.4)',
-                  }}>
-                    ¥{(dailyForecastData.reduce((sum, item) => sum + item.total_profit, 0) / 1000).toFixed(1)}k
-                    {!isMobile && (
-                      <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '2px', fontWeight: 400 }}>
-                        {dailyForecastData.reduce((sum, item) => sum + item.total_profit, 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })} CNY
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              </Col>
-            </Row>
-          ) : (
-            <Card className="chart-card" style={{ marginBottom: 24 }}>
-              <div style={{ textAlign: 'center', padding: '50px', color: '#8c8c8c' }}>
-                <p>暂无预估回款数据</p>
-                <p>订单成本计算完成后将自动显示统计数据</p>
-              </div>
-            </Card>
-          )}
+                  <span style={{ color: '#8b949e', fontSize: '12px', fontWeight: 500 }}>送达率</span>
+                </div>
+                <div style={{ 
+                  color: '#1890ff',
+                  fontSize: isMobile ? '24px' : '28px',
+                  fontWeight: 700,
+                  fontFamily: 'JetBrains Mono, monospace',
+                  lineHeight: '1.3',
+                  textShadow: '0 0 15px rgba(24, 144, 255, 0.4)',
+                }}>
+                  {orderStatusStatsLoading ? (
+                    <span style={{ fontSize: isMobile ? '12px' : '14px', color: '#8b949e' }}>加载中...</span>
+                  ) : (
+                    <>
+                      {orderStatusStats?.total_orders && orderStatusStats.total_orders > 0
+                        ? ((orderStatusStats.delivered || 0) / orderStatusStats.total_orders * 100).toFixed(2)
+                        : '0.00'
+                      }%
+                    </>
+                  )}
+                </div>
+              </Card>
+            </Col>
+          </Row>
 
           {/* 数据趋势 */}
           <h3 style={{ 

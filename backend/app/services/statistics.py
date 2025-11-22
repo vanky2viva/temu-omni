@@ -101,60 +101,46 @@ class StatisticsService:
         if status:
             filters.append(Order.status == status)
         
-        # 排除已取消和已退款的订单（这些订单不应计入销售统计）
-        if not status:  # 如果没有指定状态筛选，则排除取消和退款订单
-            filters.append(Order.status != OrderStatus.CANCELLED)
-            filters.append(Order.status != OrderStatus.REFUNDED)
+        # 订单状态筛选：只统计有效订单（与analytics保持一致）
+        # 只统计：PROCESSING（待发货）、SHIPPED（已发货）、DELIVERED（已签收）
+        if not status:  # 如果没有指定状态筛选，只统计有效订单
+            filters.append(Order.status.in_([
+                OrderStatus.PROCESSING,
+                OrderStatus.SHIPPED,
+                OrderStatus.DELIVERED
+            ]))
         
         # 只统计有有效金额的订单（total_price > 0）
         filters.append(Order.total_price > 0)
         
         # 执行统计查询
-        # 注意：订单数按订单号去重统计（一个订单号可能对应多条记录，每个订单号为一单）
-        # GMV、成本、利润按订单记录统计（每个记录都有对应的金额）
-        # 统一转换为CNY：USD按汇率转换，CNY保持不变
-        usd_rate = CurrencyConverter.USD_TO_CNY_RATE
+        # 统一统计口径：与analytics.get_sales_overview保持一致
+        # - 订单数：按父订单号去重统计（如果parent_order_sn存在，使用parent_order_sn；否则使用order_sn）
+        # - GMV、成本、利润：按父订单聚合后统计（先按父订单分组求和，再汇总）
+        # 注意：订单表中的价格字段已统一存储为CNY，不需要再进行货币转换
         
-        # 使用CASE WHEN根据currency字段进行汇率转换
-        gmv_in_cny = func.sum(
-            case(
-                (Order.currency == 'USD', Order.total_price * usd_rate),
-                (Order.currency == 'CNY', Order.total_price),
-                else_=Order.total_price * usd_rate  # 其他货币默认按USD处理
-            )
-        ).label("total_gmv")
+        # 定义父订单键（与analytics保持一致）
+        parent_order_key = case(
+            (Order.parent_order_sn.isnot(None), Order.parent_order_sn),
+            else_=Order.order_sn
+        )
         
-        cost_in_cny = func.sum(
-            case(
-                (Order.currency == 'USD', Order.total_cost * usd_rate),
-                (Order.currency == 'CNY', Order.total_cost),
-                else_=Order.total_cost * usd_rate
-            )
-        ).label("total_cost")
+        # 先按父订单分组，计算每个父订单的GMV、成本、利润（直接使用存储的CNY值）
+        parent_order_stats = db.query(
+            parent_order_key.label('parent_key'),
+            func.sum(Order.total_price).label('parent_gmv'),  # 已经是CNY
+            func.sum(Order.total_cost).label('parent_cost'),  # 已经是CNY
+            func.sum(Order.profit).label('parent_profit'),  # 已经是CNY
+        ).filter(and_(*filters)).group_by(parent_order_key).subquery()
         
-        profit_in_cny = func.sum(
-            case(
-                (Order.currency == 'USD', Order.profit * usd_rate),
-                (Order.currency == 'CNY', Order.profit),
-                else_=Order.profit * usd_rate
-            )
-        ).label("total_profit")
-        
-        avg_order_value_in_cny = func.avg(
-            case(
-                (Order.currency == 'USD', Order.total_price * usd_rate),
-                (Order.currency == 'CNY', Order.total_price),
-                else_=Order.total_price * usd_rate
-            )
-        ).label("avg_order_value")
-        
+        # 然后汇总所有父订单的统计数据
         result = db.query(
-            func.count(func.distinct(Order.order_sn)).label("total_orders"),  # 按订单号去重统计订单数
-            gmv_in_cny,
-            cost_in_cny,
-            profit_in_cny,
-            avg_order_value_in_cny,
-        ).filter(and_(*filters)).first()
+            func.count(parent_order_stats.c.parent_key).label("total_orders"),  # 按父订单号去重统计订单数
+            func.sum(parent_order_stats.c.parent_gmv).label("total_gmv"),
+            func.sum(parent_order_stats.c.parent_cost).label("total_cost"),
+            func.sum(parent_order_stats.c.parent_profit).label("total_profit"),
+            func.avg(parent_order_stats.c.parent_gmv).label("avg_order_value"),
+        ).first()
         
         total_orders = result.total_orders or 0
         total_gmv = float(result.total_gmv or 0)

@@ -19,16 +19,12 @@ HK_TIMEZONE = timezone(timedelta(hours=8))
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
-# 汇率转换辅助函数
+# 注意：订单表中的价格字段（total_price, total_cost, profit）已统一存储为CNY
+# 不再需要进行货币转换，直接使用存储的值即可
+# 此函数已废弃，保留仅为兼容性，直接返回列
 def _convert_to_cny(column, usd_rate=None):
-    """将金额列转换为CNY"""
-    if usd_rate is None:
-        usd_rate = CurrencyConverter.USD_TO_CNY_RATE
-    return case(
-        (Order.currency == 'USD', column * usd_rate),
-        (Order.currency == 'CNY', column),
-        else_=column * usd_rate
-    )
+    """将金额列转换为CNY（已废弃，价格已统一为CNY，直接返回列）"""
+    return column
 
 
 @router.get("/gmv-table")
@@ -68,17 +64,16 @@ def get_gmv_table(
     if shop_ids:
         filters.append(Order.shop_id.in_(shop_ids))
     
-    # 根据周期类型分组，统一转换为CNY
-    usd_rate = CurrencyConverter.USD_TO_CNY_RATE
+    # 根据周期类型分组（价格已统一为CNY，不需要转换）
     if period_type == "day":
         group_by = func.date(Order.order_time)
         results = db.query(
             func.date(Order.order_time).label("period"),
             Shop.shop_name,
             func.count(Order.id).label("orders"),
-            func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("gmv"),
-            func.sum(_convert_to_cny(Order.total_cost, usd_rate)).label("cost"),
-            func.sum(_convert_to_cny(Order.profit, usd_rate)).label("profit"),
+            func.sum(Order.total_price).label("gmv"),  # 已经是CNY
+            func.sum(Order.total_cost).label("cost"),  # 已经是CNY
+            func.sum(Order.profit).label("profit"),  # 已经是CNY
         ).join(Shop, Shop.id == Order.shop_id).filter(
             and_(*filters)
         ).group_by(
@@ -93,9 +88,9 @@ def get_gmv_table(
             extract('week', Order.order_time).label("week"),
             Shop.shop_name,
             func.count(Order.id).label("orders"),
-            func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("gmv"),
-            func.sum(_convert_to_cny(Order.total_cost, usd_rate)).label("cost"),
-            func.sum(_convert_to_cny(Order.profit, usd_rate)).label("profit"),
+            func.sum(Order.total_price).label("gmv"),  # 已经是CNY
+            func.sum(Order.total_cost).label("cost"),  # 已经是CNY
+            func.sum(Order.profit).label("profit"),  # 已经是CNY
         ).join(Shop, Shop.id == Order.shop_id).filter(
             and_(*filters)
         ).group_by(
@@ -113,9 +108,9 @@ def get_gmv_table(
             extract('month', Order.order_time).label("month"),
             Shop.shop_name,
             func.count(Order.id).label("orders"),
-            func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("gmv"),
-            func.sum(_convert_to_cny(Order.total_cost, usd_rate)).label("cost"),
-            func.sum(_convert_to_cny(Order.profit, usd_rate)).label("profit"),
+            func.sum(Order.total_price).label("gmv"),  # 已经是CNY
+            func.sum(Order.total_cost).label("cost"),  # 已经是CNY
+            func.sum(Order.profit).label("profit"),  # 已经是CNY
         ).join(Shop, Shop.id == Order.shop_id).filter(
             and_(*filters)
         ).group_by(
@@ -189,17 +184,15 @@ def get_sku_sales(
     if shop_ids:
         filters.append(Order.shop_id.in_(shop_ids))
     
-    # 按SKU分组统计
-    # 统一转换为CNY
-    usd_rate = CurrencyConverter.USD_TO_CNY_RATE
+    # 按SKU分组统计（价格已统一为CNY）
     results = db.query(
         Order.product_sku,
         Order.product_name,
         Shop.shop_name,
         func.sum(Order.quantity).label("total_quantity"),  # SKU销量：quantity之和
         func.count(func.distinct(Order.order_sn)).label("order_count"),  # 订单数：按订单号去重
-        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("total_gmv"),
-        func.sum(_convert_to_cny(Order.profit, usd_rate)).label("total_profit"),
+        func.sum(Order.total_price).label("total_gmv"),  # 已经是CNY
+        func.sum(Order.profit).label("total_profit"),  # 已经是CNY
     ).join(Shop, Shop.id == Order.shop_id).filter(
         and_(*filters),
         Order.product_sku.isnot(None)
@@ -561,12 +554,25 @@ def get_sales_overview(
     )
     
     usd_rate = CurrencyConverter.USD_TO_CNY_RATE
+    
+    # 使用存储的值进行统计（订单同步时已计算并存储）
+    # 先按父订单分组，计算每个父订单的GMV、成本、利润
+    parent_order_stats = db.query(
+        parent_order_key.label('parent_key'),
+        func.sum(Order.quantity).label('parent_quantity'),
+        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label('parent_gmv'),
+        func.sum(_convert_to_cny(Order.total_cost, usd_rate)).label('parent_cost'),
+        func.sum(_convert_to_cny(Order.profit, usd_rate)).label('parent_profit'),
+    ).filter(and_(*filters)).group_by(parent_order_key).subquery()
+    
+    # 然后汇总所有父订单
     total_stats = db.query(
-        func.sum(Order.quantity).label("total_quantity"),  # 销售件数：子订单内商品数量累计
-        func.count(func.distinct(parent_order_key)).label("total_orders"),  # 按父订单号去重统计
-        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("total_gmv"),
-        func.sum(_convert_to_cny(Order.profit, usd_rate)).label("total_profit"),
-    ).filter(and_(*filters)).first()
+        func.sum(parent_order_stats.c.parent_quantity).label("total_quantity"),
+        func.count(parent_order_stats.c.parent_key).label("total_orders"),
+        func.sum(parent_order_stats.c.parent_gmv).label("total_gmv"),
+        func.sum(parent_order_stats.c.parent_cost).label("total_cost"),
+        func.sum(parent_order_stats.c.parent_profit).label("total_profit"),
+    ).first()
     
     # 按天统计趋势
     # 销量：quantity之和（子订单内商品数量累计）
@@ -640,6 +646,7 @@ def get_sales_overview(
         "total_quantity": int(total_stats.total_quantity or 0),
         "total_orders": int(total_stats.total_orders or 0),  # 按父订单号去重，只统计有效订单
         "total_gmv": float(total_stats.total_gmv or 0),  # GMV（收入），统一转换为CNY
+        "total_cost": float(total_stats.total_cost or 0),  # 总成本，统一转换为CNY
         "total_profit": float(total_stats.total_profit or 0),  # 利润，统一转换为CNY
         "daily_trends": daily_data,
         "shop_trends": shop_daily_data,

@@ -105,6 +105,7 @@ class SyncService:
         
         # 获取订单时间有效的成本价
         cost_price = None
+        cost_currency = None
         if order_time:
             # 查询在订单时间有效的成本记录
             # effective_from <= order_time AND (effective_to IS NULL OR effective_to > order_time)
@@ -116,8 +117,9 @@ class SyncService:
             
             if cost_record:
                 cost_price = cost_record.cost_price
+                cost_currency = cost_record.currency
                 logger.debug(
-                    f"找到商品 {product.sku} 在 {order_time} 的有效成本价: {cost_price}"
+                    f"找到商品 {product.sku} 在 {order_time} 的有效成本价: {cost_price} {cost_currency}"
                 )
         else:
             # 如果没有订单时间，获取当前有效的成本价
@@ -128,11 +130,13 @@ class SyncService:
             
             if cost_record:
                 cost_price = cost_record.cost_price
+                cost_currency = cost_record.currency
         
         return {
             'product_id': product.id,
             'supply_price': supply_price,
             'cost_price': cost_price,
+            'cost_currency': cost_currency,  # 返回成本价的货币
             'currency': product.currency
         }
     
@@ -608,38 +612,78 @@ class SyncService:
         )
         
         if price_info:
-            # 使用商品的供货价（current_price）作为订单单价
+            # 匹配到商品，计算并存储GMV、成本、利润
+            # 所有价格统一转换为CNY存储
+            from app.utils.currency import CurrencyConverter
+            usd_rate = Decimal(str(CurrencyConverter.USD_TO_CNY_RATE))
+            
+            # 获取供货价，转换为CNY
             supply_price = price_info.get('supply_price') or Decimal('0')
-            unit_price = supply_price
+            product_currency = price_info.get('currency', 'USD')
+            
+            # 将供货价转换为CNY
+            if product_currency == 'USD':
+                unit_price_cny = supply_price * usd_rate
+            else:
+                unit_price_cny = supply_price
+            
+            # 存储时使用CNY值，但保留原始货币信息
+            unit_price = unit_price_cny
             total_price = unit_price * Decimal(quantity) if quantity else Decimal('0')
             
-            unit_cost = price_info['cost_price']
+            # 获取成本价，转换为CNY
+            cost_price_from_db = price_info.get('cost_price')
+            cost_currency = price_info.get('cost_currency')  # 成本价的货币
             matched_product_id = price_info['product_id']
             
-            # 计算总成本和利润（基于该SKU的数量）
+            # 如果成本价存在，转换为CNY
+            unit_cost = None
+            if cost_price_from_db is not None:
+                # 如果成本价货币未指定，使用商品货币
+                if not cost_currency:
+                    cost_currency = product_currency
+                
+                # 将成本价转换为CNY
+                if cost_currency == 'USD':
+                    unit_cost = cost_price_from_db * usd_rate
+                else:
+                    unit_cost = cost_price_from_db
+                
+                logger.debug(
+                    f"成本价货币转换: {cost_price_from_db} {cost_currency} -> {unit_cost} CNY"
+                )
+            
+            # 计算总成本和利润（基于该SKU的数量，所有值都是CNY）
             if unit_cost is not None and quantity:
                 total_cost = unit_cost * Decimal(quantity)
                 profit = total_price - total_cost
                 logger.info(
                     f"✅ 订单 {order_item.get('orderSn')} 成功匹配商品并计算价格和成本 - "
                     f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {spu_id}, "
-                    f"数量: {quantity}, 单价（供货价）: {unit_price}, 总价: {total_price}, "
+                    f"数量: {quantity}, 单价（供货价）: {unit_price}, GMV: {total_price}, "
                     f"单位成本: {unit_cost}, 总成本: {total_cost}, 利润: {profit}"
                 )
             else:
+                # 匹配到商品但无成本价，只计算GMV，成本和利润为NULL
+                total_cost = None
+                profit = None
                 logger.warning(
                     f"⚠️  订单 {order_item.get('orderSn')} "
                     f"(productSkuId: {product_sku_id}, extCode: {product_sku}) "
-                    f"匹配到商品但无成本价或数量为0，无法计算利润"
+                    f"匹配到商品但无成本价或数量为0，无法计算成本和利润，GMV: {total_price}"
                 )
         else:
             # 如果未匹配到商品，价格设为0
             unit_price = Decimal('0')
             total_price = Decimal('0')
+            unit_cost = None
+            total_cost = None
+            profit = None
+            matched_product_id = None
             logger.warning(
                 f"❌ 订单 {order_item.get('orderSn')} 未找到匹配商品 - "
                 f"productSkuId: {product_sku_id}, extCode: {product_sku}, spu_id: {spu_id}。"
-                f"请检查商品列表中是否已添加对应的商品和供货价，订单价格将设为0"
+                f"请检查商品列表中是否已添加对应的商品和供货价，订单GMV将设为0"
             )
         
         # 创建订单对象
@@ -659,15 +703,16 @@ class SyncService:
             spu_id=spu_id,
             quantity=quantity,  # 该SKU的数量
             
-            # 金额信息（该SKU的金额）
-            unit_price=unit_price,
-            total_price=total_price,
-            currency=currency,
+            # 金额信息（该SKU的金额，统一存储为CNY）
+            # 注意：unit_price和total_price统一存储为CNY，currency字段保留原始货币信息
+            unit_price=unit_price,  # 已转换为CNY
+            total_price=total_price,  # 已转换为CNY
+            currency=currency,  # 保留原始货币信息（USD/CNY等）
             
-            # 成本和利润（该SKU的成本和利润）
-            unit_cost=unit_cost,
-            total_cost=total_cost,
-            profit=profit,
+            # 成本和利润（该SKU的成本和利润，统一存储为CNY）
+            unit_cost=unit_cost,  # 已转换为CNY
+            total_cost=total_cost,  # 已转换为CNY
+            profit=profit,  # 已转换为CNY
             
             # 状态和时间
             status=order_status,
@@ -822,8 +867,7 @@ class SyncService:
             order.unit_cost is None or 
             order.total_cost is None or 
             order.profit is None or
-            not order.product_id or  # 如果没有关联商品，尝试重新匹配
-            (updated and (unit_price or total_price))  # 价格更新时重新计算
+            not order.product_id  # 如果没有关联商品，尝试重新匹配
         )
         
         if should_recalculate_cost:
