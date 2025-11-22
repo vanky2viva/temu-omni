@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { ConfigProvider, Layout, Menu, Switch, theme, Dropdown, Button, Avatar } from 'antd'
+import { ConfigProvider, Layout, Menu, Switch, theme, Dropdown, Button, Avatar, Drawer } from 'antd'
 import {
   DashboardOutlined,
   ShopOutlined,
@@ -15,6 +15,7 @@ import {
   LogoutOutlined,
   UserOutlined,
   RobotOutlined,
+  MenuOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 
@@ -80,6 +81,8 @@ const menuItems = [
 
 function MainLayout() {
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [isDark, setIsDark] = useState<boolean>(() => {
     const saved = localStorage.getItem('theme')
     if (saved === 'light') return false
@@ -92,6 +95,21 @@ function MainLayout() {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken()
 
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+      // 移动端默认收起侧边栏
+      if (window.innerWidth < 768) {
+        setCollapsed(true)
+      }
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   useEffect(() => {
     const root = document.documentElement
     root.classList.remove('theme-dark', 'theme-light')
@@ -101,6 +119,10 @@ function MainLayout() {
 
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(key)
+    // 移动端点击菜单后关闭抽屉
+    if (isMobile) {
+      setMobileMenuOpen(false)
+    }
   }
 
   const handleLogout = () => {
@@ -127,80 +149,181 @@ function MainLayout() {
     }
   })()
 
+  // 侧边栏菜单组件
+  const menuComponent = (
+    <>
+      <div
+        style={{
+          height: 48,
+          margin: 16,
+          background: isDark ? '#161b22' : '#ffffff',
+          border: isDark ? '1px solid #30363d' : '1px solid #f0f0f0',
+          borderRadius: '6px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: isDark ? '#58a6ff' : '#1677ff',
+          fontSize: collapsed && !isMobile ? '12px' : '14px',
+          fontWeight: 'bold',
+          letterSpacing: '0.5px',
+          fontFamily: 'JetBrains Mono, monospace',
+        }}
+      >
+        {collapsed && !isMobile ? 'LSO' : 'Luffy Store Omni'}
+      </div>
+      <Menu
+        theme={isDark ? 'dark' : 'light'}
+        mode="inline"
+        selectedKeys={[location.pathname]}
+        items={menuItems}
+        onClick={handleMenuClick}
+      />
+    </>
+  )
+
   return (
     <ConfigProvider theme={{ algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm }}>
       <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
-      <Sider 
-        collapsible 
-        collapsed={collapsed} 
-        onCollapse={setCollapsed}
-        style={{
-          overflow: 'auto',
-          height: '100vh',
-          position: 'fixed',
-          left: 0,
-          top: 0,
-          bottom: 0,
-        }}
-      >
-        <div
+      {/* 桌面端侧边栏 */}
+      {!isMobile && (
+        <Sider 
+          collapsible 
+          collapsed={collapsed} 
+          onCollapse={setCollapsed}
+          breakpoint="lg"
+          collapsedWidth={isMobile ? 0 : 80}
           style={{
-            height: 48,
-            margin: 16,
-            background: isDark ? '#161b22' : '#ffffff',
-            border: isDark ? '1px solid #30363d' : '1px solid #f0f0f0',
-            borderRadius: '6px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: isDark ? '#58a6ff' : '#1677ff',
-            fontSize: collapsed ? '12px' : '14px',
-            fontWeight: 'bold',
-            letterSpacing: '0.5px',
-            fontFamily: 'JetBrains Mono, monospace',
+            overflow: 'auto',
+            height: '100vh',
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            zIndex: 100,
           }}
         >
-          {collapsed ? 'LSO' : 'Luffy Store Omni'}
-        </div>
-        <Menu
-          theme={isDark ? 'dark' : 'light'}
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          items={menuItems}
-          onClick={handleMenuClick}
-        />
-      </Sider>
-      <Layout style={{ marginLeft: collapsed ? 80 : 200, transition: 'all 0.2s', background: 'transparent' }}>
-        <Header className="site-header" style={{ padding: '0 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ 
-            fontSize: '16px', 
-            fontWeight: 'bold',
-            color: isDark ? '#c9d1d9' : '#1f2328',
-            letterSpacing: '1px',
-            fontFamily: 'JetBrains Mono, monospace',
-          }}>
-            {'> 多店铺管理系统_'}
+          {menuComponent}
+        </Sider>
+      )}
+
+      {/* 移动端抽屉菜单 */}
+      {isMobile && (
+        <Drawer
+          title={
+            <div style={{ 
+              color: isDark ? '#c9d1d9' : '#1f2328',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              fontFamily: 'JetBrains Mono, monospace',
+            }}>
+              Luffy Store Omni
+            </div>
+          }
+          placement="left"
+          closable={true}
+          onClose={() => setMobileMenuOpen(false)}
+          open={mobileMenuOpen}
+          bodyStyle={{ padding: 0 }}
+          width={250}
+        >
+          {menuComponent}
+        </Drawer>
+      )}
+
+      <Layout 
+        style={{ 
+          marginLeft: isMobile ? 0 : (collapsed ? 80 : 200), 
+          transition: 'all 0.2s', 
+          background: 'transparent' 
+        }}
+      >
+        <Header 
+          className="site-header" 
+          style={{ 
+            padding: isMobile ? '0 16px' : '0 32px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            position: 'sticky',
+            top: 0,
+            zIndex: 99,
+            height: isMobile ? 56 : 64,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {/* 移动端菜单按钮 */}
+            {isMobile && (
+              <Button
+                type="text"
+                icon={<MenuOutlined />}
+                onClick={() => setMobileMenuOpen(true)}
+                style={{
+                  color: isDark ? '#c9d1d9' : '#1f2328',
+                  fontSize: '18px',
+                }}
+              />
+            )}
+            <div style={{ 
+              fontSize: isMobile ? '14px' : '16px', 
+              fontWeight: 'bold',
+              color: isDark ? '#c9d1d9' : '#1f2328',
+              letterSpacing: '1px',
+              fontFamily: 'JetBrains Mono, monospace',
+              display: isMobile ? 'none' : 'block',
+            }}>
+              {'> 多店铺管理系统_'}
+            </div>
+            {isMobile && (
+              <div style={{ 
+                fontSize: '14px', 
+                fontWeight: 'bold',
+                color: isDark ? '#c9d1d9' : '#1f2328',
+                letterSpacing: '0.5px',
+                fontFamily: 'JetBrains Mono, monospace',
+              }}>
+                管理系统
+              </div>
+            )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ color: isDark ? '#9aa0a6' : '#6b7280', fontSize: 12 }}>主题</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12 }}>
+            {!isMobile && (
+              <span style={{ color: isDark ? '#9aa0a6' : '#6b7280', fontSize: 12 }}>主题</span>
+            )}
             <Switch
               checkedChildren="暗"
               unCheckedChildren="亮"
               checked={isDark}
               onChange={setIsDark}
+              size={isMobile ? 'small' : 'default'}
             />
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-              <Button type="text" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Avatar size="small" icon={<UserOutlined />} />
-                <span style={{ color: isDark ? '#c9d1d9' : '#1f2328' }}>
-                  {user.username || '用户'}
-                </span>
+              <Button 
+                type="text" 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: isMobile ? 4 : 8,
+                  padding: isMobile ? '4px 8px' : undefined,
+                }}
+              >
+                <Avatar size={isMobile ? 'small' : 'small'} icon={<UserOutlined />} />
+                {!isMobile && (
+                  <span style={{ color: isDark ? '#c9d1d9' : '#1f2328' }}>
+                    {user.username || '用户'}
+                  </span>
+                )}
               </Button>
             </Dropdown>
           </div>
         </Header>
-        <Content style={{ margin: '24px 16px 16px' }}>
-          <div className="site-content" style={{ padding: 24, minHeight: 360 }}>
+        <Content style={{ margin: isMobile ? '16px 8px 8px' : '24px 16px 16px' }}>
+          <div 
+            className="site-content" 
+            style={{ 
+              padding: isMobile ? 12 : 24, 
+              minHeight: 360 
+            }}
+          >
             <Outlet />
           </div>
         </Content>

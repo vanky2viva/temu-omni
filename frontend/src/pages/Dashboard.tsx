@@ -413,7 +413,7 @@ function Dashboard() {
       
       {/* 核心指标卡片 */}
       <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
-        <Col span={6}>
+        <Col xs={24} sm={12} md={12} lg={6}>
           <Card 
             className="stat-card" 
             bordered={false} 
@@ -476,7 +476,7 @@ function Dashboard() {
             </div>
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} md={12} lg={6}>
           <Card 
             className="stat-card" 
             bordered={false} 
@@ -539,7 +539,7 @@ function Dashboard() {
             </div>
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} md={12} lg={6}>
           <Card 
             className="stat-card" 
             bordered={false} 
@@ -602,7 +602,7 @@ function Dashboard() {
             </div>
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} md={12} lg={6}>
           <Card 
             className="stat-card" 
             bordered={false} 

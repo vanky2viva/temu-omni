@@ -468,3 +468,143 @@ body {
   background-color: #58a6ff !important;
 }
 
+/* ============================================
+   移动端响应式样式
+   ============================================ */
+
+/* 移动端基础样式 */
+@media (max-width: 768px) {
+  /* 隐藏桌面端侧边栏 */
+  .ant-layout-sider {
+    display: none !important;
+  }
+
+  /* 调整布局间距 */
+  .site-content {
+    padding: 12px !important;
+  }
+
+  /* 表格在移动端水平滚动 */
+  .ant-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 卡片间距调整 */
+  .ant-row {
+    margin-left: -8px !important;
+    margin-right: -8px !important;
+  }
+
+  .ant-row > .ant-col {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  /* 统计卡片在移动端单列显示 */
+  .stat-card {
+    margin-bottom: 12px !important;
+  }
+
+  /* 头部高度调整 */
+  .site-header {
+    height: 56px !important;
+    line-height: 56px !important;
+  }
+
+  /* 图表容器在移动端 */
+  .chart-card {
+    margin-bottom: 16px !important;
+  }
+
+  /* 表单在移动端 */
+  .ant-form-item {
+    margin-bottom: 16px !important;
+  }
+
+  /* 按钮在移动端 */
+  .ant-btn {
+    min-height: 40px !important;
+    font-size: 14px !important;
+  }
+
+  /* 表格字体大小 */
+  .ant-table {
+    font-size: 12px !important;
+  }
+
+  .ant-table-thead > tr > th {
+    padding: 8px 4px !important;
+    font-size: 11px !important;
+  }
+
+  .ant-table-tbody > tr > td {
+    padding: 8px 4px !important;
+    font-size: 11px !important;
+  }
+
+  /* 分页器在移动端 */
+  .ant-pagination {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+  }
+
+  .ant-pagination-item,
+  .ant-pagination-prev,
+  .ant-pagination-next {
+    margin: 4px 2px !important;
+  }
+
+  /* 抽屉菜单样式 */
+  .ant-drawer-body {
+    padding: 0 !important;
+  }
+
+  /* 输入框在移动端 */
+  .ant-input,
+  .ant-input-number,
+  .ant-select-selector {
+    font-size: 16px !important; /* 防止iOS自动缩放 */
+  }
+
+  /* 日期选择器在移动端 */
+  .ant-picker {
+    width: 100% !important;
+  }
+}
+
+/* 超小屏幕设备 (< 480px) */
+@media (max-width: 480px) {
+  .site-content {
+    padding: 8px !important;
+  }
+
+  .ant-card {
+    border-radius: 4px !important;
+  }
+
+  h1 {
+    font-size: 20px !important;
+  }
+
+  h2 {
+    font-size: 18px !important;
+  }
+
+  h3 {
+    font-size: 16px !important;
+  }
+}
+
+/* 平板设备 (768px - 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .ant-layout-sider {
+    width: 200px !important;
+  }
+
+  .ant-layout-sider-collapsed {
+    width: 80px !important;
+  }
+}
+

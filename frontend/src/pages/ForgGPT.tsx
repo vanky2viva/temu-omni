@@ -88,6 +88,7 @@ export default function ForgGPT() {
     end: dayjs().format('YYYY-MM-DD'),
   }
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const thinkingContentRef = useRef<HTMLDivElement>(null)
 
   // 获取店铺列表
   const { data: shops } = useQuery({
@@ -177,9 +178,31 @@ export default function ForgGPT() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  // 滚动思考内容到底部（使用 instant 确保实时更新时快速滚动）
+  const scrollThinkingToBottom = () => {
+    if (thinkingContentRef.current) {
+      // 直接设置 scrollTop，使用 instant 滚动以跟上实时更新
+      thinkingContentRef.current.scrollTop = thinkingContentRef.current.scrollHeight
+    }
+  }
+
   useEffect(() => {
     scrollToBottom()
   }, [messages, streamingContent])
+
+  // 当思考内容更新时，滚动到思考内容底部和消息容器底部
+  useEffect(() => {
+    if (showThinking && thinkingContent) {
+      // 先滚动消息容器，显示思考内容区域
+      scrollToBottom()
+      // 使用 requestAnimationFrame 确保 DOM 已更新后再滚动思考内容内部
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollThinkingToBottom()
+        })
+      })
+    }
+  }, [thinkingContent, showThinking])
 
   // 发送消息
   const handleSend = async () => {
@@ -1313,6 +1336,7 @@ export default function ForgGPT() {
                       </Button>
                     </div>
                     <div
+                      ref={thinkingContentRef}
                       style={{
                         maxHeight: '200px',
                         overflowY: 'auto',
