@@ -15,6 +15,7 @@ from app.models.temu_products_raw import TemuProductsRaw
 from app.models.order import Order, OrderStatus
 from app.models.order_item import OrderItem
 from app.models.product import Product
+from app.utils.currency import CurrencyConverter
 
 
 class DataMappingError(Exception):
@@ -182,6 +183,40 @@ class DataMappingService:
                     'spu_id': first_item.get('spu_id'),
                     'quantity': first_item.get('quantity', 1),
                 })
+            
+            # 如果价格信息缺失（为0），尝试从商品表中获取价格
+            if (total_price is None or total_price == Decimal('0')) and order_data.get('product_sku'):
+                product = self.db.query(Product).filter(
+                    Product.shop_id == raw_order.shop_id,
+                    Product.sku == order_data.get('product_sku')
+                ).first()
+                
+                if product and product.current_price:
+                    # 使用商品价格计算订单金额
+                    quantity = order_data.get('quantity', 1)
+                    unit_price_from_product = product.current_price
+                    
+                    # 货币转换（USD转CNY）
+                    if product.currency == 'USD':
+                        usd_rate = CurrencyConverter.USD_TO_CNY_RATE
+                        unit_price_cny = unit_price_from_product * Decimal(str(usd_rate))
+                    else:
+                        unit_price_cny = unit_price_from_product
+                    
+                    total_price_cny = unit_price_cny * quantity
+                    
+                    # 更新订单数据
+                    order_data['unit_price'] = unit_price_cny
+                    order_data['total_price'] = total_price_cny
+                    order_data['currency'] = 'CNY'
+                    
+                    logger.info(
+                        f"订单 {order_sn} 价格从商品表中获取: "
+                        f"商品SKU={order_data.get('product_sku')}, "
+                        f"商品价格={product.current_price} {product.currency}, "
+                        f"订单单价={unit_price_cny} CNY, "
+                        f"订单总价={total_price_cny} CNY"
+                    )
             
             return order_data
             
