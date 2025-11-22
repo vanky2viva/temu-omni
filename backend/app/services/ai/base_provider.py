@@ -28,6 +28,7 @@ class ChatCompletionResponse(BaseModel):
     model: str
     usage: Dict[str, int]  # prompt_tokens, completion_tokens, total_tokens
     finish_reason: Optional[str] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None  # 工具调用列表
 
 
 class AIProvider(ABC):
@@ -39,7 +40,8 @@ class AIProvider(ABC):
         messages: List[ChatMessage],
         model: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> ChatCompletionResponse:
         """
         聊天完成

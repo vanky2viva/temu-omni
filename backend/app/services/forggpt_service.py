@@ -10,6 +10,7 @@ from app.services.ai.deepseek_provider import DeepSeekProvider
 from app.services.ai.openai_provider import OpenAIProvider
 from app.services.ai.base_provider import AIProvider, ChatMessage
 from app.services.statistics import StatisticsService
+from app.services.forggpt_tools import ForgGPTTools, TOOLS_SCHEMA
 from app.models.order import Order, OrderStatus
 from app.models.product import Product
 from app.models.shop import Shop
@@ -30,6 +31,7 @@ class ForgGPTService:
         """
         self.db = db
         self.ai_provider = self._init_ai_provider()
+        self.tools = ForgGPTTools(db)  # 初始化工具集合
         self.max_history = 50  # 最大历史消息数
         self.max_context_tokens = 8000  # 最大上下文token数
     
@@ -424,8 +426,8 @@ class ForgGPTService:
                     "generator": self.ai_provider.chat_completion_stream(messages)
                 }
             else:
-                # 普通响应
-                response = self.ai_provider.chat_completion(messages)
+                # 普通响应（支持工具调用）
+                response = self._chat_with_tools(messages)
                 
                 return {
                     "session_id": session_id,
@@ -470,6 +472,105 @@ class ForgGPTService:
             RedisClient.set(cache_key, history, ttl=7 * 24 * 3600)
         except Exception as e:
             logger.warning(f"保存对话历史失败: {e}")
+    
+    def _chat_with_tools(
+        self,
+        messages: List[ChatMessage],
+        max_iterations: int = 3
+    ) -> Any:
+        """
+        带工具调用的对话（支持多轮工具调用）
+        
+        Args:
+            messages: 消息列表
+            max_iterations: 最大迭代次数（防止无限循环）
+            
+        Returns:
+            最终响应
+        """
+        iteration = 0
+        current_messages = messages.copy()
+        
+        while iteration < max_iterations:
+            iteration += 1
+            
+            # 调用AI（传入工具定义）
+            response = self.ai_provider.chat_completion(
+                current_messages,
+                tools=TOOLS_SCHEMA
+            )
+            
+            # 检查是否有工具调用
+            tool_calls = response.tool_calls or []
+            
+            if not tool_calls:
+                # 没有工具调用，返回最终响应
+                return response
+            
+            # 有工具调用，执行工具函数
+            logger.info(f"检测到 {len(tool_calls)} 个工具调用")
+            
+            # 将AI的响应添加到消息历史
+            current_messages.append(ChatMessage(
+                role="assistant",
+                content=response.content or ""
+            ))
+            
+            # 执行每个工具调用
+            tool_results = []
+            for tool_call in tool_calls:
+                tool_name = tool_call.get("function", {}).get("name")
+                tool_args = tool_call.get("function", {}).get("arguments", "{}")
+                
+                if not tool_name:
+                    continue
+                
+                try:
+                    # 解析参数
+                    import json
+                    args = json.loads(tool_args) if isinstance(tool_args, str) else tool_args
+                    
+                    # 调用工具函数
+                    tool_method = getattr(self.tools, tool_name, None)
+                    if tool_method:
+                        result = tool_method(**args)
+                        tool_results.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.get("id"),
+                            "name": tool_name,
+                            "content": json.dumps(result, ensure_ascii=False)
+                        })
+                        logger.info(f"工具 {tool_name} 执行成功")
+                    else:
+                        logger.warning(f"工具 {tool_name} 不存在")
+                        tool_results.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.get("id"),
+                            "name": tool_name,
+                            "content": json.dumps({"success": False, "error": f"工具 {tool_name} 不存在"}, ensure_ascii=False)
+                        })
+                except Exception as e:
+                    logger.error(f"执行工具 {tool_name} 失败: {e}")
+                    tool_results.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.get("id"),
+                        "name": tool_name,
+                        "content": json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
+                    })
+            
+            # 将工具调用结果添加到消息历史
+            # 注意：工具调用结果需要按照特定的格式添加
+            # 格式：{"role": "tool", "tool_call_id": "...", "content": "..."}
+            for tool_result in tool_results:
+                # 将工具结果作为JSON字符串添加到消息内容中
+                current_messages.append(ChatMessage(
+                    role="tool",
+                    content=tool_result["content"]
+                ))
+        
+        # 达到最大迭代次数，返回最后一次响应
+        logger.warning(f"工具调用达到最大迭代次数 {max_iterations}")
+        return response
     
     def get_conversation_history(self, session_id: str) -> List[Dict[str, str]]:
         """

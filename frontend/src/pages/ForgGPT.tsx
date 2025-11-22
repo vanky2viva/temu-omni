@@ -23,7 +23,14 @@ import {
   RobotOutlined,
   SendOutlined,
   SettingOutlined,
+  CopyOutlined,
 } from '@ant-design/icons'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import ReactECharts from 'echarts-for-react'
 import { forggptApi, shopApi, statisticsApi, aiConfigApi } from '@/services/api'
 import dayjs from 'dayjs'
 
@@ -48,6 +55,7 @@ interface Message {
   createdAt: string
 }
 
+// 快捷提示词（用于空状态显示）
 const quickPrompts = [
   '生成今日销售总结',
   '分析最近 7 天 GMV 变化',
@@ -954,18 +962,21 @@ export default function ForgGPT() {
             </div>
             <Space direction="vertical" size={6} style={{ width: '100%' }}>
               {[
-                '今日销售概览',
-                '近7天GMV变化',
-                '爆款SKU分析',
-                '退款异常排查',
-                '库存预警',
+                { label: '今日销售总结', prompt: '请为我生成今日销售总结，包括 GMV、订单数、客单价、利润、退款情况，并给出主要原因分析。' },
+                { label: '7天GMV变化分析', prompt: '请分析最近7天GMV的趋势，以及增长或下降的主要驱动因素，从订单量、客单价、畅销SKU、退款率等维度解释。' },
+                { label: 'SKU盈利分析', prompt: '请帮我分析这个SKU的利润结构，包括成本、售价、毛利额、毛利率，并结合最近的销量趋势判断是否值得加大投入。' },
+                { label: '商品对比选品', prompt: '请对比销量前10的SKU在最近30天的销量、GMV、利润、退款率，找出最值得重点推广的商品。' },
+                { label: '退款异常分析', prompt: '请分析最近30天退款率较高的SKU列表，并找出异常原因（如破损率、发货延迟、材质问题等）。' },
+                { label: '店铺对比分析', prompt: '请对比所有店铺的销售表现，包括GMV、订单量、利润、退款率等指标。' },
+                { label: '库存预警分析', prompt: '请分析哪些商品需要补货，基于最近7天的销量趋势和当前库存情况。' },
+                { label: '价格策略建议', prompt: '请分析当前商品定价是否合理，基于成本、市场表现和利润情况给出价格优化建议。' },
               ].map((item) => (
                 <Button
-                  key={item}
+                  key={item.label}
                   block
                   size="small"
                   onClick={() => {
-                    setInput(item)
+                    setInput(item.prompt)
                     handleSend()
                   }}
                   style={{
@@ -987,7 +998,7 @@ export default function ForgGPT() {
                     e.currentTarget.style.boxShadow = 'none'
                   }}
                 >
-                  {item}
+                  {item.label}
                 </Button>
               ))}
             </Space>
@@ -1601,10 +1612,10 @@ const FileItem: React.FC<{
 }
 
 const ChatBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({
-  message,
+  message: messageData,
   isStreaming,
 }) => {
-  const isUser = message.role === 'user'
+  const isUser = messageData.role === 'user'
 
   if (isUser) {
     return (
@@ -1623,7 +1634,7 @@ const ChatBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({
             border: '1px solid rgba(255, 255, 255, 0.1)',
           }}
         >
-          {message.content}
+          {messageData.content}
           <div
             style={{
               textAlign: 'right',
@@ -1633,7 +1644,7 @@ const ChatBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({
               fontFamily: 'monospace',
             }}
           >
-            {message.createdAt}
+            {messageData.createdAt}
           </div>
         </div>
       </div>
@@ -1666,7 +1677,7 @@ const ChatBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
         }}
       >
-        {message.title && (
+        {messageData.title && (
           <div
             style={{
               fontSize: '12px',
@@ -1676,11 +1687,438 @@ const ChatBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({
               fontFamily: 'monospace',
             }}
           >
-            {message.title}
+            {messageData.title}
           </div>
         )}
         <div style={{ color: '#e5e7eb' }}>
-          {message.content}
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeRaw]}
+            components={{
+              // 代码块高亮和图表渲染
+              code({ node, inline, className, children, ...props }: any) {
+                const match = /language-(\w+)/.exec(className || '')
+                const language = match ? match[1] : ''
+                const codeString = String(children).replace(/\n$/, '')
+                
+                // 检查是否是图表数据（chart或echarts格式）
+                if (!inline && (language === 'chart' || language === 'echarts')) {
+                  try {
+                    const chartConfig = JSON.parse(codeString)
+                    // 验证是否是有效的ECharts配置
+                    if (chartConfig && (chartConfig.option || chartConfig.series || chartConfig.xAxis || chartConfig.yAxis)) {
+                      const option = chartConfig.option || chartConfig
+                      // 应用暗色主题
+                      const darkOption = {
+                        ...option,
+                        backgroundColor: 'transparent',
+                        textStyle: {
+                          color: '#e5e7eb',
+                          ...option.textStyle,
+                        },
+                        title: option.title ? {
+                          ...option.title,
+                          textStyle: {
+                            color: '#e5e7eb',
+                            ...option.title.textStyle,
+                          },
+                        } : undefined,
+                        legend: option.legend ? {
+                          ...option.legend,
+                          textStyle: {
+                            color: '#e5e7eb',
+                            ...option.legend.textStyle,
+                          },
+                        } : undefined,
+                        grid: option.grid ? {
+                          ...option.grid,
+                          borderColor: 'rgba(99, 102, 241, 0.3)',
+                          ...option.grid,
+                        } : undefined,
+                        xAxis: option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis.map((axis: any) => ({
+                          ...axis,
+                          axisLine: { lineStyle: { color: 'rgba(99, 102, 241, 0.3)' }, ...axis.axisLine },
+                          axisLabel: { color: '#94a3b8', ...axis.axisLabel },
+                          splitLine: { lineStyle: { color: 'rgba(99, 102, 241, 0.1)' }, ...axis.splitLine },
+                        })) : {
+                          ...option.xAxis,
+                          axisLine: { lineStyle: { color: 'rgba(99, 102, 241, 0.3)' }, ...option.xAxis.axisLine },
+                          axisLabel: { color: '#94a3b8', ...option.xAxis.axisLabel },
+                          splitLine: { lineStyle: { color: 'rgba(99, 102, 241, 0.1)' }, ...option.xAxis.splitLine },
+                        }) : undefined,
+                        yAxis: option.yAxis ? (Array.isArray(option.yAxis) ? option.yAxis.map((axis: any) => ({
+                          ...axis,
+                          axisLine: { lineStyle: { color: 'rgba(99, 102, 241, 0.3)' }, ...axis.axisLine },
+                          axisLabel: { color: '#94a3b8', ...axis.axisLabel },
+                          splitLine: { lineStyle: { color: 'rgba(99, 102, 241, 0.1)' }, ...axis.splitLine },
+                        })) : {
+                          ...option.yAxis,
+                          axisLine: { lineStyle: { color: 'rgba(99, 102, 241, 0.3)' }, ...option.yAxis.axisLine },
+                          axisLabel: { color: '#94a3b8', ...option.yAxis.axisLabel },
+                          splitLine: { lineStyle: { color: 'rgba(99, 102, 241, 0.1)' }, ...option.yAxis.splitLine },
+                        }) : undefined,
+                      }
+                      return (
+                        <div style={{ margin: '12px 0', background: 'rgba(15, 23, 42, 0.5)', borderRadius: '8px', padding: '12px', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+                          <ReactECharts
+                            option={darkOption}
+                            style={{ height: chartConfig.height || '300px', width: '100%' }}
+                            opts={{ renderer: 'canvas' }}
+                          />
+                        </div>
+                      )
+                    }
+                  } catch (e) {
+                    // JSON解析失败，继续显示为代码
+                  }
+                }
+                
+                // JSON格式的图表配置（自动检测）
+                if (!inline && language === 'json') {
+                  try {
+                    const jsonData = JSON.parse(codeString)
+                    // 检查是否是ECharts配置
+                    if (jsonData && (jsonData.option || jsonData.series || (jsonData.xAxis && jsonData.yAxis))) {
+                      const option = jsonData.option || jsonData
+                      const darkOption = {
+                        ...option,
+                        backgroundColor: 'transparent',
+                        textStyle: { color: '#e5e7eb', ...option.textStyle },
+                      }
+                      return (
+                        <div style={{ margin: '12px 0', background: 'rgba(15, 23, 42, 0.5)', borderRadius: '8px', padding: '12px', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+                          <ReactECharts
+                            option={darkOption}
+                            style={{ height: jsonData.height || '300px', width: '100%' }}
+                            opts={{ renderer: 'canvas' }}
+                          />
+                        </div>
+                      )
+                    }
+                  } catch (e) {
+                    // JSON解析失败，继续显示为代码
+                  }
+                }
+                
+                // 普通代码块
+                if (!inline && language) {
+                  return (
+                    <div style={{ position: 'relative', margin: '8px 0' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '4px 8px',
+                          background: 'rgba(0, 0, 0, 0.3)',
+                          borderTopLeftRadius: '6px',
+                          borderTopRightRadius: '6px',
+                          fontSize: '11px',
+                          color: '#94a3b8',
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        <span>{language}</span>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<CopyOutlined />}
+                          onClick={() => {
+                            navigator.clipboard.writeText(codeString)
+                            message.success('代码已复制')
+                          }}
+                          style={{
+                            color: '#94a3b8',
+                            fontSize: '10px',
+                            height: '20px',
+                            padding: '0 4px',
+                          }}
+                        >
+                          复制
+                        </Button>
+                      </div>
+                      <SyntaxHighlighter
+                        style={vscDarkPlus}
+                        language={language}
+                        PreTag="div"
+                        customStyle={{
+                          margin: 0,
+                          borderRadius: '0 0 6px 6px',
+                          background: '#1e1e1e',
+                          fontSize: '12px',
+                          lineHeight: '1.5',
+                          padding: '12px',
+                        }}
+                        {...props}
+                      >
+                        {codeString}
+                      </SyntaxHighlighter>
+                    </div>
+                  )
+                }
+                // 行内代码
+                return (
+                  <code
+                    className={className}
+                    style={{
+                      background: 'rgba(99, 102, 241, 0.2)',
+                      color: '#818cf8',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+                    }}
+                    {...props}
+                  >
+                    {children}
+                  </code>
+                )
+              },
+              // 表格样式
+              table({ children }: any) {
+                return (
+                  <div style={{ overflowX: 'auto', margin: '12px 0' }}>
+                    <table
+                      style={{
+                        width: '100%',
+                        borderCollapse: 'collapse',
+                        border: '1px solid rgba(99, 102, 241, 0.3)',
+                        borderRadius: '6px',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {children}
+                    </table>
+                  </div>
+                )
+              },
+              thead({ children }: any) {
+                return (
+                  <thead
+                    style={{
+                      background: 'rgba(99, 102, 241, 0.15)',
+                      borderBottom: '2px solid rgba(99, 102, 241, 0.3)',
+                    }}
+                  >
+                    {children}
+                  </thead>
+                )
+              },
+              th({ children }: any) {
+                return (
+                  <th
+                    style={{
+                      padding: '8px 12px',
+                      textAlign: 'left',
+                      border: '1px solid rgba(99, 102, 241, 0.2)',
+                      color: '#e5e7eb',
+                      fontWeight: 600,
+                      fontSize: '12px',
+                    }}
+                  >
+                    {children}
+                  </th>
+                )
+              },
+              td({ children }: any) {
+                return (
+                  <td
+                    style={{
+                      padding: '8px 12px',
+                      border: '1px solid rgba(99, 102, 241, 0.2)',
+                      color: '#cbd5e1',
+                      fontSize: '12px',
+                    }}
+                  >
+                    {children}
+                  </td>
+                )
+              },
+              // 列表样式
+              ul({ children }: any) {
+                return (
+                  <ul
+                    style={{
+                      margin: '8px 0',
+                      paddingLeft: '24px',
+                      color: '#cbd5e1',
+                      lineHeight: '1.8',
+                    }}
+                  >
+                    {children}
+                  </ul>
+                )
+              },
+              ol({ children }: any) {
+                return (
+                  <ol
+                    style={{
+                      margin: '8px 0',
+                      paddingLeft: '24px',
+                      color: '#cbd5e1',
+                      lineHeight: '1.8',
+                    }}
+                  >
+                    {children}
+                  </ol>
+                )
+              },
+              li({ children }: any) {
+                return (
+                  <li
+                    style={{
+                      margin: '4px 0',
+                      color: '#cbd5e1',
+                    }}
+                  >
+                    {children}
+                  </li>
+                )
+              },
+              // 段落样式
+              p({ children }: any) {
+                return (
+                  <p
+                    style={{
+                      margin: '8px 0',
+                      color: '#e5e7eb',
+                      lineHeight: '1.7',
+                    }}
+                  >
+                    {children}
+                  </p>
+                )
+              },
+              // 标题样式
+              h1({ children }: any) {
+                return (
+                  <h1
+                    style={{
+                      fontSize: '18px',
+                      fontWeight: 700,
+                      color: '#e5e7eb',
+                      margin: '12px 0 8px 0',
+                      borderBottom: '2px solid rgba(99, 102, 241, 0.3)',
+                      paddingBottom: '6px',
+                    }}
+                  >
+                    {children}
+                  </h1>
+                )
+              },
+              h2({ children }: any) {
+                return (
+                  <h2
+                    style={{
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      color: '#e5e7eb',
+                      margin: '10px 0 6px 0',
+                      borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
+                      paddingBottom: '4px',
+                    }}
+                  >
+                    {children}
+                  </h2>
+                )
+              },
+              h3({ children }: any) {
+                return (
+                  <h3
+                    style={{
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: '#e5e7eb',
+                      margin: '8px 0 4px 0',
+                    }}
+                  >
+                    {children}
+                  </h3>
+                )
+              },
+              // 引用样式
+              blockquote({ children }: any) {
+                return (
+                  <blockquote
+                    style={{
+                      margin: '8px 0',
+                      padding: '8px 12px',
+                      borderLeft: '3px solid rgba(99, 102, 241, 0.5)',
+                      background: 'rgba(99, 102, 241, 0.1)',
+                      borderRadius: '4px',
+                      color: '#cbd5e1',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    {children}
+                  </blockquote>
+                )
+              },
+              // 链接样式
+              a({ href, children }: any) {
+                return (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: '#818cf8',
+                      textDecoration: 'underline',
+                      transition: 'color 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = '#a5b4fc'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = '#818cf8'
+                    }}
+                  >
+                    {children}
+                  </a>
+                )
+              },
+              // 强调样式
+              strong({ children }: any) {
+                return (
+                  <strong
+                    style={{
+                      color: '#fbbf24',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {children}
+                  </strong>
+                )
+              },
+              // 强调样式
+              em({ children }: any) {
+                return (
+                  <em
+                    style={{
+                      color: '#cbd5e1',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    {children}
+                  </em>
+                )
+              },
+              // 分隔线样式
+              hr() {
+                return (
+                  <hr
+                    style={{
+                      border: 'none',
+                      borderTop: '1px solid rgba(99, 102, 241, 0.3)',
+                      margin: '12px 0',
+                    }}
+                  />
+                )
+              },
+            }}
+          >
+            {messageData.content}
+          </ReactMarkdown>
           {isStreaming && (
             <span
               style={{
@@ -1703,8 +2141,8 @@ const ChatBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({
             marginTop: '8px',
             fontFamily: 'monospace',
           }}
-        >
-          FrogGPT · {message.createdAt}
+          >
+          FrogGPT · {messageData.createdAt}
         </div>
       </div>
       <style>{`

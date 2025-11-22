@@ -1,7 +1,7 @@
 """DeepSeek AI Provider实现"""
 import httpx
 import json
-from typing import List, Optional, Iterator
+from typing import List, Optional, Iterator, Dict, Any
 from loguru import logger
 
 from app.services.ai.base_provider import AIProvider, ChatMessage, ChatCompletionResponse
@@ -35,7 +35,8 @@ class DeepSeekProvider(AIProvider):
         messages: List[ChatMessage],
         model: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> ChatCompletionResponse:
         """
         调用DeepSeek API进行聊天完成
@@ -66,6 +67,12 @@ class DeepSeekProvider(AIProvider):
         if max_tokens:
             payload["max_tokens"] = max_tokens
         
+        # 添加工具定义（如果支持）
+        if tools:
+            payload["tools"] = tools
+            # 设置工具选择模式（auto：AI自动决定是否调用工具）
+            payload["tool_choice"] = "auto"
+        
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -83,15 +90,23 @@ class DeepSeekProvider(AIProvider):
                 message = choice.get("message", {})
                 usage = data.get("usage", {})
                 
+                # 检查是否有工具调用
+                tool_calls = message.get("tool_calls")
+                
+                # 如果finish_reason是tool_calls，表示AI想要调用工具
+                response_content = message.get("content", "")
+                finish_reason = choice.get("finish_reason")
+                
                 return ChatCompletionResponse(
-                    content=message.get("content", ""),
+                    content=response_content,
                     model=data.get("model", model),
                     usage={
                         "prompt_tokens": usage.get("prompt_tokens", 0),
                         "completion_tokens": usage.get("completion_tokens", 0),
                         "total_tokens": usage.get("total_tokens", 0),
                     },
-                    finish_reason=choice.get("finish_reason")
+                    finish_reason=finish_reason,
+                    tool_calls=tool_calls  # 添加工具调用信息
                 )
                 
         except httpx.HTTPStatusError as e:
@@ -123,7 +138,8 @@ class DeepSeekProvider(AIProvider):
         messages: List[ChatMessage],
         model: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> Iterator[str]:
         """
         流式调用DeepSeek API进行聊天完成

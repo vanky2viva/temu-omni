@@ -19,9 +19,38 @@ router = APIRouter(prefix="/sync", tags=["sync"])
 # Redis客户端（用于跨worker共享同步进度）
 try:
     import redis
-    _redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
-    _use_redis = True
-    logger.info("已连接到Redis，同步进度将使用Redis存储")
+    from app.core.config import settings
+    
+    # 从REDIS_URL解析连接信息，如果没有则使用默认值
+    redis_url = getattr(settings, 'REDIS_URL', 'redis://redis:6379/0')
+    if redis_url.startswith('redis://'):
+        # 解析Redis URL，支持密码：redis://:password@host:port/db
+        import urllib.parse
+        parsed = urllib.parse.urlparse(redis_url)
+        redis_password = parsed.password if parsed.password else None
+        redis_host = parsed.hostname or 'redis'
+        redis_port = parsed.port or 6379
+        redis_db = int(parsed.path.lstrip('/')) if parsed.path else 0
+        
+        _redis_client = redis.Redis(
+            host=redis_host,
+            port=redis_port,
+            db=redis_db,
+            password=redis_password,
+            decode_responses=True,
+            socket_timeout=5,  # 5秒超时，避免卡住
+            socket_connect_timeout=5
+        )
+        # 测试连接
+        _redis_client.ping()
+        _use_redis = True
+        logger.info(f"已连接到Redis ({redis_host}:{redis_port})，同步进度将使用Redis存储")
+    else:
+        # 兼容旧格式
+        _redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True, socket_timeout=5, socket_connect_timeout=5)
+        _redis_client.ping()
+        _use_redis = True
+        logger.info("已连接到Redis，同步进度将使用Redis存储")
 except Exception as e:
     logger.warning(f"Redis连接失败，将使用内存存储（多worker环境下可能导致进度丢失）: {e}")
     _sync_progress: Dict[int, Dict[str, Any]] = {}
