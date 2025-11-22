@@ -33,7 +33,6 @@ import {
   PercentageOutlined,
 } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
-import axios from 'axios'
 import { shopApi, analyticsApi } from '@/services/api'
 import dayjs from 'dayjs'
 
@@ -111,10 +110,11 @@ function SalesStatistics() {
       if (shopIds.length > 0) params.shop_ids = shopIds
       if (manager) params.manager = manager
       if (region) params.region = region
-        const response = await axios.get('/api/analytics/sku-sales-ranking', { params })
-      return response.data
+        return await analyticsApi.getSkuSalesRanking(params)
       } catch (error: any) {
         console.error('Failed to fetch SKU ranking:', error)
+        console.error('Error details:', error.response?.data || error.message)
+        // 返回空数据而不是抛出错误，避免页面崩溃
         return { ranking: [] }
       }
     },
@@ -133,10 +133,11 @@ function SalesStatistics() {
         }
       if (shopIds.length > 0) params.shop_ids = shopIds
       if (region) params.region = region
-      const response = await axios.get('/api/analytics/manager-sales', { params })
-      return response.data
+      return await analyticsApi.getManagerSales(params)
       } catch (error: any) {
         console.error('Failed to fetch manager sales:', error)
+        console.error('Error details:', error.response?.data || error.message)
+        // 返回空数据而不是抛出错误，避免页面崩溃
         return { managers: [] }
       }
     },
@@ -240,14 +241,14 @@ function SalesStatistics() {
       },
       legend: {
         data: ['总订单量', ...shopNames],
-        bottom: 10,
-        textStyle: { color: '#8b949e', fontSize: 12 },
+        bottom: 8,
+        textStyle: { color: '#8b949e', fontSize: 11 },
       },
       grid: {
         left: '3%',
         right: '4%',
-        bottom: '15%',
-        top: '10%',
+        bottom: '12%',
+        top: '8%',
         containLabel: true,
       },
       xAxis: {
@@ -314,7 +315,7 @@ function SalesStatistics() {
         title: '日期',
         dataIndex: 'date',
         key: 'date',
-        width: 70,
+        width: 65,
         fixed: 'left' as const,
         render: (date: string) => (
           <span style={{ color: '#c9d1d9', fontFamily: 'monospace', fontSize: '11px' }}>
@@ -330,7 +331,7 @@ function SalesStatistics() {
         title: shopName,
         dataIndex: shopName,
         key: shopName,
-        width: 80,
+        width: 75,
         align: 'right' as const,
         render: (value: number) => (
           <span style={{ 
@@ -349,14 +350,14 @@ function SalesStatistics() {
       title: '总计',
       dataIndex: 'total',
       key: 'total',
-      width: 70,
+      width: 65,
       fixed: 'right' as const,
       align: 'right' as const,
       render: (value: number) => (
         <span style={{ 
           color: '#00d1b2',
           fontWeight: 600,
-          fontSize: '12px',
+          fontSize: '11px',
         }}>
           {value.toLocaleString()}
         </span>
@@ -385,7 +386,11 @@ function SalesStatistics() {
       ),
     },
     {
-      title: 'SKU',
+      title: (
+        <Tooltip title="商品的SKU ID（非SKU货号）">
+          <span>SKU ID</span>
+        </Tooltip>
+      ),
       dataIndex: 'sku',
       key: 'sku',
       width: 120,
@@ -525,7 +530,7 @@ function SalesStatistics() {
       ),
     },
     {
-      title: '总销量',
+      title: '销售件数',
       dataIndex: 'total_quantity',
       key: 'total_quantity',
       width: 120,
@@ -1083,6 +1088,18 @@ function SalesStatistics() {
               size="small"
               style={{ background: 'transparent' }}
               className="compact-table"
+              components={{
+                body: {
+                  cell: (props: any) => (
+                    <td {...props} style={{ ...props.style, padding: '4px 8px' }} />
+                  ),
+                },
+                header: {
+                  cell: (props: any) => (
+                    <th {...props} style={{ ...props.style, padding: '6px 8px', fontSize: '12px' }} />
+                  ),
+                },
+              }}
             />
           </div>
         </div>
@@ -1108,7 +1125,7 @@ function SalesStatistics() {
                 店铺业绩对比
               </span>
             </header>
-            <div>
+            <div style={{ marginTop: '-8px' }}>
           <ReactECharts 
             option={chartOption} 
                 style={{ height: isMobile ? '300px' : '480px' }}

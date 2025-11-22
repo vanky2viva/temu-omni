@@ -41,29 +41,23 @@ class RealtimeCalculationService:
     def get_product_cost_at_time(
         db: Session, 
         product_id: int, 
-        order_time
+        order_time=None  # 不再使用order_time参数，统一使用当前成本
     ) -> Optional[Decimal]:
         """
-        获取订单时间有效的商品成本价
+        获取商品当前有效的成本价（不使用历史成本，统一使用当前成本）
         
         Args:
             db: 数据库会话
             product_id: 商品ID
-            order_time: 订单时间
+            order_time: 订单时间（已废弃，不再使用）
             
         Returns:
             成本价，如果未找到返回None
         """
-        # 查找订单时间有效的成本记录
+        # 查找当前有效的成本记录（effective_to为NULL的记录）
         cost_record = db.query(ProductCost).filter(
-            and_(
-                ProductCost.product_id == product_id,
-                ProductCost.effective_from <= order_time,
-                or_(
-                    ProductCost.effective_to.is_(None),
-                    ProductCost.effective_to > order_time
-                )
-            )
+            ProductCost.product_id == product_id,
+            ProductCost.effective_to.is_(None)
         ).order_by(ProductCost.effective_from.desc()).first()
         
         if cost_record:
@@ -204,27 +198,24 @@ class RealtimeCalculationService:
     def build_cost_expression(order_table, usd_rate: Decimal):
         """
         构建成本计算的SQL表达式（用于查询）
+        使用当前有效的成本价（不使用历史成本）
         
         Args:
             order_table: 订单表（Order类或别名）
-            usd_rate: USD到CNY的汇率
+            usd_rate: USD到CNY的汇率（已废弃，成本已统一为CNY）
             
         Returns:
             SQL表达式
         """
         from sqlalchemy import select
         
-        # 子查询：获取订单时间有效的成本价
+        # 子查询：获取当前有效的成本价（effective_to为NULL的记录）
         cost_price_subq = (
             select(ProductCost.cost_price)
             .where(
                 and_(
                     ProductCost.product_id == order_table.product_id,
-                    ProductCost.effective_from <= order_table.order_time,
-                    or_(
-                        ProductCost.effective_to.is_(None),
-                        ProductCost.effective_to > order_table.order_time
-                    )
+                    ProductCost.effective_to.is_(None)  # 只获取当前有效的成本
                 )
             )
             .order_by(ProductCost.effective_from.desc())
@@ -232,15 +223,11 @@ class RealtimeCalculationService:
             .scalar_subquery()
         )
         
-        # 成本 = 成本价 × 数量
+        # 成本 = 成本价 × 数量（成本已统一存储为CNY，不需要货币转换）
         cost = func.coalesce(cost_price_subq, Decimal('0')) * order_table.quantity
         
-        # 货币转换
-        return case(
-            (order_table.currency == 'USD', cost * usd_rate),
-            (order_table.currency == 'CNY', cost),
-            else_=cost * usd_rate
-        )
+        # 成本已统一存储为CNY，直接返回
+        return cost
     
     @staticmethod
     def build_profit_expression(order_table, usd_rate: Decimal):

@@ -114,6 +114,8 @@ export const statisticsApi = {
 export const analyticsApi = {
   getPaymentCollection: (params?: any) => api.get('/analytics/payment-collection', { params }),
   getSalesOverview: (params?: any) => api.get('/analytics/sales-overview', { params }),
+  getSkuSalesRanking: (params?: any) => api.get('/analytics/sku-sales-ranking', { params }),
+  getManagerSales: (params?: any) => api.get('/analytics/manager-sales', { params }),
 }
 
 // 数据导入API

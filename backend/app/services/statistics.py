@@ -110,8 +110,7 @@ class StatisticsService:
                 OrderStatus.DELIVERED
             ]))
         
-        # 只统计有有效金额的订单（total_price > 0）
-        filters.append(Order.total_price > 0)
+        # 注意：订单数统计不过滤订单金额，统计所有有效状态的订单
         
         # 执行统计查询
         # 统一统计口径：与analytics.get_sales_overview保持一致

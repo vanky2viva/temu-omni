@@ -103,34 +103,21 @@ class SyncService:
         # 获取供货价
         supply_price = product.current_price
         
-        # 获取订单时间有效的成本价
+        # 获取当前有效的成本价（不使用历史成本，统一使用当前成本）
         cost_price = None
         cost_currency = None
-        if order_time:
-            # 查询在订单时间有效的成本记录
-            # effective_from <= order_time AND (effective_to IS NULL OR effective_to > order_time)
-            cost_record = self.db.query(ProductCost).filter(
-                ProductCost.product_id == product.id,
-                ProductCost.effective_from <= order_time,
-                (ProductCost.effective_to.is_(None)) | (ProductCost.effective_to > order_time)
-            ).order_by(ProductCost.effective_from.desc()).first()
-            
-            if cost_record:
-                cost_price = cost_record.cost_price
-                cost_currency = cost_record.currency
-                logger.debug(
-                    f"找到商品 {product.sku} 在 {order_time} 的有效成本价: {cost_price} {cost_currency}"
-                )
-        else:
-            # 如果没有订单时间，获取当前有效的成本价
-            cost_record = self.db.query(ProductCost).filter(
-                ProductCost.product_id == product.id,
-                ProductCost.effective_to.is_(None)
-            ).first()
-            
-            if cost_record:
-                cost_price = cost_record.cost_price
-                cost_currency = cost_record.currency
+        # 获取当前有效的成本价（effective_to为NULL的记录）
+        cost_record = self.db.query(ProductCost).filter(
+            ProductCost.product_id == product.id,
+            ProductCost.effective_to.is_(None)
+        ).order_by(ProductCost.effective_from.desc()).first()
+        
+        if cost_record:
+            cost_price = cost_record.cost_price
+            cost_currency = cost_record.currency
+            logger.debug(
+                f"找到商品 {product.sku} 当前有效的成本价: {cost_price} {cost_currency} (所有订单使用此成本)"
+            )
         
         return {
             'product_id': product.id,
