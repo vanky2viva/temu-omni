@@ -480,6 +480,8 @@ def get_sales_overview(
     """
     获取销量统计总览
     
+    使用 UnifiedStatisticsService 确保统计口径一致
+    
     统计口径：
     - 订单数：一个不重复的父订单号记为一单（如果parent_order_sn存在，使用parent_order_sn；否则使用order_sn）
     - 销售件数：子订单内商品数量累计（quantity之和）
@@ -494,85 +496,29 @@ def get_sales_overview(
         - 按天的趋势数据
         - 按店铺分组的趋势数据
     """
-    # 解析日期字符串
-    start_dt = None
-    end_dt = None
+    from app.services.unified_statistics import UnifiedStatisticsService
     
-    if start_date:
-        try:
-            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-        except ValueError:
-            # 如果是日期格式，添加时间部分（设置为当天的开始时间）
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        # 转换为香港时区
-        if start_dt.tzinfo is None:
-            start_dt = start_dt.replace(tzinfo=HK_TIMEZONE)
-        else:
-            start_dt = start_dt.astimezone(HK_TIMEZONE)
+    # 解析日期范围（使用统一服务的方法）
+    start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
+        start_date, end_date, days
+    )
     
-    if end_date:
-        try:
-            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-        except ValueError:
-            # 如果是日期格式，添加时间部分（设置为当天的结束时间）
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-            # 设置为当天的23:59:59
-            end_dt = end_dt.replace(hour=23, minute=59, second=59)
-        # 转换为香港时区
-        if end_dt.tzinfo is None:
-            end_dt = end_dt.replace(tzinfo=HK_TIMEZONE)
-        else:
-            end_dt = end_dt.astimezone(HK_TIMEZONE)
-    
-    # 计算时间范围（香港时区）
     # 如果没有提供日期范围，不应用时间筛选（统计所有时间的订单）
     # 这样与订单列表页面的行为保持一致
-    if start_dt and end_dt:
-        # 如果提供了start_date和end_date，使用它们
-        start_date = start_dt
-        end_date = end_dt
-    else:
-        # 如果没有提供日期范围，不应用时间筛选（统计所有时间）
-        # 注意：这里不设置start_date和end_date，让build_sales_filters不应用时间筛选
-        start_date = None
-        end_date = None
+    if not start_dt or not end_dt:
+        start_dt = None
+        end_dt = None
     
-    # 构建查询条件
-    filters = build_sales_filters(
-        db, start_date, end_date, shop_ids, manager, region, sku_search
+    # 构建查询条件（使用统一服务的方法）
+    filters = UnifiedStatisticsService.build_base_filters(
+        db, start_dt, end_dt, shop_ids, manager, region, sku_search
     )
     
-    # 总销量、总订单数、GMV和利润
-    # 总销量：所有行的quantity之和（子订单内商品数量累计）
-    # 总订单数：按父订单号去重统计（一个不重复的父订单号记为一单）
-    #   如果parent_order_sn存在，使用parent_order_sn；否则使用order_sn
-    # GMV和利润：统一转换为CNY
-    from sqlalchemy import case
-    parent_order_key = case(
-        (Order.parent_order_sn.isnot(None), Order.parent_order_sn),
-        else_=Order.order_sn
-    )
+    # 计算总数统计（使用统一服务）
+    stats = UnifiedStatisticsService.calculate_order_statistics(db, filters)
     
-    usd_rate = CurrencyConverter.USD_TO_CNY_RATE
-    
-    # 使用存储的值进行统计（订单同步时已计算并存储）
-    # 先按父订单分组，计算每个父订单的GMV、成本、利润
-    parent_order_stats = db.query(
-        parent_order_key.label('parent_key'),
-        func.sum(Order.quantity).label('parent_quantity'),
-        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label('parent_gmv'),
-        func.sum(_convert_to_cny(Order.total_cost, usd_rate)).label('parent_cost'),
-        func.sum(_convert_to_cny(Order.profit, usd_rate)).label('parent_profit'),
-    ).filter(and_(*filters)).group_by(parent_order_key).subquery()
-    
-    # 然后汇总所有父订单
-    total_stats = db.query(
-        func.sum(parent_order_stats.c.parent_quantity).label("total_quantity"),
-        func.count(parent_order_stats.c.parent_key).label("total_orders"),
-        func.sum(parent_order_stats.c.parent_gmv).label("total_gmv"),
-        func.sum(parent_order_stats.c.parent_cost).label("total_cost"),
-        func.sum(parent_order_stats.c.parent_profit).label("total_profit"),
-    ).first()
+    # 获取父订单键（用于趋势统计）
+    parent_order_key = UnifiedStatisticsService.get_parent_order_key()
     
     # 按天统计趋势
     # 销量：quantity之和（子订单内商品数量累计）
@@ -627,11 +573,11 @@ def get_sales_overview(
         })
     
     # 计算实际使用的天数（用于返回）
-    if start_date and end_date:
-        actual_days = (end_date - start_date).days + 1
+    if start_dt and end_dt:
+        actual_days = (end_dt - start_dt).days + 1
         period_info = {
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
+            "start_date": start_dt.isoformat(),
+            "end_date": end_dt.isoformat(),
             "days": actual_days
         }
     else:
@@ -643,11 +589,11 @@ def get_sales_overview(
         }
     
     return {
-        "total_quantity": int(total_stats.total_quantity or 0),
-        "total_orders": int(total_stats.total_orders or 0),  # 按父订单号去重，只统计有效订单
-        "total_gmv": float(total_stats.total_gmv or 0),  # GMV（收入），统一转换为CNY
-        "total_cost": float(total_stats.total_cost or 0),  # 总成本，统一转换为CNY
-        "total_profit": float(total_stats.total_profit or 0),  # 利润，统一转换为CNY
+        "total_quantity": stats['total_quantity'],
+        "total_orders": stats['order_count'],  # 按父订单号去重，只统计有效订单
+        "total_gmv": round(stats['total_gmv'], 2),  # GMV（收入），统一为CNY
+        "total_cost": round(stats['total_cost'], 2),  # 总成本，统一为CNY
+        "total_profit": round(stats['total_profit'], 2),  # 利润，统一为CNY
         "daily_trends": daily_data,
         "shop_trends": shop_daily_data,
         "period": period_info
@@ -670,121 +616,53 @@ def get_sku_sales_ranking(
     """
     获取SKU销量排行
     
-    注意：这里的SKU是指商品的SKU ID（Order.product_sku），而非SKU货号
-    通过 product_sku 关联订单和商品表
+    使用 UnifiedStatisticsService 确保统计口径一致
+    
+    注意：这里的SKU是指商品的SKU ID（Product.product_id），而非SKU货号
     """
-    # 解析日期字符串（与sales-overview保持一致）
-    start_dt = None
-    end_dt = None
+    from app.services.unified_statistics import UnifiedStatisticsService
     
-    if start_date:
-        try:
-            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-        except ValueError:
-            # 如果是日期格式，添加时间部分（设置为当天的开始时间）
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        # 转换为香港时区
-        if start_dt.tzinfo is None:
-            start_dt = start_dt.replace(tzinfo=HK_TIMEZONE)
-        else:
-            start_dt = start_dt.astimezone(HK_TIMEZONE)
-    
-    if end_date:
-        try:
-            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-        except ValueError:
-            # 如果是日期格式，添加时间部分（设置为当天的结束时间）
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-            # 设置为当天的23:59:59
-            end_dt = end_dt.replace(hour=23, minute=59, second=59)
-        # 转换为香港时区
-        if end_dt.tzinfo is None:
-            end_dt = end_dt.replace(tzinfo=HK_TIMEZONE)
-        else:
-            end_dt = end_dt.astimezone(HK_TIMEZONE)
-    
-    # 计算时间范围（香港时区）
-    if start_dt and end_dt:
-        # 如果提供了start_date和end_date，使用它们
-        start_date = start_dt
-        end_date = end_dt
-    else:
-        # 否则使用days参数
-        end_date = get_hk_now()
-        days = days or 30
-        start_date = end_date - timedelta(days=days)
-    
-    # 构建查询条件
-    filters = build_sales_filters(
-        db, start_date, end_date, shop_ids, manager, region, sku_search
+    # 解析日期范围（使用统一服务的方法）
+    start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
+        start_date, end_date, days
     )
     
-    # SKU销量统计逻辑：
-    # 1. 直接从订单表按product_sku分组统计（避免关联商品表导致重复计算）
-    # 2. 然后关联商品表获取商品信息（商品名称、负责人），使用DISTINCT避免重复计算
-    # SKU销量 = quantity之和
+    # 如果没有提供日期范围，使用默认30天
+    if not start_dt or not end_dt:
+        end_dt = get_hk_now()
+        start_dt = end_dt - timedelta(days=days or 30)
     
-    # 先统计有product_sku的订单，关联Product表获取SKU ID（Product.product_id）而不是SKU货号（Order.product_sku）
-    # 注意：Product.product_id 是 SKU ID，Product.sku / Order.product_sku 是 SKU 货号
-    # 统一转换为CNY
-    usd_rate = CurrencyConverter.USD_TO_CNY_RATE
+    # 构建查询条件（使用统一服务的方法）
+    filters = UnifiedStatisticsService.build_base_filters(
+        db, start_dt, end_dt, shop_ids, manager, region, sku_search
+    )
     
-    # 按Product.product_id（SKU ID）分组统计，而不是Order.product_sku（SKU货号）
-    # 通过product_id关联Product表，获取真正的SKU ID（Product.product_id）
-    results = db.query(
-        # 使用Product.product_id作为SKU ID（这是真正的SKU ID），如果Product表没有关联则使用Order.product_sku作为后备
-        func.coalesce(Product.product_id, Order.product_sku).label("sku_id"),
-        # 使用Product.product_name作为商品名称，如果没有则使用Order.product_name
-        func.max(func.coalesce(Product.product_name, Order.product_name)).label("product_name"),
-        # 使用Product.manager作为负责人
-        func.max(Product.manager).label("manager"),
-        # 统计销量、订单数、GMV、利润
-        func.sum(Order.quantity).label("total_quantity"),
-        func.count(func.distinct(Order.order_sn)).label("order_count"),
-        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("total_gmv"),
-        func.sum(_convert_to_cny(Order.profit, usd_rate)).label("total_profit"),
-    ).outerjoin(
-        Product, Order.product_id == Product.id
-    ).filter(
-        and_(*filters),
-        # 确保有SKU ID或SKU货号
-        or_(
-            Product.product_id.isnot(None),
-            Order.product_sku.isnot(None)
-        ),
-        or_(
-            Product.product_id != '',
-            Order.product_sku != ''
-        )
-    ).group_by(
-        func.coalesce(Product.product_id, Order.product_sku)
-    ).order_by(
-        func.sum(Order.quantity).desc()
-    ).limit(limit).all()
+    # 获取SKU统计（使用统一服务）
+    sku_stats = UnifiedStatisticsService.get_sku_statistics(db, filters, limit)
     
-    # 格式化结果
+    # 格式化结果（添加排名）
     ranking = []
-    for idx, row in enumerate(results, 1):
+    for idx, sku_stat in enumerate(sku_stats, 1):
         ranking.append({
             "rank": idx,
-            "sku": str(row.sku_id) if row.sku_id else '-',  # 使用SKU ID（Product.product_id），而不是SKU货号
-            "product_name": row.product_name or '-',
-            "manager": row.manager or '-',
+            "sku": sku_stat['sku'],
+            "product_name": sku_stat['product_name'],
+            "manager": sku_stat['manager'],
             "spu_id": None,  # 等数据库迁移后再启用
-            "quantity": int(row.total_quantity or 0),
-            "orders": int(row.order_count or 0),
-            "gmv": float(row.total_gmv or 0),
-            "profit": float(row.total_profit or 0),
+            "quantity": sku_stat['total_quantity'],
+            "orders": sku_stat['order_count'],
+            "gmv": round(sku_stat['total_gmv'], 2),
+            "profit": round(sku_stat['total_profit'], 2),
         })
     
     # 计算实际使用的天数（用于返回）
-    actual_days = (end_date - start_date).days + 1
+    actual_days = (end_dt - start_dt).days + 1
     
     return {
         "ranking": ranking,
         "period": {
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
+            "start_date": start_dt.isoformat(),
+            "end_date": end_dt.isoformat(),
             "days": actual_days
         }
     }
@@ -908,100 +786,38 @@ def get_manager_sales(
     - 利润
     - 按天的趋势数据
     """
-    # 解析日期字符串（与sales-overview保持一致）
-    start_dt = None
-    end_dt = None
+    from app.services.unified_statistics import UnifiedStatisticsService
     
-    if start_date:
-        try:
-            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-        except ValueError:
-            # 如果是日期格式，添加时间部分（设置为当天的开始时间）
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        # 转换为香港时区
-        if start_dt.tzinfo is None:
-            start_dt = start_dt.replace(tzinfo=HK_TIMEZONE)
-        else:
-            start_dt = start_dt.astimezone(HK_TIMEZONE)
+    # 解析日期范围（使用统一服务的方法）
+    start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
+        start_date, end_date, days
+    )
     
-    if end_date:
-        try:
-            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-        except ValueError:
-            # 如果是日期格式，添加时间部分（设置为当天的结束时间）
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-            # 设置为当天的23:59:59
-            end_dt = end_dt.replace(hour=23, minute=59, second=59)
-        # 转换为香港时区
-        if end_dt.tzinfo is None:
-            end_dt = end_dt.replace(tzinfo=HK_TIMEZONE)
-        else:
-            end_dt = end_dt.astimezone(HK_TIMEZONE)
+    # 如果没有提供日期范围，使用默认30天
+    if not start_dt or not end_dt:
+        end_dt = get_hk_now()
+        start_dt = end_dt - timedelta(days=days or 30)
     
-    # 计算时间范围（香港时区）
-    if start_dt and end_dt:
-        # 如果提供了start_date和end_date，使用它们
-        start_date = start_dt
-        end_date = end_dt
-    else:
-        # 否则使用days参数
-        end_date = get_hk_now()
-        days = days or 30
-        start_date = end_date - timedelta(days=days)
+    from app.services.unified_statistics import UnifiedStatisticsService
     
-    # 构建基础查询条件（不含负责人筛选）
-    # 状态过滤：排除处理中（PAID）和已取消（CANCELLED）的订单
-    base_filters = build_sales_filters(
+    # 构建基础查询条件（不含负责人筛选，使用统一服务的方法）
+    base_filters = UnifiedStatisticsService.build_base_filters(
         db, start_date, end_date, shop_ids, None, region, None
     )
     
-    # 负责人销量统计逻辑：
-    # 通过product_id关联Product表获取负责人（更准确，所有订单都有product_id）
-    # 价格已统一存储为CNY，直接使用存储的值
-    # 订单数：按父订单去重统计（如果parent_order_sn存在，使用parent_order_sn；否则使用order_sn）
-    # 销售件数：订单包含的件数总计（quantity之和）
+    # 获取负责人统计（使用统一服务）
+    # 注意：统一服务会自动过滤掉没有负责人的订单
+    manager_stats = UnifiedStatisticsService.get_manager_statistics(db, base_filters)
     
-    # 定义父订单键（与statistics保持一致）
-    parent_order_key = case(
-        (Order.parent_order_sn.isnot(None), Order.parent_order_sn),
-        else_=Order.order_sn
-    )
-    
-    # 构建查询（直接通过product_id关联Product表）
-    query = db.query(
-        Product.manager.label("manager"),
-        func.sum(Order.quantity).label("total_quantity"),  # 销售件数：quantity之和
-        func.count(func.distinct(parent_order_key)).label("order_count"),  # 订单数：按父订单去重
-        func.sum(Order.total_price).label("total_gmv"),  # GMV（已统一为CNY）
-        func.sum(Order.profit).label("total_profit"),  # 利润（已统一为CNY）
-    ).join(
-        Product, Order.product_id == Product.id
-    ).filter(
-        and_(*base_filters),
-        Product.manager.isnot(None),
-        Product.manager != ''
-    )
-    
-    # 如果指定了负责人，添加筛选
+    # 如果指定了负责人，只返回该负责人的数据
     if manager:
-        query = query.filter(Product.manager == manager)
+        manager_stats = [m for m in manager_stats if m['manager'] == manager]
     
-    # 按负责人分组统计
-    results = query.group_by(
-        Product.manager
-    ).order_by(
-        func.sum(Order.quantity).desc()
-    ).all()
+    # 获取父订单键（用于日趋势统计）
+    parent_order_key = UnifiedStatisticsService.get_parent_order_key()
     
     # 按天统计趋势（每个负责人每日的订单量曲线）
-    # 通过product_id关联Product表，按父订单统计订单数
     daily_trends_data = {}
-    
-    # 定义父订单键（与主查询保持一致）
-    parent_order_key = case(
-        (Order.parent_order_sn.isnot(None), Order.parent_order_sn),
-        else_=Order.order_sn
-    )
     
     if manager:
         # 如果指定了负责人，只统计该负责人的日趋势
@@ -1032,7 +848,7 @@ def get_manager_sales(
         }
     else:
         # 如果没指定负责人，统计所有负责人的日趋势（每日订单数）
-        all_managers = [r.manager for r in results]
+        all_managers = [m['manager'] for m in manager_stats]
         for mgr in all_managers:
             daily_trends = db.query(
                 func.date(Order.order_time).label("date"),
@@ -1058,16 +874,16 @@ def get_manager_sales(
                 for trend in daily_trends
             ]
     
-    # 格式化结果
+    # 格式化结果（添加日趋势）
     manager_data = []
-    for row in results:
+    for stat in manager_stats:
         manager_data.append({
-            "manager": row.manager,
-            "total_quantity": int(row.total_quantity or 0),  # 销售件数
-            "order_count": int(row.order_count or 0),  # 订单数（按父订单去重）
-            "total_gmv": float(row.total_gmv or 0),  # GMV
-            "total_profit": float(row.total_profit or 0),  # 利润
-            "daily_trends": daily_trends_data.get(row.manager, [])
+            "manager": stat['manager'],
+            "total_quantity": stat['total_quantity'],  # 销售件数
+            "order_count": stat['order_count'],  # 订单数（按父订单去重）
+            "total_gmv": round(stat['total_gmv'], 2),  # GMV
+            "total_profit": round(stat['total_profit'], 2),  # 利润
+            "daily_trends": daily_trends_data.get(stat['manager'], [])
         })
     
     # 计算实际使用的天数（用于返回）
@@ -1251,5 +1067,88 @@ def get_payment_collection(
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "days": days
+        }
+    }
+
+
+@router.get("/delay-rate")
+def get_delay_rate(
+    start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
+    days: Optional[int] = Query(None, description="统计天数（如果未提供start_date和end_date则使用此参数，默认7天）"),
+    shop_ids: Optional[List[int]] = Query(None, description="店铺ID列表"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取延迟率统计数据
+    
+    延迟率 = 发货时间超过预期最晚发货时间的订单数 / 总订单数
+    
+    Args:
+        start_date: 开始日期
+        end_date: 结束日期
+        days: 统计天数（默认7天）
+        shop_ids: 店铺ID列表
+        
+    Returns:
+        延迟率数据
+    """
+    from app.services.unified_statistics import UnifiedStatisticsService
+    
+    # 解析日期范围（使用统一服务的方法）
+    start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
+        start_date, end_date, days
+    )
+    
+    # 如果没有提供日期范围，使用默认7天
+    if not start_dt or not end_dt:
+        end_dt = get_hk_now()
+        start_dt = end_dt - timedelta(days=days or 7)
+    
+    # 构建基础过滤条件（使用统一服务的方法）
+    base_filters = UnifiedStatisticsService.build_base_filters(
+        db, start_dt, end_dt, shop_ids, None, None, None
+    )
+    
+    # 获取父订单键（用于去重统计）
+    parent_order_key = UnifiedStatisticsService.get_parent_order_key()
+    
+    # 统计总订单数（按父订单去重，只统计已发货或已送达且有发货时间的订单）
+    total_orders_query = db.query(
+        func.count(func.distinct(parent_order_key)).label("total_orders")
+    ).filter(
+        and_(*base_filters),
+        Order.shipping_time.isnot(None),  # 必须有发货时间
+        Order.expect_ship_latest_time.isnot(None)  # 必须有预期最晚发货时间
+    )
+    
+    total_orders_result = total_orders_query.first()
+    total_orders = int(total_orders_result.total_orders or 0) if total_orders_result else 0
+    
+    # 统计延迟订单数（发货时间 > 预期最晚发货时间）
+    delayed_orders_query = db.query(
+        func.count(func.distinct(parent_order_key)).label("delayed_orders")
+    ).filter(
+        and_(*base_filters),
+        Order.shipping_time.isnot(None),
+        Order.expect_ship_latest_time.isnot(None),
+        Order.shipping_time > Order.expect_ship_latest_time  # 发货时间超过预期最晚发货时间
+    )
+    
+    delayed_orders_result = delayed_orders_query.first()
+    delayed_orders = int(delayed_orders_result.delayed_orders or 0) if delayed_orders_result else 0
+    
+    # 计算延迟率
+    delay_rate = (delayed_orders / total_orders) if total_orders > 0 else 0.0
+    
+    return {
+        "delay_rate": round(delay_rate, 4),  # 返回0-1之间的小数
+        "delayed_orders": delayed_orders,
+        "total_orders": total_orders,
+        "period": {
+            "start_date": start_dt.isoformat(),
+            "end_date": end_dt.isoformat(),
+            "days": (end_dt - start_dt).days + 1
         }
     }

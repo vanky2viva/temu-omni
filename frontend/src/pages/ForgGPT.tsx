@@ -31,7 +31,7 @@ import rehypeRaw from 'rehype-raw'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReactECharts from 'echarts-for-react'
-import { forggptApi, shopApi, statisticsApi, aiConfigApi } from '@/services/api'
+import { forggptApi, shopApi, statisticsApi, aiConfigApi, orderApi } from '@/services/api'
 import dayjs from 'dayjs'
 
 // 生成唯一ID的辅助函数
@@ -96,16 +96,82 @@ export default function ForgGPT() {
     queryFn: shopApi.getShops,
   })
 
-  // 获取最近7天统计数据
+  // 获取最近7天汇总统计数据
   const { data: stats7d } = useQuery({
     queryKey: ['forggpt_stats_7d', selectedShopId],
-    queryFn: () =>
-      statisticsApi.getDaily({
+    queryFn: async () => {
+      const endDate = dayjs().format('YYYY-MM-DD')
+      const startDate = dayjs().subtract(6, 'day').format('YYYY-MM-DD')
+      return await statisticsApi.getOverview({
         shop_ids: selectedShopId ? [selectedShopId] : undefined,
-        days: 7,
-      }),
+        start_date: startDate,
+        end_date: endDate,
+      })
+    },
     staleTime: 5 * 60 * 1000,
   })
+
+  // 获取最近30天（月）GMV汇总统计数据
+  const { data: stats30d } = useQuery({
+    queryKey: ['forggpt_stats_30d', selectedShopId],
+    queryFn: async () => {
+      const endDate = dayjs().format('YYYY-MM-DD')
+      const startDate = dayjs().subtract(29, 'day').format('YYYY-MM-DD')
+      return await statisticsApi.getOverview({
+        shop_ids: selectedShopId ? [selectedShopId] : undefined,
+        start_date: startDate,
+        end_date: endDate,
+      })
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // 获取延迟率统计数据 - 使用订单列表页面的数据源
+  // 注意：延迟率应该统计所有订单（不限制日期范围），这样才能反映真实的延迟率
+  // 与订单列表页面保持一致：如果有日期范围就传，没有就不传（统计所有时间）
+  const { data: delayStats7d, isLoading: isLoadingDelayStats, error: delayStatsError } = useQuery({
+    queryKey: ['forggpt_delay_stats', selectedShopId],
+    queryFn: async () => {
+      try {
+        const params: any = {}
+        // 使用 shop_id 而不是 shop_ids（与订单列表页面保持一致）
+        if (selectedShopId) {
+          params.shop_id = selectedShopId
+        }
+        // 不传日期范围，统计所有时间的延迟率（与订单列表页面默认行为一致）
+        // 这样可以看到真实的延迟率，而不是只统计最近7天（可能都是待发货状态）
+        
+        console.log('FrogGPT 请求延迟率参数:', params) // 调试日志
+        const response = await orderApi.getStatusStatistics(params)
+        console.log('FrogGPT 延迟率数据响应:', response) // 调试日志
+        console.log('FrogGPT 延迟率值:', response?.delay_rate) // 调试日志
+        // API拦截器已经返回 response.data，所以这里直接使用
+        return response
+      } catch (error) {
+        console.error('获取延迟率失败:', error)
+        console.error('错误详情:', (error as any)?.response?.data) // 调试日志
+        // 不要返回默认值，让错误传播，这样我们可以看到真正的错误
+        throw error
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 1, // 只重试1次
+  })
+  
+  // 调试：输出延迟率数据
+  useEffect(() => {
+    if (delayStats7d) {
+      console.log('FrogGPT 延迟率数据已加载:', delayStats7d)
+      console.log('FrogGPT delay_rate 值:', delayStats7d?.delay_rate)
+      console.log('FrogGPT delay_rate 类型:', typeof delayStats7d?.delay_rate)
+    }
+    if (delayStatsError) {
+      console.error('FrogGPT 延迟率数据错误:', delayStatsError)
+    }
+    if (isLoadingDelayStats) {
+      console.log('FrogGPT 延迟率数据加载中...')
+    }
+  }, [delayStats7d, delayStatsError, isLoadingDelayStats])
 
   // 获取AI配置
   const { data: aiConfigData, refetch: refetchAiConfig } = useQuery({
@@ -603,13 +669,22 @@ export default function ForgGPT() {
     }
   }
 
-  // 统计数据
-  const totalGmv7d = stats7d?.data?.total_gmv || 0
-  const totalOrders7d = stats7d?.data?.total_orders || 0
-  const totalProfit7d = stats7d?.data?.total_profit || 0
-  const totalCost7d = stats7d?.data?.total_cost || 0
-  const avgOrderValue7d = stats7d?.data?.avg_order_value || 0
-  const refundRate7d = stats7d?.data?.refund_rate || 0
+  // 统计数据（从汇总统计中获取）
+  // 注意：API 直接返回统计对象，不需要 .data
+  const totalGmv7d = stats7d?.total_gmv || 0
+  const totalOrders7d = stats7d?.total_orders || 0
+  const totalProfit7d = stats7d?.total_profit || 0
+  const totalGmv30d = stats30d?.total_gmv || 0  // 月GMV（最近30天）
+  const avgOrderValue7d = stats7d?.avg_order_value || (totalOrders7d > 0 ? (totalGmv7d / totalOrders7d) : 0)
+  const totalCost7d = stats7d?.total_cost || 0
+  // 延迟率：订单列表API返回的是百分比（例如 5.43 表示 5.43%）
+  // 订单列表页面直接使用 delay_rate 作为百分比显示
+  // 注意：确保数据已加载且有效
+  const delayRate7d = isLoadingDelayStats 
+    ? 0 
+    : (delayStats7d?.delay_rate !== undefined && delayStats7d?.delay_rate !== null)
+      ? Number(delayStats7d.delay_rate)
+      : 0  // 延迟率百分比（例如 5.43 表示 5.43%）
 
   const formatCurrency = (value: number) => {
     if (value >= 10000) {
@@ -743,7 +818,14 @@ export default function ForgGPT() {
             onChange={(value) => setSelectedShopId(value || null)}
             placeholder="所有店铺"
             style={{ width: 100 }}
-            dropdownStyle={{ background: '#0f172a', border: '1px solid rgba(99, 102, 241, 0.3)' }}
+            styles={{
+              popup: {
+                root: {
+                  background: '#0f172a',
+                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                },
+              },
+            }}
             allowClear
             size="small"
           >
@@ -868,9 +950,11 @@ export default function ForgGPT() {
               borderRadius: '8px',
               boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
             }}
-            overlayInnerStyle={{
-              background: 'rgba(15, 23, 42, 0.95)',
-              padding: '16px',
+            styles={{
+              body: {
+                background: 'rgba(15, 23, 42, 0.95)',
+                padding: '16px',
+              },
             }}
           >
             <Button
@@ -945,13 +1029,17 @@ export default function ForgGPT() {
               <MetricBlock label="7天利润" value={formatCurrency(totalProfit7d)} hint={`${profitMargin}%`} />
             </Col>
             <Col span={8}>
-              <MetricBlock label="7天成本" value={formatCurrency(totalCost7d)} />
+              <MetricBlock label="月GMV" value={formatCurrency(totalGmv30d)} />
             </Col>
             <Col span={8}>
               <MetricBlock label="客单价" value={formatCurrency(avgOrderValue7d)} />
             </Col>
             <Col span={8}>
-              <MetricBlock label="退款率" value={`${(refundRate7d * 100).toFixed(1)}%`} hint="健康" />
+              <MetricBlock 
+                label="延迟率" 
+                value={`${delayRate7d.toFixed(2)}%`} 
+                hint={delayRate7d <= 5 ? "健康" : delayRate7d <= 10 ? "注意" : "异常"} 
+              />
             </Col>
           </Row>
         </div>

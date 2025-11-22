@@ -116,6 +116,7 @@ export const analyticsApi = {
   getSalesOverview: (params?: any) => api.get('/analytics/sales-overview', { params }),
   getSkuSalesRanking: (params?: any) => api.get('/analytics/sku-sales-ranking', { params }),
   getManagerSales: (params?: any) => api.get('/analytics/manager-sales', { params }),
+  getDelayRate: (params?: any) => api.get('/analytics/delay-rate', { params }),
 }
 
 // 数据导入API

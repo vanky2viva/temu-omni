@@ -377,14 +377,14 @@ def get_order_status_statistics(
     delivered = delivered_result.count or 0
     
     # 计算延误订单数（按父订单号去重）
-    # 延误判断逻辑：
-    # 1. 优先从raw_data中获取latestDeliveryTime（最晚送达时间）
+    # 延误判断逻辑：根据订单的送达日期与要求最晚送达日期对比，晚于该日期的订单为延迟
+    # 1. 优先从raw_data中获取latestDeliveryTime（要求最晚送达时间）
     # 2. 如果没有latestDeliveryTime，使用expect_ship_latest_time+14天作为估算
-    # 3. 如果订单状态是DELIVERED，检查delivery_time是否超过latestDeliveryTime
-    # 4. 如果订单状态不是DELIVERED，检查当前时间是否超过latestDeliveryTime
+    # 3. 只统计已送达的订单（有delivery_time的订单）
+    # 4. 对比送达日期（delivery_time）与要求最晚送达日期（latestDeliveryTime）
+    # 5. 如果delivery_time > latestDeliveryTime，则为延迟订单
     import json
     
-    now = datetime.utcnow()
     delayed_parent_orders = set()  # 使用set来去重父订单号
     
     # 获取所有订单记录用于延误判断
@@ -392,10 +392,13 @@ def get_order_status_statistics(
     orders = query.all()
     
     for order in orders:
-        is_delayed = False
+        # 只统计已送达的订单（必须有送达时间）
+        if order.status != OrderStatus.DELIVERED or not order.delivery_time:
+            continue
+        
         latest_delivery_time = None
         
-        # 尝试从raw_data中获取latestDeliveryTime
+        # 尝试从raw_data中获取latestDeliveryTime（要求最晚送达时间）
         if order.raw_data:
             try:
                 raw_data_json = json.loads(order.raw_data)
@@ -406,13 +409,19 @@ def get_order_status_statistics(
                     if parent_order:
                         latest_delivery_time_ts = parent_order.get('latestDeliveryTime')
                         if latest_delivery_time_ts:
-                            # 转换为datetime（假设是Unix时间戳）
+                            # 转换为datetime（假设是Unix时间戳，单位可能是秒或毫秒）
                             if isinstance(latest_delivery_time_ts, (int, float)):
+                                # 如果是很大的数字（>10位数），可能是毫秒，需要除以1000
+                                if latest_delivery_time_ts > 1e10:
+                                    latest_delivery_time_ts = latest_delivery_time_ts / 1000
                                 latest_delivery_time = datetime.utcfromtimestamp(latest_delivery_time_ts)
                             elif isinstance(latest_delivery_time_ts, str):
                                 # 尝试解析为时间戳
                                 try:
-                                    latest_delivery_time = datetime.utcfromtimestamp(float(latest_delivery_time_ts))
+                                    ts_value = float(latest_delivery_time_ts)
+                                    if ts_value > 1e10:
+                                        ts_value = ts_value / 1000
+                                    latest_delivery_time = datetime.utcfromtimestamp(ts_value)
                                 except:
                                     pass
                     # 也可能直接在顶层
@@ -420,10 +429,15 @@ def get_order_status_statistics(
                         latest_delivery_time_ts = raw_data_json.get('latestDeliveryTime')
                         if latest_delivery_time_ts:
                             if isinstance(latest_delivery_time_ts, (int, float)):
+                                if latest_delivery_time_ts > 1e10:
+                                    latest_delivery_time_ts = latest_delivery_time_ts / 1000
                                 latest_delivery_time = datetime.utcfromtimestamp(latest_delivery_time_ts)
                             elif isinstance(latest_delivery_time_ts, str):
                                 try:
-                                    latest_delivery_time = datetime.utcfromtimestamp(float(latest_delivery_time_ts))
+                                    ts_value = float(latest_delivery_time_ts)
+                                    if ts_value > 1e10:
+                                        ts_value = ts_value / 1000
+                                    latest_delivery_time = datetime.utcfromtimestamp(ts_value)
                                 except:
                                     pass
             except (json.JSONDecodeError, ValueError, TypeError):
@@ -437,24 +451,20 @@ def get_order_status_statistics(
                 # 如果没有expect_ship_latest_time，使用order_time+21天作为估算
                 latest_delivery_time = order.order_time + timedelta(days=21)
         
-        # 判断是否延误
-        if order.status == OrderStatus.DELIVERED:
-            # 已送达：检查送达时间是否超过最晚送达时间
-            if order.delivery_time and order.delivery_time > latest_delivery_time:
-                is_delayed = True
-        else:
-            # 未送达：检查当前时间是否已超过最晚送达时间
-            if now > latest_delivery_time:
-                is_delayed = True
-        
-        if is_delayed:
-            # 使用父订单号作为key（如果存在），否则使用订单号
-            parent_order_key_value = order.parent_order_sn if order.parent_order_sn else order.order_sn
-            delayed_parent_orders.add(parent_order_key_value)
+        # 判断是否延误：对比送达日期与要求最晚送达日期
+        # 如果送达时间晚于要求最晚送达时间，则为延迟订单
+        if order.delivery_time and latest_delivery_time:
+            if order.delivery_time > latest_delivery_time:
+                # 使用父订单号作为key（如果存在），否则使用订单号
+                parent_order_key_value = order.parent_order_sn if order.parent_order_sn else order.order_sn
+                delayed_parent_orders.add(parent_order_key_value)
     
     delayed_orders = len(delayed_parent_orders)
     
-    # 计算延误率
+    # 计算延误率：延迟订单数 / 总订单数 * 100
+    # 延误判断逻辑：根据订单的送达日期与要求最晚送达日期对比，晚于该日期的订单为延迟
+    # 注意：只有已送达的订单才能判断是否延迟（因为有送达日期），但延迟率的分母是总订单数
+    # 这样延迟率反映的是整体订单中延迟订单的比例
     delay_rate = (delayed_orders / total_orders * 100) if total_orders > 0 else 0.0
     
     # 计算7日趋势数据（按订单号去重统计）

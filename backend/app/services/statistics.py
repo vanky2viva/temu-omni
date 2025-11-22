@@ -12,6 +12,7 @@ from app.models.order import Order, OrderStatus
 from app.models.shop import Shop
 from app.utils.currency import CurrencyConverter
 from app.core.redis_client import RedisClient
+from sqlalchemy import and_
 
 
 class StatisticsService:
@@ -76,17 +77,23 @@ class StatisticsService:
         """
         获取订单统计数据
         
+        使用 UnifiedStatisticsService 确保统计口径一致
+        
         Args:
             db: 数据库会话
             shop_ids: 店铺ID列表，None表示所有店铺
             start_date: 开始日期
             end_date: 结束日期
-            status: 订单状态筛选
+            status: 订单状态筛选（如果指定，会覆盖默认的有效状态过滤）
             
         Returns:
             统计数据字典
         """
+        from app.services.unified_statistics import UnifiedStatisticsService
+        
         # 构建查询条件
+        # 如果没有指定status，使用统一的过滤规则（PROCESSING, SHIPPED, DELIVERED）
+        # 如果指定了status，使用指定的status（但需要确保它符合有效状态）
         filters = []
         
         if shop_ids:
@@ -98,63 +105,36 @@ class StatisticsService:
         if end_date:
             filters.append(Order.order_time <= end_date)
         
+        # 订单状态筛选
         if status:
+            # 如果指定了状态，使用指定的状态
             filters.append(Order.status == status)
+        else:
+            # 如果没有指定状态，使用统一的有效订单状态过滤
+            filters.append(Order.status.in_(UnifiedStatisticsService.get_valid_order_statuses()))
         
-        # 订单状态筛选：只统计有效订单（与analytics保持一致）
-        # 只统计：PROCESSING（待发货）、SHIPPED（已发货）、DELIVERED（已签收）
-        if not status:  # 如果没有指定状态筛选，只统计有效订单
-            filters.append(Order.status.in_([
-                OrderStatus.PROCESSING,
-                OrderStatus.SHIPPED,
-                OrderStatus.DELIVERED
-            ]))
+        # 计算统计数据（使用统一服务）
+        stats = UnifiedStatisticsService.calculate_order_statistics(db, filters)
         
-        # 注意：订单数统计不过滤订单金额，统计所有有效状态的订单
-        
-        # 执行统计查询
-        # 统一统计口径：与analytics.get_sales_overview保持一致
-        # - 订单数：按父订单号去重统计（如果parent_order_sn存在，使用parent_order_sn；否则使用order_sn）
-        # - GMV、成本、利润：按父订单聚合后统计（先按父订单分组求和，再汇总）
-        # 注意：订单表中的价格字段已统一存储为CNY，不需要再进行货币转换
-        
-        # 定义父订单键（与analytics保持一致）
-        parent_order_key = case(
-            (Order.parent_order_sn.isnot(None), Order.parent_order_sn),
-            else_=Order.order_sn
-        )
-        
-        # 先按父订单分组，计算每个父订单的GMV、成本、利润（直接使用存储的CNY值）
+        # 计算平均订单价值和利润率（需要额外的查询）
+        parent_order_key = UnifiedStatisticsService.get_parent_order_key()
         parent_order_stats = db.query(
             parent_order_key.label('parent_key'),
-            func.sum(Order.total_price).label('parent_gmv'),  # 已经是CNY
-            func.sum(Order.total_cost).label('parent_cost'),  # 已经是CNY
-            func.sum(Order.profit).label('parent_profit'),  # 已经是CNY
+            func.sum(Order.total_price).label('parent_gmv'),
         ).filter(and_(*filters)).group_by(parent_order_key).subquery()
         
-        # 然后汇总所有父订单的统计数据
-        result = db.query(
-            func.count(parent_order_stats.c.parent_key).label("total_orders"),  # 按父订单号去重统计订单数
-            func.sum(parent_order_stats.c.parent_gmv).label("total_gmv"),
-            func.sum(parent_order_stats.c.parent_cost).label("total_cost"),
-            func.sum(parent_order_stats.c.parent_profit).label("total_profit"),
+        avg_result = db.query(
             func.avg(parent_order_stats.c.parent_gmv).label("avg_order_value"),
         ).first()
         
-        total_orders = result.total_orders or 0
-        total_gmv = float(result.total_gmv or 0)
-        total_cost = float(result.total_cost or 0)
-        total_profit = float(result.total_profit or 0)
-        avg_order_value = float(result.avg_order_value or 0)
-        
-        # 计算利润率
-        profit_margin = (total_profit / total_gmv * 100) if total_gmv > 0 else 0
+        avg_order_value = float(avg_result.avg_order_value or 0) if avg_result else 0.0
+        profit_margin = (stats['total_profit'] / stats['total_gmv'] * 100) if stats['total_gmv'] > 0 else 0
         
         return {
-            "total_orders": total_orders,
-            "total_gmv": round(total_gmv, 2),
-            "total_cost": round(total_cost, 2),
-            "total_profit": round(total_profit, 2),
+            "total_orders": stats['order_count'],
+            "total_gmv": round(stats['total_gmv'], 2),
+            "total_cost": round(stats['total_cost'], 2),
+            "total_profit": round(stats['total_profit'], 2),
             "avg_order_value": round(avg_order_value, 2),
             "profit_margin": round(profit_margin, 2),
         }
