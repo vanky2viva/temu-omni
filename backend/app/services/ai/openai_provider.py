@@ -27,6 +27,22 @@ class OpenAIProvider(AIProvider):
         """
         self.api_key = api_key or ''
         self.base_url = base_url or 'https://api.openai.com/v1'
+        
+        # 验证并修正模型名称
+        valid_models = self.get_available_models()
+        if default_model and default_model not in valid_models:
+            # 尝试修正常见的模型名称错误
+            model_lower = default_model.lower().strip()
+            if 'gpt-5' in model_lower or 'gpt5' in model_lower:
+                logger.warning(f"检测到无效的模型名称 '{default_model}'，自动修正为 'gpt-4o'")
+                default_model = 'gpt-4o'
+            elif 'mini' in model_lower and 'gpt-4o' not in model_lower:
+                logger.warning(f"检测到无效的模型名称 '{default_model}'，自动修正为 'gpt-4o-mini'")
+                default_model = 'gpt-4o-mini'
+            else:
+                logger.warning(f"模型名称 '{default_model}' 不在有效列表中，使用默认模型 'gpt-4o'")
+                default_model = 'gpt-4o'
+        
         self.default_model = default_model or 'gpt-4o'
         self.timeout = 30  # 默认30秒超时
     
@@ -71,6 +87,35 @@ class OpenAIProvider(AIProvider):
         try:
             with httpx.Client(timeout=self.timeout) as client:
                 response = client.post(url, json=payload, headers=headers)
+                
+                # 如果请求失败，记录详细错误信息
+                if response.status_code != 200:
+                    error_detail = "未知错误"
+                    try:
+                        error_data = response.json()
+                        error_detail = error_data.get("error", {}).get("message", str(error_data))
+                        logger.error(f"OpenAI API错误响应: {error_detail}, 状态码: {response.status_code}")
+                        
+                        # 友好的错误提示
+                        if response.status_code == 429:
+                            if 'quota' in error_detail.lower() or 'billing' in error_detail.lower():
+                                raise ValueError("OpenAI API 配额已用完，请检查您的账户余额和账单设置。如需继续使用，请访问 https://platform.openai.com/account/billing 充值。")
+                            else:
+                                raise ValueError("OpenAI API 请求频率过高，请稍后再试。")
+                        elif response.status_code == 401:
+                            raise ValueError("OpenAI API Key 无效或已过期，请检查设置中的 API Key 是否正确。")
+                        elif response.status_code == 400:
+                            raise ValueError(f"OpenAI API 请求错误: {error_detail}")
+                    except ValueError:
+                        # 重新抛出友好的错误消息
+                        raise
+                    except:
+                        error_detail = response.text[:500] if response.text else "无错误详情"
+                        logger.error(f"OpenAI API错误响应: {error_detail}, 状态码: {response.status_code}")
+                        if response.status_code == 429:
+                            raise ValueError("OpenAI API 请求频率过高或配额已用完，请稍后再试或检查账户余额。")
+                        raise Exception(f"OpenAI API调用失败 (状态码 {response.status_code}): {error_detail}")
+                
                 response.raise_for_status()
                 
                 data = response.json()
@@ -152,6 +197,40 @@ class OpenAIProvider(AIProvider):
         try:
             with httpx.Client(timeout=self.timeout * 2) as client:
                 with client.stream("POST", url, json=payload, headers=headers) as response:
+                    # 如果请求失败，记录详细错误信息
+                    if response.status_code != 200:
+                        error_detail = "未知错误"
+                        try:
+                            # 尝试读取错误响应
+                            error_text = ""
+                            for chunk in response.iter_bytes():
+                                error_text += chunk.decode('utf-8', errors='ignore')
+                                if len(error_text) > 1000:
+                                    break
+                            error_data = json.loads(error_text) if error_text else {}
+                            error_detail = error_data.get("error", {}).get("message", str(error_data))
+                            logger.error(f"OpenAI API流式调用错误响应: {error_detail}, 状态码: {response.status_code}")
+                            
+                            # 友好的错误提示
+                            if response.status_code == 429:
+                                if 'quota' in error_detail.lower() or 'billing' in error_detail.lower():
+                                    raise ValueError("OpenAI API 配额已用完，请检查您的账户余额和账单设置。如需继续使用，请访问 https://platform.openai.com/account/billing 充值。")
+                                else:
+                                    raise ValueError("OpenAI API 请求频率过高，请稍后再试。")
+                            elif response.status_code == 401:
+                                raise ValueError("OpenAI API Key 无效或已过期，请检查设置中的 API Key 是否正确。")
+                            elif response.status_code == 400:
+                                raise ValueError(f"OpenAI API 请求错误: {error_detail}")
+                        except ValueError:
+                            # 重新抛出友好的错误消息
+                            raise
+                        except:
+                            error_detail = f"HTTP {response.status_code}"
+                            logger.error(f"OpenAI API流式调用错误: {error_detail}")
+                            if response.status_code == 429:
+                                raise ValueError("OpenAI API 请求频率过高或配额已用完，请稍后再试或检查账户余额。")
+                            raise Exception(f"OpenAI API流式调用失败 (状态码 {response.status_code}): {error_detail}")
+                    
                     response.raise_for_status()
                     
                     for line in response.iter_lines():
@@ -188,6 +267,7 @@ class OpenAIProvider(AIProvider):
         """获取可用的模型列表"""
         return [
             "gpt-4o",
+            "gpt-4o-mini",
             "gpt-4-turbo",
             "gpt-4",
             "gpt-3.5-turbo",

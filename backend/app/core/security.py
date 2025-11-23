@@ -20,16 +20,32 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7天
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证密码"""
+    """
+    验证密码
+    
+    Returns:
+        bool: 如果密码匹配返回 True，否则返回 False
+        
+    Raises:
+        ValueError: 如果发生系统错误（如 bcrypt 库问题、编码错误等），
+                    这些错误应该被记录为系统错误，而不是简单的认证失败
+    """
     try:
         password_bytes = plain_password.encode('utf-8')
         # hashed_password 已经是字符串格式的bcrypt哈希值
         # bcrypt.checkpw 需要 bytes 格式的哈希值
         hashed_bytes = hashed_password.encode('utf-8')
         return bcrypt.checkpw(password_bytes, hashed_bytes)
+    except (ValueError, TypeError) as e:
+        # 这些是系统错误（如无效的哈希格式、类型错误等），应该被记录
+        from loguru import logger
+        logger.error(f"密码验证系统错误: {e}, 哈希值类型: {type(hashed_password)}")
+        raise ValueError(f"密码验证系统错误: {str(e)}") from e
     except Exception as e:
-        # 如果验证失败，记录错误但不抛出异常
-        return False
+        # 其他未预期的错误（如 bcrypt 库问题），也应该被记录
+        from loguru import logger
+        logger.error(f"密码验证未预期的错误: {e}")
+        raise ValueError(f"密码验证系统错误: {str(e)}") from e
 
 
 def get_password_hash(password: str) -> str:

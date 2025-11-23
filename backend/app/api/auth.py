@@ -138,14 +138,22 @@ def login(
             )
         
         # 验证密码
-        # 注意：verify_password()函数内部已经捕获了所有异常并返回False，
-        # 所以这里不需要额外的异常处理
-        if not verify_password(form_data.password, user.hashed_password):
-            logger.warning(f"密码错误: username={form_data.username}")
+        try:
+            if not verify_password(form_data.password, user.hashed_password):
+                logger.warning(f"密码错误: username={form_data.username}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Incorrect username or password",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        except ValueError as ve:
+            # 捕获密码验证的系统错误（如 bcrypt 库问题、编码错误等）
+            # 这些错误应该被记录为系统错误，而不是认证失败
+            logger.error(f"密码验证系统错误: {ve}, username={form_data.username}")
+            logger.error(traceback.format_exc())
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect username or password",
-                headers={"WWW-Authenticate": "Bearer"},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="密码验证系统错误，请稍后重试或联系管理员"
             )
         
         if not user.is_active:

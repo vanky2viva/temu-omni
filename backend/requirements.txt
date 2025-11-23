@@ -39,3 +39,6 @@ aioredis==2.0.1
 
 # 日志
 loguru==0.7.2
+
+# OpenAI SDK
+openai==1.12.0

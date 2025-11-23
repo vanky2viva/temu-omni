@@ -37,6 +37,9 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReactECharts from 'echarts-for-react'
 import { forggptApi, shopApi, statisticsApi, aiConfigApi, orderApi } from '@/services/api'
+import { FrogGPTChat } from '@/components/FrogGPTChat'
+import { useDashboardStore } from '@/stores/dashboardStore'
+import { DashboardCommand } from '@/types/chatkit'
 import dayjs from 'dayjs'
 
 // 生成唯一ID的辅助函数
@@ -193,14 +196,15 @@ export default function ForgGPT() {
   useEffect(() => {
     if (isSettingsModalOpen && aiConfigData?.data) {
       const config = aiConfigData.data
+      // 优先使用数据库中的配置，确保切换到当前使用的 provider
       settingsForm.setFieldsValue({
         provider: config.provider || 'deepseek',
-        // DeepSeek 默认值
-        deepseek_api_key: config.deepseek_api_key || '',
+        // DeepSeek 配置 - 如果已配置，显示占位符提示，但不显示实际值（安全考虑）
+        deepseek_api_key: config.has_deepseek_api_key ? '••••••••••••••••' : '',
         deepseek_base_url: config.deepseek_base_url || 'https://api.deepseek.com',
         deepseek_model: config.deepseek_model || 'deepseek-chat',
-        // OpenAI 默认值
-        openai_api_key: config.openai_api_key || '',
+        // OpenAI 配置 - 如果已配置，显示占位符提示，但不显示实际值（安全考虑）
+        openai_api_key: config.has_openai_api_key ? '••••••••••••••••' : '',
         openai_base_url: config.openai_base_url || 'https://api.openai.com/v1',
         openai_model: config.openai_model || 'gpt-4o',
         // 通用配置默认值
@@ -248,9 +252,15 @@ export default function ForgGPT() {
     loadHistory()
   }, [sessionId])
 
-  // 滚动到底部
+  // 滚动到底部（优化版本，使用更平滑的滚动）
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'end',
+        inline: 'nearest'
+      })
+    }
   }
 
   // 滚动思考内容到底部（使用 instant 确保实时更新时快速滚动）
@@ -262,7 +272,11 @@ export default function ForgGPT() {
   }
 
   useEffect(() => {
-    scrollToBottom()
+    // 延迟滚动，确保 DOM 已更新
+    const timer = setTimeout(() => {
+      scrollToBottom()
+    }, 100)
+    return () => clearTimeout(timer)
   }, [messages, streamingContent])
 
   // 当思考内容更新时，滚动到思考内容底部和消息容器底部
@@ -768,7 +782,23 @@ export default function ForgGPT() {
   const handleSaveSettings = async () => {
     try {
       const values = await settingsForm.validateFields()
-      await aiConfigApi.updateConfig(values)
+      
+      // 处理 API Key：如果输入的是占位符（••••），则视为未修改，不发送（后端会保留原值）
+      const processedValues = { ...values }
+      if (processedValues.deepseek_api_key === '••••••••••••••••') {
+        // 如果已配置，且用户没有修改，则不发送 API key（后端会保留原值）
+        if (aiConfigData?.data?.has_deepseek_api_key) {
+          processedValues.deepseek_api_key = ''
+        }
+      }
+      if (processedValues.openai_api_key === '••••••••••••••••') {
+        // 如果已配置，且用户没有修改，则不发送 API key（后端会保留原值）
+        if (aiConfigData?.data?.has_openai_api_key) {
+          processedValues.openai_api_key = ''
+        }
+      }
+      
+      await aiConfigApi.updateConfig(processedValues)
       message.success('AI配置更新成功')
       setIsSettingsModalOpen(false)
       refetchAiConfig()
@@ -806,6 +836,23 @@ export default function ForgGPT() {
   }
 
   const profitMargin = totalGmv7d > 0 ? ((totalProfit7d / totalGmv7d) * 100).toFixed(1) : '0'
+
+  // Dashboard 状态管理
+  const dashboardState = useDashboardStore()
+  const dispatchCommand = useDashboardStore((state) => state.dispatchCommand)
+  
+  // 处理 Dashboard 指令
+  const handleDashboardCommand = (command: DashboardCommand) => {
+    dispatchCommand(command)
+    // 可以在这里添加额外的处理逻辑，比如刷新数据
+    message.success(`已执行指令: ${command.type}`)
+  }
+  
+  // 监听 Dashboard 状态变化，刷新数据
+  useEffect(() => {
+    // 当时间范围或店铺选择变化时，可以触发数据刷新
+    // 这里可以根据需要实现
+  }, [dashboardState.dateRange, dashboardState.selectedShops])
 
   // 使用 useEffect 动态计算高度，确保完全适应视口
   const [containerHeight, setContainerHeight] = useState<number>(0)
@@ -991,9 +1038,16 @@ export default function ForgGPT() {
                         const provider = getFieldValue('provider') || 'deepseek'
                         return provider === 'deepseek' ? (
                           <>
-                            <Form.Item label="API Key" name="deepseek_api_key" tooltip="DeepSeek API 密钥，必填项">
+                            <Form.Item 
+                              label="API Key" 
+                              name="deepseek_api_key" 
+                              tooltip="DeepSeek API 密钥，必填项"
+                              extra={aiConfigData?.data?.has_deepseek_api_key ? (
+                                <span style={{ color: '#4ade80', fontSize: '12px' }}>✓ 已配置，留空则不修改</span>
+                              ) : null}
+                            >
                               <Input.Password 
-                                placeholder={aiConfigData?.data?.has_deepseek_api_key ? '已配置，可留空不修改' : '请输入 DeepSeek API Key'}
+                                placeholder={aiConfigData?.data?.has_deepseek_api_key ? '已配置，留空则不修改' : '请输入 DeepSeek API Key'}
                                 autoComplete="off"
                                 size="small"
                               />
@@ -1007,9 +1061,16 @@ export default function ForgGPT() {
                           </>
                         ) : (
                           <>
-                            <Form.Item label="API Key" name="openai_api_key" tooltip="OpenAI API 密钥，必填项">
+                            <Form.Item 
+                              label="API Key" 
+                              name="openai_api_key" 
+                              tooltip="OpenAI API 密钥，必填项"
+                              extra={aiConfigData?.data?.has_openai_api_key ? (
+                                <span style={{ color: '#4ade80', fontSize: '12px' }}>✓ 已配置，留空则不修改</span>
+                              ) : null}
+                            >
                               <Input.Password 
-                                placeholder={aiConfigData?.data?.has_openai_api_key ? '已配置，可留空不修改' : '请输入 OpenAI API Key'}
+                                placeholder={aiConfigData?.data?.has_openai_api_key ? '已配置，留空则不修改' : '请输入 OpenAI API Key'}
                                 autoComplete="off"
                                 size="small"
                               />
@@ -1276,7 +1337,7 @@ export default function ForgGPT() {
           </div>
         </div>
 
-        {/* 右侧：对话区域 - 缩小宽度 */}
+        {/* 右侧：ChatKit 对话区域 */}
         <div
           style={{
             width: '480px',
@@ -1284,519 +1345,13 @@ export default function ForgGPT() {
             display: 'flex',
             flexDirection: 'column',
             minHeight: 0,
-            background: 'rgba(15, 23, 42, 0.6)',
-            border: isDragging ? '2px dashed rgba(99, 102, 241, 0.8)' : '1px solid rgba(99, 102, 241, 0.2)',
-            borderRadius: '12px',
-            overflow: 'hidden',
-            backdropFilter: 'blur(10px)',
-            boxShadow: isDragging ? '0 0 30px rgba(99, 102, 241, 0.5)' : '0 4px 20px rgba(0, 0, 0, 0.3)',
-            transition: 'all 0.3s',
-            position: 'relative',
           }}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
         >
-          {/* 拖拽提示遮罩 */}
-          {isDragging && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'rgba(99, 102, 241, 0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 1000,
-                borderRadius: '12px',
-                backdropFilter: 'blur(5px)',
-              }}
-            >
-              <div
-                style={{
-                  textAlign: 'center',
-                  color: '#818cf8',
-                  fontSize: '16px',
-                  fontWeight: 600,
-                  textShadow: '0 0 10px rgba(99, 102, 241, 0.5)',
-                }}
-              >
-                📎 松开鼠标上传文件
-              </div>
-            </div>
-          )}
-          {/* 快捷问题 - 仅在空状态显示 */}
-          {messages.length === 0 && !loading && !isStreaming && (
-            <div
-              style={{
-                padding: '8px 12px',
-                borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
-                background: 'rgba(99, 102, 241, 0.05)',
-                flexShrink: 0,
-              }}
-            >
-              <Space wrap size={6}>
-                {quickPrompts.map((q) => (
-                  <Button
-                    key={q}
-                    size="small"
-                    onClick={() => handleQuickClick(q)}
-                    style={{
-                      borderRadius: '6px',
-                      background: 'rgba(99, 102, 241, 0.1)',
-                      border: '1px solid rgba(99, 102, 241, 0.3)',
-                      color: '#cbd5e1',
-                      fontSize: '12px',
-                      height: '26px',
-                      padding: '0 10px',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(99, 102, 241, 0.2)'
-                      e.currentTarget.style.boxShadow = '0 0 10px rgba(99, 102, 241, 0.4)'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)'
-                      e.currentTarget.style.boxShadow = 'none'
-                    }}
-                  >
-                    {q}
-                  </Button>
-                ))}
-              </Space>
-            </div>
-          )}
-
-          {/* 消息列表 - 可滚动区域 */}
-          <div
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              padding: '12px 16px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-              minHeight: 0,
-            }}
-          >
-            {messages.length === 0 && !loading && !isStreaming ? (
-              <div
-                style={{
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  padding: '40px 16px',
-                  minHeight: '400px',
-                }}
-              >
-                <div
-                  style={{
-                    width: '80px',
-                    height: '80px',
-                    borderRadius: '16px',
-                    background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '40px',
-                    marginBottom: '24px',
-                    border: '2px solid rgba(34, 197, 94, 0.3)',
-                    boxShadow: '0 0 40px rgba(34, 197, 94, 0.3)',
-                    animation: 'pulse 2s ease-in-out infinite',
-                  }}
-                >
-                  🐸
-                </div>
-                <div
-                  style={{
-                    fontSize: '24px',
-                    fontWeight: 700,
-                    color: '#e5e7eb',
-                    marginBottom: '12px',
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  你好，我是 FrogGPT
-                </div>
-                <div
-                  style={{
-                    fontSize: '14px',
-                    color: '#94a3b8',
-                    lineHeight: '1.8',
-                    maxWidth: '450px',
-                    marginBottom: '32px',
-                  }}
-                >
-                  我可以帮你分析运营数据，提供经营建议，也可以处理你上传的表格和文档。
-                  <br />
-                  试试下面的快捷问题，或直接输入你的问题。
-                </div>
-                <Space wrap size={8} style={{ maxWidth: '450px' }}>
-                  {quickPrompts.map((q) => (
-                    <Button
-                      key={q}
-                      size="small"
-                      onClick={() => handleQuickClick(q)}
-                      style={{
-                        borderRadius: '8px',
-                        background: 'rgba(99, 102, 241, 0.1)',
-                        border: '1px solid rgba(99, 102, 241, 0.3)',
-                        color: '#cbd5e1',
-                        fontSize: '13px',
-                        height: '36px',
-                        padding: '0 16px',
-                        transition: 'all 0.2s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(99, 102, 241, 0.2)'
-                        e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.5)'
-                        e.currentTarget.style.transform = 'translateY(-2px)'
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.3)'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)'
-                        e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.3)'
-                        e.currentTarget.style.transform = 'translateY(0)'
-                        e.currentTarget.style.boxShadow = 'none'
-                      }}
-                    >
-                      {q}
-                    </Button>
-                  ))}
-                </Space>
-              </div>
-            ) : (
-              <>
-                {messages.map((msg, index) => (
-                  <ChatBubble
-                    key={msg.id}
-                    message={msg}
-                    isStreaming={isStreaming && index === messages.length}
-                    onCopy={() => handleCopyMessage(msg.content)}
-                    onEdit={msg.role === 'user' ? () => handleEditMessage(msg.id, msg.content) : undefined}
-                    onRegenerate={msg.role === 'assistant' && index > 0 ? () => handleRegenerate(msg.id) : undefined}
-                    isHovered={hoveredMessageId === msg.id}
-                    onMouseEnter={() => setHoveredMessageId(msg.id)}
-                    onMouseLeave={() => setHoveredMessageId(null)}
-                  />
-                ))}
-                {/* 思考过程 - 如果已完成但被折叠，显示展开按钮 */}
-                {thinkingCompleted && !showThinking && thinkingContent && (
-                  <div style={{ marginBottom: '12px' }}>
-                    <Button
-                      type="text"
-                      size="small"
-                      onClick={() => setShowThinking(true)}
-                      style={{
-                        color: '#818cf8',
-                        fontSize: '12px',
-                        padding: '4px 8px',
-                        height: 'auto',
-                        background: 'rgba(99, 102, 241, 0.1)',
-                        border: '1px solid rgba(99, 102, 241, 0.3)',
-                        borderRadius: '6px',
-                      }}
-                    >
-                      💭 查看思考过程
-                    </Button>
-                  </div>
-                )}
-                {/* 思考过程 - 展开状态 */}
-                {showThinking && thinkingContent && (
-                  <div
-                    style={{
-                      marginBottom: '12px',
-                      padding: '12px 16px',
-                      background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)',
-                      border: '1px solid rgba(99, 102, 241, 0.3)',
-                      borderRadius: '10px',
-                      fontSize: '12px',
-                      color: '#cbd5e1',
-                      lineHeight: '1.6',
-                      boxShadow: '0 0 15px rgba(99, 102, 241, 0.2)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginBottom: '8px',
-                        paddingBottom: '8px',
-                        borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
-                      }}
-                    >
-                      <span
-                        style={{
-                          color: '#818cf8',
-                          fontWeight: 600,
-                          fontSize: '13px',
-                          fontFamily: 'monospace',
-                        }}
-                      >
-                        {thinkingCompleted ? '💭 思考过程' : '💭 AI 正在思考...'}
-                      </span>
-                      <Button
-                        type="text"
-                        size="small"
-                        style={{
-                          color: '#94a3b8',
-                          fontSize: '11px',
-                          padding: '0 4px',
-                          height: 'auto',
-                        }}
-                        onClick={() => setShowThinking(false)}
-                      >
-                        收起
-                      </Button>
-                    </div>
-                    <div
-                      ref={thinkingContentRef}
-                      style={{
-                        maxHeight: '200px',
-                        overflowY: 'auto',
-                        whiteSpace: 'pre-wrap',
-                        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-                        color: '#a5b4fc',
-                        fontSize: '11px',
-                      }}
-                    >
-                      {thinkingContent}
-                    </div>
-                  </div>
-                )}
-                {/* 流式内容 */}
-                {isStreaming && streamingContent && (
-                  <ChatBubble
-                    message={{
-                      id: 'streaming',
-                      role: 'assistant',
-                      content: streamingContent,
-                      createdAt: dayjs().format('HH:mm'),
-                    }}
-                    isStreaming={true}
-                    onCopy={() => handleCopyMessage(streamingContent)}
-                    isHovered={hoveredMessageId === 'streaming'}
-                    onMouseEnter={() => setHoveredMessageId('streaming')}
-                    onMouseLeave={() => setHoveredMessageId(null)}
-                  />
-                )}
-                {loading && !isStreaming && (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                    <Avatar
-                      size={32}
-                      style={{
-                        background: 'linear-gradient(135deg, #22c55e 0%, #10b981 100%)',
-                        color: '#022c22',
-                        boxShadow: '0 0 10px rgba(34, 197, 94, 0.3)',
-                      }}
-                      icon={<RobotOutlined />}
-                    />
-                    <div style={{ padding: '10px 14px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '10px', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
-                      <Spin size="small" />
-                    </div>
-                  </div>
-                )}
-                {/* 停止生成按钮 */}
-                {isStreaming && (
-                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: '8px' }}>
-                    <Button
-                      size="small"
-                      icon={<StopOutlined />}
-                      onClick={handleStop}
-                      style={{
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        color: '#ef4444',
-                      }}
-                    >
-                      停止生成
-                    </Button>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </>
-            )}
-          </div>
-
-          {/* 输入框 - 移到对话框内部 */}
-          <div
-            style={{
-              padding: '12px',
-              borderTop: '1px solid rgba(99, 102, 241, 0.2)',
-              background: 'rgba(2, 6, 23, 0.4)',
-              flexShrink: 0,
-            }}
-          >
-            {/* 编辑模式提示 */}
-            {editingMessageId && (
-              <div
-                style={{
-                  marginBottom: '8px',
-                  padding: '8px 12px',
-                  background: 'rgba(99, 102, 241, 0.1)',
-                  border: '1px solid rgba(99, 102, 241, 0.3)',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <Text style={{ fontSize: '12px', color: '#818cf8' }}>正在编辑消息</Text>
-                <Space size={8}>
-                  <Button
-                    size="small"
-                    icon={<CheckOutlined />}
-                    onClick={handleConfirmEdit}
-                    disabled={!editingContent.trim()}
-                    style={{
-                      background: 'rgba(34, 197, 94, 0.1)',
-                      border: '1px solid rgba(34, 197, 94, 0.3)',
-                      color: '#22c55e',
-                    }}
-                  >
-                    确认
-                  </Button>
-                  <Button
-                    size="small"
-                    icon={<CloseOutlined />}
-                    onClick={handleCancelEdit}
-                    style={{
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#ef4444',
-                    }}
-                  >
-                    取消
-                  </Button>
-                </Space>
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'space-between' }}>
-                  <Button
-                    size="small"
-                    icon={<DeleteOutlined />}
-                    style={{
-                      background: 'rgba(99, 102, 241, 0.1)',
-                      border: '1px solid rgba(99, 102, 241, 0.3)',
-                      color: '#cbd5e1',
-                      fontSize: '11px',
-                      height: '24px',
-                      padding: '0 8px',
-                    }}
-                    onClick={handleClear}
-                  >
-                    清空
-                  </Button>
-                  <Text
-                    style={{
-                      fontSize: '10px',
-                      color: '#64748b',
-                      fontFamily: 'monospace',
-                    }}
-                  >
-                    Enter发送 · Shift+Enter换行 · 拖拽文件/粘贴图片上传
-                  </Text>
-                </div>
-                <TextArea
-                  autoSize={{ minRows: 1, maxRows: 8 }}
-                  value={editingMessageId ? editingContent : input}
-                  onChange={(e) => {
-                    if (editingMessageId) {
-                      setEditingContent(e.target.value)
-                    } else {
-                      handleInputChange(e)
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (editingMessageId) {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        handleConfirmEdit()
-                      } else if (e.key === 'Escape') {
-                        handleCancelEdit()
-                      }
-                    } else {
-                      handleKeyDown(e)
-                    }
-                  }}
-                  placeholder={editingMessageId ? "编辑消息..." : "输入你的问题，或拖拽文件/粘贴图片/链接到此处..."}
-                  disabled={loading && !editingMessageId}
-                  style={{
-                    background: 'rgba(15, 23, 42, 0.8)',
-                    border: '1px solid rgba(99, 102, 241, 0.3)',
-                    color: '#e5e7eb',
-                    borderRadius: '8px',
-                    fontSize: '13px',
-                    lineHeight: '1.5',
-                    resize: 'none',
-                  }}
-                />
-                {/* 链接提取提示 */}
-                {input.match(/https?:\/\/[^\s]+/g) && (
-                  <div style={{ marginTop: '4px', fontSize: '11px', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span>🔗</span>
-                    <span>检测到链接，点击右侧"提取链接"按钮添加到文件列表</span>
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {/* 如果输入框中有链接，显示链接提取按钮 */}
-                {input.match(/https?:\/\/[^\s]+/g) && (
-                  <Button
-                    size="small"
-                    icon={<UploadOutlined />}
-                    onClick={handleExtractLinkFromInput}
-                    style={{
-                      background: 'rgba(99, 102, 241, 0.1)',
-                      border: '1px solid rgba(99, 102, 241, 0.3)',
-                      color: '#818cf8',
-                      fontSize: '11px',
-                      height: '26px',
-                    }}
-                  >
-                    提取链接
-                  </Button>
-                )}
-                <Button
-                  type="primary"
-                  icon={<SendOutlined />}
-                  onClick={() => {
-                    if (editingMessageId) {
-                      handleConfirmEdit()
-                    } else {
-                      handleSend()
-                    }
-                  }}
-                  disabled={
-                    editingMessageId
-                      ? !editingContent.trim() || loading
-                      : !input.trim() || loading
-                  }
-                  style={{
-                    background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                    border: 'none',
-                    minHeight: '36px',
-                    borderRadius: '8px',
-                    boxShadow: '0 2px 8px rgba(99, 102, 241, 0.4)',
-                    fontSize: '13px',
-                  }}
-                >
-                  {editingMessageId ? '确认' : '发送'}
-                </Button>
-              </div>
-            </div>
-          </div>
+          <FrogGPTChat
+            shopId={selectedShopId || undefined}
+            shopIds={selectedShopId ? [selectedShopId] : undefined}
+            onCommand={handleDashboardCommand}
+          />
         </div>
       </div>
 
@@ -1977,8 +1532,9 @@ const ChatBubble: React.FC<{
         style={{
           display: 'flex',
           justifyContent: 'flex-end',
-          marginBottom: '8px',
+          marginBottom: '12px',
           position: 'relative',
+          animation: 'fadeInUp 0.3s ease-out',
         }}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
@@ -1988,14 +1544,24 @@ const ChatBubble: React.FC<{
             maxWidth: '75%',
             background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
             color: '#f9fafb',
-            borderRadius: '12px',
-            padding: '10px 14px',
-            fontSize: '13px',
+            borderRadius: '16px 16px 4px 16px',
+            padding: '12px 16px',
+            fontSize: '14px',
             whiteSpace: 'pre-wrap',
-            lineHeight: '1.6',
-            boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            lineHeight: '1.7',
+            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.25)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
             position: 'relative',
+            transition: 'all 0.2s ease',
+            wordBreak: 'break-word',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = '0 6px 16px rgba(99, 102, 241, 0.35)'
+            e.currentTarget.style.transform = 'translateY(-1px)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.25)'
+            e.currentTarget.style.transform = 'translateY(0)'
           }}
         >
           {messageData.content}
@@ -2075,36 +1641,48 @@ const ChatBubble: React.FC<{
       style={{
         display: 'flex',
         alignItems: 'flex-start',
-        gap: '10px',
-        marginBottom: '8px',
+        gap: '12px',
+        marginBottom: '12px',
         position: 'relative',
+        animation: 'fadeInUp 0.3s ease-out',
       }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
       <Avatar
-        size={32}
+        size={36}
         style={{
           background: 'linear-gradient(135deg, #22c55e 0%, #10b981 100%)',
           color: '#022c22',
           flexShrink: 0,
-          boxShadow: '0 0 10px rgba(34, 197, 94, 0.3)',
-          border: '1px solid rgba(34, 197, 94, 0.3)',
+          boxShadow: '0 2px 8px rgba(34, 197, 94, 0.3)',
+          border: '2px solid rgba(34, 197, 94, 0.4)',
+          transition: 'all 0.2s ease',
         }}
         icon={<RobotOutlined />}
       />
       <div
         style={{
           maxWidth: '75%',
-          background: 'rgba(30, 41, 59, 0.8)',
-          borderRadius: '12px',
-          padding: '12px 14px',
-          fontSize: '13px',
+          background: 'rgba(30, 41, 59, 0.95)',
+          borderRadius: '16px 16px 16px 4px',
+          padding: '14px 16px',
+          fontSize: '14px',
           whiteSpace: 'pre-wrap',
-          lineHeight: '1.6',
-          border: '1px solid rgba(99, 102, 241, 0.2)',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
+          lineHeight: '1.7',
+          border: '1px solid rgba(99, 102, 241, 0.25)',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
           position: 'relative',
+          transition: 'all 0.2s ease',
+          wordBreak: 'break-word',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.2)'
+          e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.4)'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)'
+          e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.25)'
         }}
       >
         {/* 操作按钮 */}
@@ -2608,13 +2186,14 @@ const ChatBubble: React.FC<{
             <span
               style={{
                 display: 'inline-block',
-                width: '2px',
-                height: '14px',
-                background: '#6366f1',
+                width: '3px',
+                height: '16px',
+                background: 'linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%)',
                 animation: 'blink 1s infinite',
-                marginLeft: '6px',
+                marginLeft: '8px',
                 verticalAlign: 'middle',
-                borderRadius: '1px',
+                borderRadius: '2px',
+                boxShadow: '0 0 8px rgba(99, 102, 241, 0.5)',
               }}
             />
           )}
@@ -2634,6 +2213,24 @@ const ChatBubble: React.FC<{
         @keyframes blink {
           0%, 50% { opacity: 1; }
           51%, 100% { opacity: 0.3; }
+        }
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
         }
       `}</style>
     </div>

@@ -46,25 +46,41 @@ class Settings(BaseSettings):
     @model_validator(mode='after')
     def validate_critical_settings(self):
         """验证关键配置项"""
-        # 在非DEBUG模式下，SECRET_KEY和DATABASE_URL必须设置
-        if not self.DEBUG:
-            if not self.SECRET_KEY:
+        # SECRET_KEY 和 DATABASE_URL 必须设置，无论是否为 DEBUG 模式
+        # 这样可以防止生产环境意外使用默认值
+        if not self.SECRET_KEY:
+            if self.DEBUG:
+                # DEBUG 模式下，生成一个随机密钥（每次启动都不同）
+                # 但发出警告，提醒开发者应该设置环境变量
+                import warnings
+                warnings.warn(
+                    "SECRET_KEY 未设置，在 DEBUG 模式下使用随机生成的密钥。"
+                    "生产环境必须通过环境变量设置 SECRET_KEY。",
+                    UserWarning
+                )
+                self.SECRET_KEY = secrets.token_urlsafe(32)
+            else:
                 raise ValueError(
                     "SECRET_KEY环境变量未设置。生产环境必须设置SECRET_KEY环境变量。"
                     "请通过环境变量或.env文件设置SECRET_KEY。"
                 )
-            if not self.DATABASE_URL:
+        
+        if not self.DATABASE_URL:
+            if self.DEBUG:
+                # DEBUG 模式下，使用 SQLite 默认值
+                # 但发出警告，提醒开发者应该设置环境变量
+                import warnings
+                warnings.warn(
+                    "DATABASE_URL 未设置，在 DEBUG 模式下使用 SQLite 默认数据库。"
+                    "生产环境必须通过环境变量设置 DATABASE_URL。",
+                    UserWarning
+                )
+                self.DATABASE_URL = "sqlite:///./temu_omni.db"
+            else:
                 raise ValueError(
                     "DATABASE_URL环境变量未设置。生产环境必须设置DATABASE_URL环境变量。"
                     "请通过环境变量或.env文件设置DATABASE_URL。"
                 )
-        else:
-            # DEBUG模式下，如果没有设置则使用开发默认值
-            if not self.SECRET_KEY:
-                # 生成一个随机密钥（每次启动都不同，但至少不是硬编码的固定值）
-                self.SECRET_KEY = secrets.token_urlsafe(32)
-            if not self.DATABASE_URL:
-                self.DATABASE_URL = "sqlite:///./temu_omni.db"
         return self
     
     # 数据同步配置

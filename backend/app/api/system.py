@@ -195,11 +195,27 @@ def get_ai_config(db: Session = Depends(get_db), current_user: User = Depends(ge
 @router.put("/ai-config/")
 def update_ai_config(config: AIConfigUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """更新AI配置"""
-    def update_or_create_config(key: str, value: str, description: str, is_encrypted: bool = False):
+    def update_or_create_config(key: str, value: str, description: str, is_encrypted: bool = False, preserve_if_empty: bool = False):
+        """
+        更新或创建配置项
+        
+        Args:
+            key: 配置键
+            value: 配置值
+            description: 配置描述
+            is_encrypted: 是否加密
+            preserve_if_empty: 如果值为空字符串，是否保留原值（用于 API Key 等敏感信息）
+        """
         config_item = db.query(SystemConfig).filter(SystemConfig.key == key).first()
         if config_item:
+            # 如果 preserve_if_empty 为 True 且新值为空，则保留原值
+            if preserve_if_empty and not value:
+                return  # 不更新，保留原值
             config_item.value = value
         else:
+            # 如果 preserve_if_empty 为 True 且值为空，则不创建新配置
+            if preserve_if_empty and not value:
+                return
             config_item = SystemConfig(
                 key=key,
                 value=value,
@@ -210,10 +226,11 @@ def update_ai_config(config: AIConfigUpdate, db: Session = Depends(get_db), curr
     
     # 更新配置
     update_or_create_config("ai_provider", config.provider, "AI服务提供商")
-    update_or_create_config("deepseek_api_key", config.deepseek_api_key, "DeepSeek API密钥", is_encrypted=True)
+    # API Key 如果为空字符串，则保留原值（不更新）
+    update_or_create_config("deepseek_api_key", config.deepseek_api_key, "DeepSeek API密钥", is_encrypted=True, preserve_if_empty=True)
     update_or_create_config("deepseek_base_url", config.deepseek_base_url, "DeepSeek API地址")
     update_or_create_config("deepseek_model", config.deepseek_model, "DeepSeek模型名称")
-    update_or_create_config("openai_api_key", config.openai_api_key, "OpenAI API密钥", is_encrypted=True)
+    update_or_create_config("openai_api_key", config.openai_api_key, "OpenAI API密钥", is_encrypted=True, preserve_if_empty=True)
     update_or_create_config("openai_base_url", config.openai_base_url, "OpenAI API地址")
     update_or_create_config("openai_model", config.openai_model, "OpenAI模型名称")
     update_or_create_config("ai_timeout_seconds", str(config.timeout_seconds), "AI API调用超时时间（秒）")
