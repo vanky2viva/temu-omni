@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Select,
   Space,
@@ -58,8 +58,10 @@ function SalesStatistics() {
 
   const { RangePicker } = DatePicker
 
+  const queryClient = useQueryClient()
+
   // 获取店铺列表
-  const { data: shops } = useQuery({
+  const { data: shops, refetch: refetchShops } = useQuery({
     queryKey: ['shops'],
     queryFn: shopApi.getShops,
   })
@@ -608,13 +610,28 @@ function SalesStatistics() {
     },
   ]
 
-  // 刷新所有数据
-  const handleRefresh = () => {
-    refetchOverview()
-    if (activeTab === 'sku') {
-      refetchSku()
-    } else if (activeTab === 'manager') {
-      refetchManager()
+  // 刷新所有数据 - 立即重新获取并计算
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      // 清除相关查询的缓存，确保获取最新数据
+      queryClient.invalidateQueries({ queryKey: ['shops'] })
+      queryClient.invalidateQueries({ queryKey: ['sales-overview'] })
+      queryClient.invalidateQueries({ queryKey: ['sku-sales-ranking'] })
+      queryClient.invalidateQueries({ queryKey: ['manager-sales'] })
+      
+      // 并行刷新所有数据
+      await Promise.all([
+        refetchShops(),
+        refetchOverview(),
+        activeTab === 'sku' ? refetchSku() : Promise.resolve(),
+        activeTab === 'manager' ? refetchManager() : Promise.resolve(),
+      ])
+    } catch (error) {
+      console.error('刷新数据失败:', error)
+    } finally {
+      setIsRefreshing(false)
     }
   }
 
@@ -677,9 +694,10 @@ function SalesStatistics() {
               type="primary"
               icon={<ReloadOutlined />}
               onClick={handleRefresh}
+              loading={isRefreshing}
               className="bulma-button"
             >
-              刷新
+              {isRefreshing ? '刷新中...' : '刷新'}
             </Button>
           </Tooltip>
           <Dropdown menu={{ items: quickFilterMenu }} placement="bottomRight">

@@ -11,7 +11,20 @@ from app.core.middleware import ExceptionHandlerMiddleware, RequestLoggingMiddle
 from app.api import shops, orders, products, statistics, sync, analytics, system, import_data, auth, order_costs, raw_data, payouts, reports, forggpt, user_views, ai_data
 
 # 创建数据库表
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+    logger.info("数据库表创建/检查完成")
+except Exception as e:
+    logger.error(f"数据库表创建失败: {e}")
+    logger.error(traceback.format_exc())
+
+# 初始化默认用户（如果不存在）
+try:
+    from app.core.init_default_user import init_default_user
+    init_default_user()
+except Exception as e:
+    logger.warning(f"初始化默认用户失败: {e}")
+    logger.warning(traceback.format_exc())
 
 # 创建FastAPI应用
 app = FastAPI(

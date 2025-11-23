@@ -102,19 +102,46 @@ def login(
 ):
     """用户登录"""
     try:
+        logger.info(f"登录请求: username={form_data.username}")
+        
+        # 检查数据库连接
+        try:
+            from sqlalchemy import text
+            db.execute(text("SELECT 1"))
+        except Exception as db_error:
+            logger.error(f"数据库连接失败: {db_error}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="数据库连接失败，请检查数据库配置"
+            )
+        
         # 查找用户（支持用户名或邮箱登录）
-        user = db.query(User).filter(
-            (User.username == form_data.username) | (User.email == form_data.username)
-        ).first()
+        try:
+            user = db.query(User).filter(
+                (User.username == form_data.username) | (User.email == form_data.username)
+            ).first()
+        except Exception as query_error:
+            logger.error(f"查询用户失败: {query_error}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"查询用户失败: {str(query_error)}"
+            )
         
         if not user:
+            logger.warning(f"用户不存在: {form_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
+        # 验证密码
+        # 注意：verify_password()函数内部已经捕获了所有异常并返回False，
+        # 所以这里不需要额外的异常处理
         if not verify_password(form_data.password, user.hashed_password):
+            logger.warning(f"密码错误: username={form_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect username or password",
@@ -122,21 +149,39 @@ def login(
             )
         
         if not user.is_active:
+            logger.warning(f"用户未激活: username={form_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User is inactive"
             )
         
         # 创建访问令牌
-        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = create_access_token(
-            data={"sub": user.username},
-            expires_delta=access_token_expires
-        )
+        try:
+            access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+            access_token = create_access_token(
+                data={"sub": user.username},
+                expires_delta=access_token_expires
+            )
+        except Exception as token_error:
+            logger.error(f"创建令牌失败: {token_error}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"创建访问令牌失败: {str(token_error)}"
+            )
         
         # 将 User 对象转换为 UserResponse
-        user_response = UserResponse.model_validate(user)
+        try:
+            user_response = UserResponse.model_validate(user)
+        except Exception as validate_error:
+            logger.error(f"用户数据验证失败: {validate_error}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"用户数据验证失败: {str(validate_error)}"
+            )
         
+        logger.info(f"登录成功: username={form_data.username}")
         return {
             "access_token": access_token,
             "token_type": "bearer",
@@ -147,7 +192,7 @@ def login(
         raise
     except Exception as e:
         # 记录其他异常并返回 500 错误
-        logger.error(f"登录失败: {e}")
+        logger.error(f"登录失败（未知错误）: {e}")
         logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

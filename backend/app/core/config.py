@@ -1,7 +1,8 @@
 """应用配置"""
 from typing import List, Optional
 from pydantic_settings import BaseSettings
-from pydantic import validator
+from pydantic import validator, Field, model_validator
+import secrets
 
 
 class Settings(BaseSettings):
@@ -11,10 +12,12 @@ class Settings(BaseSettings):
     APP_NAME: str = "Temu-Omni"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
-    SECRET_KEY: str
+    # SECRET_KEY: 生产环境必须通过环境变量设置，开发环境允许使用随机生成的值
+    SECRET_KEY: Optional[str] = Field(default=None, description="JWT密钥，生产环境必须设置")
     
     # 数据库配置
-    DATABASE_URL: str
+    # DATABASE_URL: 生产环境必须通过环境变量设置，开发环境允许使用SQLite默认值
+    DATABASE_URL: Optional[str] = Field(default=None, description="数据库连接URL，生产环境必须设置")
     
     # Temu API配置（从环境变量读取）
     TEMU_APP_KEY: str = ""  # 标准端点App Key，必须通过环境变量设置
@@ -39,6 +42,30 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [i.strip() for i in v.split(",")]
         return v
+    
+    @model_validator(mode='after')
+    def validate_critical_settings(self):
+        """验证关键配置项"""
+        # 在非DEBUG模式下，SECRET_KEY和DATABASE_URL必须设置
+        if not self.DEBUG:
+            if not self.SECRET_KEY:
+                raise ValueError(
+                    "SECRET_KEY环境变量未设置。生产环境必须设置SECRET_KEY环境变量。"
+                    "请通过环境变量或.env文件设置SECRET_KEY。"
+                )
+            if not self.DATABASE_URL:
+                raise ValueError(
+                    "DATABASE_URL环境变量未设置。生产环境必须设置DATABASE_URL环境变量。"
+                    "请通过环境变量或.env文件设置DATABASE_URL。"
+                )
+        else:
+            # DEBUG模式下，如果没有设置则使用开发默认值
+            if not self.SECRET_KEY:
+                # 生成一个随机密钥（每次启动都不同，但至少不是硬编码的固定值）
+                self.SECRET_KEY = secrets.token_urlsafe(32)
+            if not self.DATABASE_URL:
+                self.DATABASE_URL = "sqlite:///./temu_omni.db"
+        return self
     
     # 数据同步配置
     AUTO_SYNC_ENABLED: bool = True

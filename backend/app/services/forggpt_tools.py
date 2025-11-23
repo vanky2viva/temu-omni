@@ -846,7 +846,7 @@ class ForgGPTTools:
 TOOLS_SCHEMA = [
     {
         "name": "get_order_statistics",
-        "description": "获取订单统计数据（GMV、订单量、利润、退款率）。支持店铺、时间范围、状态过滤。",
+        "description": "获取订单统计数据（GMV、订单量、利润、退款率）。支持店铺、时间范围、状态过滤。**返回的数据适合生成表格进行对比分析，建议用表格展示不同时间段的对比数据。**",
         "parameters": {
             "type": "object",
             "properties": {
@@ -871,7 +871,7 @@ TOOLS_SCHEMA = [
     },
     {
         "name": "query_orders",
-        "description": "查询订单明细，可按状态、SKU、时间范围筛选",
+        "description": "查询订单明细，可按状态、SKU、时间范围筛选。**返回的数据适合生成表格展示订单列表，建议用表格展示订单明细。**",
         "parameters": {
             "type": "object",
             "properties": {
@@ -905,7 +905,7 @@ TOOLS_SCHEMA = [
     },
     {
         "name": "get_product_sales",
-        "description": "获取指定SKU最近30天的销量和GMV",
+        "description": "获取指定SKU最近30天的销量和GMV。**返回的数据适合生成表格和趋势图表，建议用表格展示销量数据，用折线图展示趋势。**",
         "parameters": {
             "type": "object",
             "properties": {
@@ -922,7 +922,7 @@ TOOLS_SCHEMA = [
     },
     {
         "name": "get_sku_profit",
-        "description": "获取 SKU 的利润结构（价格、成本、毛利额、毛利率）",
+        "description": "获取 SKU 的利润结构（价格、成本、毛利额、毛利率）。**返回的数据适合生成表格展示利润结构，建议用表格展示利润对比。**",
         "parameters": {
             "type": "object",
             "properties": {
@@ -945,7 +945,7 @@ TOOLS_SCHEMA = [
     },
     {
         "name": "get_collection_details",
-        "description": "获取回款详细数据（最小粒度，按订单级别）。回款逻辑：已签收（DELIVERED）的订单，签收时间加8天后计入回款金额。返回每个订单的回款信息，包括订单号、商品信息、回款日期、回款金额等。",
+        "description": "获取回款详细数据（最小粒度，按订单级别）。回款逻辑：已签收（DELIVERED）的订单，签收时间加8天后计入回款金额。返回每个订单的回款信息，包括订单号、商品信息、回款日期、回款金额等。**返回的数据适合生成表格展示订单级别的回款明细，建议用表格展示回款详情。**",
         "parameters": {
             "type": "object",
             "properties": {
@@ -975,7 +975,7 @@ TOOLS_SCHEMA = [
     },
     {
         "name": "get_order_details",
-        "description": "获取订单详细数据（包含所有订单字段和关联信息）。返回订单的完整信息，包括订单号、商品信息、价格、成本、利润、状态、时间信息、客户信息等。",
+        "description": "获取订单详细数据（包含所有订单字段和关联信息）。返回订单的完整信息，包括订单号、商品信息、价格、成本、利润、状态、时间信息、客户信息等。**返回的数据适合生成表格展示订单列表，建议用表格展示订单详情。**",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1013,7 +1013,7 @@ TOOLS_SCHEMA = [
     },
     {
         "name": "get_product_cost_details",
-        "description": "获取商品成本详细数据（包含历史成本记录）。返回商品的当前成本和历史成本记录，包括成本价格、生效时间、货币等信息。",
+        "description": "获取商品成本详细数据（包含历史成本记录）。返回商品的当前成本和历史成本记录，包括成本价格、生效时间、货币等信息。**返回的数据适合生成表格展示商品成本信息，建议用表格展示成本对比。**",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1039,7 +1039,7 @@ TOOLS_SCHEMA = [
     },
     {
         "name": "get_collection_statistics",
-        "description": "【重要】获取回款统计数据（汇总数据，按日期和店铺分组）。这是获取回款金额的主要接口。当用户询问回款、收款、回款金额、回款统计、财务管理中的回款数据时，必须使用此工具。回款逻辑：已签收（DELIVERED）的订单，签收时间加8天后计入回款金额。返回总回款金额、每日回款金额（按店铺分组）、回款趋势等数据。",
+        "description": "【重要】获取回款统计数据（汇总数据，按日期和店铺分组）。这是获取回款金额的主要接口。当用户询问回款、收款、回款金额、回款统计、财务管理中的回款数据时，必须使用此工具。回款逻辑：已签收（DELIVERED）的订单，签收时间加8天后计入回款金额。返回总回款金额、每日回款金额（按店铺分组）、回款趋势等数据。**返回的数据包含 table_data（适合生成表格）和 chart_data（适合生成折线图），必须使用表格和图表展示回款数据。**",
         "parameters": {
             "type": "object",
             "properties": {

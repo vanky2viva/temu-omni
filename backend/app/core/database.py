@@ -32,8 +32,9 @@ engine = create_engine(
 def set_sqlite_pragma(dbapi_conn, connection_record):
     """设置SQLite连接参数（如果使用SQLite）"""
     if "sqlite" in settings.DATABASE_URL:
-        dbapi_conn.execute("PRAGMA foreign_keys=ON")
-        dbapi_conn.execute("PRAGMA journal_mode=WAL")
+        from sqlalchemy import text
+        dbapi_conn.execute(text("PRAGMA foreign_keys=ON"))
+        dbapi_conn.execute(text("PRAGMA journal_mode=WAL"))
 
 @event.listens_for(engine, "checkout")
 def receive_checkout(dbapi_conn, connection_record, connection_proxy):
