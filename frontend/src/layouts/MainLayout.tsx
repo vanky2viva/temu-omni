@@ -13,6 +13,7 @@ import {
   UserOutlined,
   RobotOutlined,
   MenuOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 

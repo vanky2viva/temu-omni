@@ -19,6 +19,7 @@ class ProxyRequest(BaseModel):
     app_key: Optional[str] = None  # 可选，如果不提供则使用环境变量
     app_secret: Optional[str] = None  # 可选，如果不提供则使用环境变量
     region: Optional[str] = None  # 可选，区域：us, eu, global，默认使用环境变量或 us
+    flat_params: Optional[bool] = False  # 是否将业务参数平铺在顶层
 
 
 class ProxyResponse(BaseModel):
@@ -142,14 +143,16 @@ async def proxy_request(request: ProxyRequest):
         if request.request_data:
             # 根据官方文档，某些API的参数应该直接放在顶层，而不是在request对象中
             # 例如：bg.order.detail.v2.get 和 bg.order.list.v2.get 的参数应该直接放在顶层
-            # 检查是否是这些特殊API
+            # 检查是否是这些特殊API，或者客户端明确指定了 flat_params=True
             apis_with_top_level_params = [
                 "bg.order.detail.v2.get",
                 "bg.order.list.v2.get",
+                "bg.order.shippinginfo.v2.get",  # 地址查询API也需要顶层参数
                 # 可以在这里添加其他需要顶层参数的API
             ]
             
-            if request.api_type in apis_with_top_level_params:
+            # 如果客户端指定了 flat_params=True，或者API在列表中，则将参数放在顶层
+            if request.flat_params or request.api_type in apis_with_top_level_params:
                 # 对于这些API，将参数直接放在顶层
                 all_params.update(request.request_data)
             else:

@@ -146,6 +146,8 @@ class DataMappingService:
                 shipping_info.get('zipCode') or
                 parent_order.get('shippingPostalCode')
             )
+            # 注意：存储邮编用于精确确定订单收货地址的区域
+            # 不存储：详细地址（addressLine）、电话（mobile）、姓名（receiptName）等隐私信息
             
             # 提取商品信息（从orderItem的productList）
             order_items_data = self._extract_order_items_from_structure(order_item, parent_order)

@@ -23,21 +23,23 @@
 | 脚本 | 说明 | 使用场景 |
 |-----|------|---------|
 | `update_order_costs.py` | 批量更新订单成本 | 手动触发成本计算 |
-| `verify_order_amount_and_collection.py` | 验证订单金额和回款统计 | 数据验证 |
 
 ### 🛠️ 维护脚本
 
 | 脚本 | 说明 | 使用场景 |
 |-----|------|---------|
-| `reset_admin_password.py` | 重置管理员密码 | 忘记密码时使用 |
 | `batch_update_prices.py` | 批量更新商品价格 | 批量价格更新 |
+| `update_order_prices.py` | 更新订单价格 | 价格修复 |
+| `update_product_prices.py` | 更新商品价格 | 商品价格更新 |
+| `update_product_prices_from_table.py` | 从表格更新商品价格 | 批量价格导入 |
 
-### 🧹 清理脚本
+### 🗄️ 数据库管理脚本
 
 | 脚本 | 说明 | 使用场景 |
 |-----|------|---------|
-| `clear_orders.py` | 清理订单数据 | 测试环境清理 |
-| `clear_all_data.py` | 清理所有数据 | 测试环境清理 |
+| `recreate_database.py` | 重建数据库 | 数据库重置 |
+| `reset_database.py` | 重置数据库 | 数据库清理 |
+| `restart_backend.py` | 重启后端服务 | 服务重启 |
 
 ---
 
@@ -73,11 +75,27 @@ python scripts/update_order_costs.py
 python scripts/update_order_costs.py 1
 ```
 
-### 数据验证
+### 更新价格
 
 ```bash
-# 验证订单金额和回款统计
-python scripts/verify_order_amount_and_collection.py
+# 批量更新商品价格
+python scripts/batch_update_prices.py
+
+# 更新订单价格
+python scripts/update_order_prices.py
+
+# 更新商品价格
+python scripts/update_product_prices.py
+```
+
+### 数据库管理
+
+```bash
+# 重建数据库
+python scripts/recreate_database.py
+
+# 重置数据库
+python scripts/reset_database.py
 ```
 
 ---

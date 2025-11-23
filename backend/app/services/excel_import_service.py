@@ -777,7 +777,9 @@ class ExcelImportService:
                     
                     existing.customer_id = self.get_column_value(row, ['客户ID', '买家ID', '用户ID'], '')
                     
-                    # 提取地址信息
+                    # 提取地址信息（城市级别 + 邮编，用于精确确定区域）
+                    # 存储：国家、省份、城市、邮编（有助于精确确定订单收货地址的区域）
+                    # 不存储：详细地址、电话、姓名等隐私信息
                     shipping_country = self.get_column_value(row, ['国家', '收货国家', '收货人国家', 'Country'], '')
                     shipping_city = self.get_column_value(row, ['城市', '收货城市', 'City'], '')
                     shipping_province = self.get_column_value(row, ['省份', '州', '收货省份', '收货州', 'Province', 'State'], '')

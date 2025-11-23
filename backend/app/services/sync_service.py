@@ -578,8 +578,10 @@ class SyncService:
             parent_order.get('shippingPostalCode') or 
             ''
         )
+        # 注意：存储邮编用于精确确定订单收货地址的区域
+        # 不存储：详细地址（addressLine）、电话（mobile）、姓名（receiptName）等隐私信息
         
-        # 提取客户信息
+        # 提取客户信息（仅客户ID，不存储其他个人信息）
         customer_id = parent_order.get('customerId') or parent_order.get('buyerId') or ''
         
         # 根据productSkuId、extCode或spu_id匹配商品，获取供货价和成本价
