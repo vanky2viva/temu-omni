@@ -225,24 +225,54 @@ class UnifiedStatisticsService:
         """
         parent_order_key = UnifiedStatisticsService.get_parent_order_key()
         
-        # 通过product_id关联Product表获取负责人
-        results = db.query(
-            Product.manager.label("manager"),
-            func.sum(Order.quantity).label("total_quantity"),
-            func.count(func.distinct(parent_order_key)).label("order_count"),
-            func.sum(Order.total_price).label("total_gmv"),
-            func.sum(Order.profit).label("total_profit"),
-        ).join(
-            Product, Order.product_id == Product.id
-        ).filter(
-            and_(*filters),
-            Product.manager.isnot(None),
-            Product.manager != ''
-        ).group_by(
-            Product.manager
-        ).order_by(
-            func.sum(Order.quantity).desc()
-        ).all()
+        # 从店铺表获取负责人信息（Shop.default_manager）
+        # 每个订单通过shop_id关联到店铺，获取店铺的默认负责人
+        # 使用 COALESCE 处理空值，将没有负责人的订单归类为"未分配"
+        # 先按父订单和负责人分组，计算每个父订单的统计数据
+        try:
+            # 使用 COALESCE 处理空值，确保所有订单都被统计
+            # 将没有负责人的订单归类为"未分配"
+            manager_expr = case(
+                (Shop.default_manager.is_(None), '未分配'),
+                (Shop.default_manager == '', '未分配'),
+                else_=Shop.default_manager
+            )
+            
+            parent_order_stats = db.query(
+                parent_order_key.label('parent_key'),
+                manager_expr.label('manager'),
+                func.sum(Order.quantity).label('parent_quantity'),
+                func.sum(Order.total_price).label('parent_gmv'),
+                func.sum(Order.profit).label('parent_profit'),
+            ).join(
+                Shop, Order.shop_id == Shop.id
+            ).filter(
+                and_(*filters)
+            ).group_by(
+                parent_order_key,
+                manager_expr
+            ).subquery()
+            
+            # 再按负责人分组，汇总统计数据（订单数按父订单去重）
+            results = db.query(
+                parent_order_stats.c.manager.label("manager"),
+                func.sum(parent_order_stats.c.parent_quantity).label("total_quantity"),
+                func.count(parent_order_stats.c.parent_key).label("order_count"),
+                func.sum(parent_order_stats.c.parent_gmv).label("total_gmv"),
+                func.sum(parent_order_stats.c.parent_profit).label("total_profit"),
+            ).group_by(
+                parent_order_stats.c.manager
+            ).order_by(
+                func.sum(parent_order_stats.c.parent_quantity).desc()
+            ).all()
+        except Exception as e:
+            # 如果子查询失败，记录错误并返回空列表
+            from loguru import logger
+            import traceback
+            logger.error(f"负责人统计查询失败: {e}")
+            logger.error(traceback.format_exc())
+            # 返回空列表，避免500错误
+            return []
         
         return [
             {

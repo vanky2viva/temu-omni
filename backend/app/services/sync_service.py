@@ -551,36 +551,6 @@ class SyncService:
         goods_id = order_item.get('goodsId') or order_item.get('goods_id') or ''
         quantity = order_item.get('goodsNumber') or order_item.get('quantity') or 1
         
-        # 提取地址信息
-        shipping_info = parent_order.get('shippingInfo') or parent_order.get('address') or {}
-        shipping_country = (
-            shipping_info.get('country') or 
-            shipping_info.get('countryName') or 
-            parent_order.get('shippingCountry') or 
-            ''
-        )
-        shipping_city = (
-            shipping_info.get('city') or 
-            shipping_info.get('cityName') or 
-            parent_order.get('shippingCity') or 
-            ''
-        )
-        shipping_province = (
-            shipping_info.get('province') or 
-            shipping_info.get('provinceName') or 
-            shipping_info.get('state') or 
-            parent_order.get('shippingProvince') or 
-            ''
-        )
-        shipping_postal_code = (
-            shipping_info.get('postalCode') or 
-            shipping_info.get('zipCode') or 
-            parent_order.get('shippingPostalCode') or 
-            ''
-        )
-        # 注意：存储邮编用于精确确定订单收货地址的区域
-        # 不存储：详细地址（addressLine）、电话（mobile）、姓名（receiptName）等隐私信息
-        
         # 提取客户信息（仅客户ID，不存储其他个人信息）
         customer_id = parent_order.get('customerId') or parent_order.get('buyerId') or ''
         
@@ -711,15 +681,11 @@ class SyncService:
             expect_ship_latest_time=expect_ship_latest_time,
             delivery_time=delivery_time,
             
-            # 客户和地址信息
+            # 客户信息
             customer_id=customer_id if customer_id else None,
             
             # 关联原始数据
             raw_data_id=raw_order.id if raw_order else None,
-            shipping_country=shipping_country if shipping_country else None,
-            shipping_city=shipping_city if shipping_city else None,
-            shipping_province=shipping_province if shipping_province else None,
-            shipping_postal_code=shipping_postal_code if shipping_postal_code else None,
             
             # 注意：raw_data字段已废弃，现在使用raw_data_id关联到temu_orders_raw表
             # raw_data=json.dumps(full_order_data, ensure_ascii=False),  # 已废弃

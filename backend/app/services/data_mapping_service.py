@@ -123,32 +123,6 @@ class DataMappingService:
             # 提取客户信息
             customer_id = parent_order.get('customerId') or parent_order.get('buyerId')
             
-            # 提取地址信息
-            shipping_info = parent_order.get('shippingInfo') or parent_order.get('address') or {}
-            shipping_country = (
-                shipping_info.get('country') or
-                shipping_info.get('countryName') or
-                parent_order.get('shippingCountry')
-            )
-            shipping_city = (
-                shipping_info.get('city') or
-                shipping_info.get('cityName') or
-                parent_order.get('shippingCity')
-            )
-            shipping_province = (
-                shipping_info.get('province') or
-                shipping_info.get('provinceName') or
-                shipping_info.get('state') or
-                parent_order.get('shippingProvince')
-            )
-            shipping_postal_code = (
-                shipping_info.get('postalCode') or
-                shipping_info.get('zipCode') or
-                parent_order.get('shippingPostalCode')
-            )
-            # 注意：存储邮编用于精确确定订单收货地址的区域
-            # 不存储：详细地址（addressLine）、电话（mobile）、姓名（receiptName）等隐私信息
-            
             # 提取商品信息（从orderItem的productList）
             order_items_data = self._extract_order_items_from_structure(order_item, parent_order)
             
@@ -168,10 +142,6 @@ class DataMappingService:
                 'delivery_time': delivery_time,
                 'expect_ship_latest_time': expect_ship_latest_time,
                 'customer_id': customer_id,
-                'shipping_country': shipping_country,
-                'shipping_city': shipping_city,
-                'shipping_province': shipping_province,
-                'shipping_postal_code': shipping_postal_code,
                 'raw_data_id': raw_order.id,
                 'order_items': order_items_data,
             }

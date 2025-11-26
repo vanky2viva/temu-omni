@@ -47,3 +47,4 @@ def downgrade():
     op.drop_index('idx_product_costs_product_effective', table_name='product_costs')
     # op.drop_index('idx_products_id_created', table_name='products')
 
+

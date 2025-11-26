@@ -546,6 +546,46 @@ class TemuAPIClient:
         data = {"orderSn": order_sn}
         return await self._request("bg.order.amount.query", data, access_token)
     
+    async def get_shipment_info(
+        self,
+        access_token: str,
+        parent_order_sn: str
+    ) -> Dict[str, Any]:
+        """
+        获取发货信息
+        
+        参考文档: https://partner-us.temu.com/documentation?menu_code=fb16b05f7a904765aac4af3a24b87d4a
+        
+        Args:
+            access_token: 访问令牌
+            parent_order_sn: 父订单号
+            
+        Returns:
+            发货信息
+        """
+        data = {"parentOrderSn": parent_order_sn}
+        return await self._request("bg.logistics.shipment.get", data, access_token)
+    
+    async def get_shipment_document(
+        self,
+        access_token: str,
+        shipment_id: str
+    ) -> Dict[str, Any]:
+        """
+        获取发货面单信息
+        
+        参考文档: https://partner-us.temu.com/documentation?menu_code=fb16b05f7a904765aac4af3a24b87d4a
+        
+        Args:
+            access_token: 访问令牌
+            shipment_id: 发货单ID
+            
+        Returns:
+            发货面单信息（可能包含PDF链接或Base64编码的文档）
+        """
+        data = {"shipmentId": shipment_id}
+        return await self._request("bg.logistics.shipment.document.get", data, access_token)
+    
     async def close(self):
         """关闭HTTP客户端"""
         if not self._closed:

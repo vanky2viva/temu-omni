@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Select,
@@ -51,6 +51,7 @@ function SalesStatistics() {
 
   // 筛选条件
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null)
+  const [quickSelectValue, setQuickSelectValue] = useState<string>('all') // 默认选择"全部"
   const [shopIds, setShopIds] = useState<number[]>([])
   const [manager, setManager] = useState<string | undefined>()
   const [region, setRegion] = useState<string | undefined>()
@@ -287,14 +288,16 @@ function SalesStatistics() {
       const row: any = {
         key: day.date,
         date: day.date,
-        total: day.quantity || 0,
+        totalOrders: day.orders || 0,  // 总订单数
+        totalQuantity: day.quantity || 0,  // 总件数
       }
       
-      // 添加每个店铺的销量
+      // 添加每个店铺的订单数和件数
       shopNames.forEach((shopName) => {
         const shopData = shopTrends[shopName]
         const dayData = shopData.find((d: any) => d.date === day.date)
-        row[shopName] = dayData ? (dayData.quantity || 0) : 0
+        row[`${shopName}_orders`] = dayData ? (dayData.orders || 0) : 0
+        row[`${shopName}_quantity`] = dayData ? (dayData.quantity || 0) : 0
       })
       
       return row
@@ -318,52 +321,96 @@ function SalesStatistics() {
         dataIndex: 'date',
         key: 'date',
         width: 65,
-        fixed: 'left' as const,
         render: (date: string) => (
-          <span style={{ color: '#c9d1d9', fontFamily: 'monospace', fontSize: '11px' }}>
+          <span style={{ color: '#c9d1d9', fontFamily: 'monospace', fontSize: '13px' }}>
             {dayjs(date).format('MM-DD')}
           </span>
         ),
       },
     ]
 
-    // 添加每个店铺的列
+    // 添加每个店铺的列（订单数和件数）
     shopNames.forEach((shopName) => {
       columns.push({
         title: shopName,
-        dataIndex: shopName,
         key: shopName,
-        width: 75,
-        align: 'right' as const,
-        render: (value: number) => (
-          <span style={{ 
-            color: '#48c774',
-            fontWeight: 500,
-            fontSize: '11px',
-          }}>
-            {value.toLocaleString()}
-          </span>
-        ),
+        align: 'center' as const,
+        children: [
+          {
+            title: '订单数',
+            dataIndex: `${shopName}_orders`,
+            key: `${shopName}_orders`,
+            width: 70,
+            align: 'right' as const,
+            render: (value: number) => (
+              <span style={{ 
+                color: '#3273dc',
+                fontWeight: 500,
+                fontSize: '13px',
+              }}>
+                {value.toLocaleString()}
+              </span>
+            ),
+          },
+          {
+            title: '件数',
+            dataIndex: `${shopName}_quantity`,
+            key: `${shopName}_quantity`,
+            width: 70,
+            align: 'right' as const,
+            render: (value: number) => (
+              <span style={{ 
+                color: '#48c774',
+                fontWeight: 500,
+                fontSize: '13px',
+              }}>
+                {value.toLocaleString()}
+              </span>
+            ),
+          },
+        ],
       })
     })
 
-    // 添加总计列
+    // 添加总计列（订单数和件数）
     columns.push({
-      title: '总计',
-      dataIndex: 'total',
+      title: '合计',
       key: 'total',
-      width: 65,
-      fixed: 'right' as const,
-      align: 'right' as const,
-      render: (value: number) => (
-        <span style={{ 
-          color: '#00d1b2',
-          fontWeight: 600,
-          fontSize: '11px',
-        }}>
-          {value.toLocaleString()}
-        </span>
-      ),
+      align: 'center' as const,
+      children: [
+        {
+          title: '订单数',
+          dataIndex: 'totalOrders',
+          key: 'totalOrders',
+          width: 70,
+          align: 'right' as const,
+          render: (value: number) => (
+            <span style={{ 
+              color: '#3273dc',
+              fontWeight: 600,
+              fontSize: '13px',
+            }}>
+              {value.toLocaleString()}
+            </span>
+          ),
+        },
+        {
+          title: '件数',
+          dataIndex: 'totalQuantity',
+          key: 'totalQuantity',
+          width: 70,
+          align: 'right' as const,
+          render: (value: number) => (
+            <span style={{ 
+              color: '#00d1b2',
+              fontWeight: 600,
+              fontSize: '13px',
+            }}>
+              {value.toLocaleString()}
+            </span>
+          ),
+        },
+      ],
     })
 
     return columns
@@ -610,9 +657,13 @@ function SalesStatistics() {
     },
   ]
 
-  // 刷新所有数据 - 立即重新获取并计算
+  // 自动刷新相关状态
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const handleRefresh = async () => {
+  const [countdown, setCountdown] = useState(300) // 5分钟 = 300秒
+  const AUTO_REFRESH_INTERVAL = 300 // 5分钟（秒）
+
+  // 刷新所有数据 - 立即重新获取并计算
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true)
     try {
       // 清除相关查询的缓存，确保获取最新数据
@@ -628,11 +679,50 @@ function SalesStatistics() {
         activeTab === 'sku' ? refetchSku() : Promise.resolve(),
         activeTab === 'manager' ? refetchManager() : Promise.resolve(),
       ])
+      
+      // 刷新成功后重置倒计时
+      setCountdown(AUTO_REFRESH_INTERVAL)
     } catch (error) {
       console.error('刷新数据失败:', error)
     } finally {
       setIsRefreshing(false)
     }
+  }, [queryClient, refetchShops, refetchOverview, refetchSku, refetchManager, activeTab, AUTO_REFRESH_INTERVAL])
+
+  // 自动刷新和倒计时：使用同一个定时器管理
+  useEffect(() => {
+    // 自动刷新定时器：每5分钟执行一次
+    const autoRefreshInterval = setInterval(() => {
+      handleRefresh()
+    }, AUTO_REFRESH_INTERVAL * 1000)
+
+    // 倒计时定时器：每秒更新一次（刷新时暂停）
+    const countdownInterval = setInterval(() => {
+      // 如果正在刷新，暂停倒计时
+      if (isRefreshing) {
+        return
+      }
+      
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          // 倒计时到0时，重置为初始值（自动刷新会由上面的定时器触发）
+          return AUTO_REFRESH_INTERVAL
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      clearInterval(autoRefreshInterval)
+      clearInterval(countdownInterval)
+    }
+  }, [handleRefresh, AUTO_REFRESH_INTERVAL, isRefreshing])
+
+  // 格式化倒计时显示（MM:SS）
+  const formatCountdown = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
   // 计算核心指标
@@ -689,17 +779,28 @@ function SalesStatistics() {
           </p>
         </div>
         <Space wrap>
-          <Tooltip title="刷新数据">
+          <Tooltip title={isRefreshing ? "正在刷新数据..." : "刷新数据"}>
             <Button
               type="primary"
               icon={<ReloadOutlined />}
               onClick={handleRefresh}
               loading={isRefreshing}
+              disabled={isRefreshing}
               className="bulma-button"
             >
               {isRefreshing ? '刷新中...' : '刷新'}
             </Button>
           </Tooltip>
+          <span style={{ 
+            color: isRefreshing ? '#00d1b2' : '#8b949e', 
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+          }}>
+            <span style={{ color: isRefreshing ? '#00d1b2' : '#8b949e' }}>⏱</span>
+            <span>{isRefreshing ? '正在刷新...' : `自动刷新: ${formatCountdown(countdown)}`}</span>
+          </span>
           <Dropdown menu={{ items: quickFilterMenu }} placement="bottomRight">
             <Button
               icon={<FilterOutlined />}
@@ -723,10 +824,12 @@ function SalesStatistics() {
             {/* 快捷时间选择下拉框 */}
             <Select
               placeholder="快捷选择"
-              allowClear
+              value={quickSelectValue}
               style={{ width: 120 }}
               onChange={(value) => {
-                if (!value) {
+                setQuickSelectValue(value)
+                
+                if (value === 'all' || !value) {
                   setDateRange(null)
                   return
                 }
@@ -766,6 +869,7 @@ function SalesStatistics() {
                 setDateRange([start, end])
               }}
               options={[
+                { label: '全部', value: 'all' },
                 { label: '今天', value: 'today' },
                 { label: '昨天', value: 'yesterday' },
                 { label: '最近7天', value: 'last7days' },
@@ -777,7 +881,14 @@ function SalesStatistics() {
             />
             <RangePicker
               value={dateRange}
-              onChange={(dates) => setDateRange(dates)}
+              onChange={(dates) => {
+                setDateRange(dates)
+                // 当手动选择日期时，如果清空则设置为"全部"
+                if (!dates) {
+                  setQuickSelectValue('all')
+                }
+                // 手动选择日期时，不自动更新快捷选择的值，保持当前选择或显示为自定义
+              }}
               format="YYYY-MM-DD"
               placeholder={['开始日期', '结束日期']}
               allowClear
@@ -1094,27 +1205,30 @@ function SalesStatistics() {
               fontWeight: 600,
               fontSize: '13px',
             }}>
-              每日店铺销量
+              每日店铺订单与销量
             </span>
           </header>
-          <div style={{ maxHeight: isMobile ? '400px' : '500px', overflowY: 'auto' }}>
+          <div style={{ maxHeight: isMobile ? '400px' : '500px', overflowY: 'auto', overflowX: 'hidden' }}>
             <Table
               columns={dailySalesColumns}
               dataSource={dailySalesTableData}
               pagination={false}
-              scroll={{ x: 'max-content', y: isMobile ? '350px' : '450px' }}
+              scroll={{ y: isMobile ? '350px' : '450px' }}
               size="small"
-              style={{ background: 'transparent' }}
+              style={{ background: 'transparent', width: '100%' }}
               className="compact-table"
               components={{
                 body: {
                   cell: (props: any) => (
-                    <td {...props} style={{ ...props.style, padding: '4px 8px' }} />
+                    <td {...props} style={{ ...props.style, padding: '2px 6px', lineHeight: '1.4' }} />
+                  ),
+                  row: (props: any) => (
+                    <tr {...props} style={{ ...props.style, height: '32px' }} />
                   ),
                 },
                 header: {
                   cell: (props: any) => (
-                    <th {...props} style={{ ...props.style, padding: '6px 8px', fontSize: '12px' }} />
+                    <th {...props} style={{ ...props.style, padding: '4px 6px', fontSize: '13px', fontWeight: 600, lineHeight: '1.4' }} />
                   ),
                 },
               }}

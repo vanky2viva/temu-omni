@@ -573,3 +573,117 @@ def get_order_status_statistics(
         week_changes=week_changes if week_changes else None
     )
 
+
+@router.get("/{parent_order_sn}/shipment-document")
+async def get_shipment_document(
+    parent_order_sn: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取订单的发货面单信息
+    
+    根据父订单号获取发货面单（PDF文档或Base64编码的文档）
+    
+    Args:
+        parent_order_sn: 父订单号（如：PO-211-16278814116470363）
+        
+    Returns:
+        发货面单信息（可能包含PDF链接、Base64编码的文档等）
+    """
+    import asyncio
+    from app.models.shop import Shop
+    from app.services.temu_service import TemuService
+    from loguru import logger
+    
+    # 根据父订单号查找订单，获取店铺信息
+    order = db.query(Order).filter(
+        Order.parent_order_sn == parent_order_sn
+    ).first()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"未找到订单号 {parent_order_sn} 的订单"
+        )
+    
+    # 获取店铺信息
+    shop = db.query(Shop).filter(Shop.id == order.shop_id).first()
+    if not shop:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="订单关联的店铺不存在"
+        )
+    
+    if not shop.access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="店铺未配置访问令牌，无法调用Temu API"
+        )
+    
+    # 创建Temu服务实例
+    temu_service = TemuService(shop)
+    standard_client = temu_service._get_standard_client()
+    
+    try:
+        # 步骤1：获取发货信息（获取发货单ID）
+        shipment_info = await standard_client.get_shipment_info(
+            access_token=temu_service.access_token,
+            parent_order_sn=parent_order_sn
+        )
+        
+        # 从发货信息中提取发货单ID
+        # 注意：根据Temu API文档，发货信息可能包含多个发货单，需要根据实际情况处理
+        shipment_id = None
+        if isinstance(shipment_info, dict):
+            # 尝试多种可能的字段名
+            shipment_id = (
+                shipment_info.get('shipmentId') or
+                shipment_info.get('shipment_id') or
+                shipment_info.get('id')
+            )
+            # 如果发货信息中包含发货单列表，取第一个
+            if not shipment_id and 'shipmentList' in shipment_info:
+                shipment_list = shipment_info.get('shipmentList', [])
+                if shipment_list and len(shipment_list) > 0:
+                    shipment_id = (
+                        shipment_list[0].get('shipmentId') or
+                        shipment_list[0].get('shipment_id') or
+                        shipment_list[0].get('id')
+                    )
+        
+        if not shipment_id:
+            # 如果无法从发货信息中获取发货单ID，返回发货信息
+            return {
+                "success": True,
+                "message": "已获取发货信息，但未找到发货单ID",
+                "shipment_info": shipment_info,
+                "note": "可能需要使用其他方式获取发货单ID"
+            }
+        
+        # 步骤2：使用发货单ID获取发货面单
+        document_info = await standard_client.get_shipment_document(
+            access_token=temu_service.access_token,
+            shipment_id=str(shipment_id)
+        )
+        
+        return {
+            "success": True,
+            "parent_order_sn": parent_order_sn,
+            "shipment_id": shipment_id,
+            "shipment_info": shipment_info,
+            "document": document_info
+        }
+        
+    except Exception as e:
+        logger.error(f"获取发货面单失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取发货面单失败: {str(e)}"
+        )
+    finally:
+        # 确保无论成功还是失败都关闭客户端
+        await standard_client.close()
+

@@ -122,3 +122,4 @@ product_sku  (SKU货号)      sku  (SKU ID)
 2. 对比`Order.product_sku`和`Product.sku`的值
 3. 确认哪个是唯一的商品标识符，哪个是订单中的SKU货号
 
+

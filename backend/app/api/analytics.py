@@ -627,10 +627,10 @@ def get_sku_sales_ranking(
         start_date, end_date, days
     )
     
-    # 如果没有提供日期范围，使用默认30天
+    # 如果没有提供日期范围，不应用时间筛选（统计所有历史数据）
     if not start_dt or not end_dt:
-        end_dt = get_hk_now()
-        start_dt = end_dt - timedelta(days=days or 30)
+        start_dt = None
+        end_dt = None
     
     # 构建查询条件（使用统一服务的方法）
     filters = UnifiedStatisticsService.build_base_filters(
@@ -656,15 +656,24 @@ def get_sku_sales_ranking(
         })
     
     # 计算实际使用的天数（用于返回）
-    actual_days = (end_dt - start_dt).days + 1
-    
-    return {
-        "ranking": ranking,
-        "period": {
+    if start_dt and end_dt:
+        actual_days = (end_dt - start_dt).days + 1
+        period_info = {
             "start_date": start_dt.isoformat(),
             "end_date": end_dt.isoformat(),
             "days": actual_days
         }
+    else:
+        # 如果没有日期范围，返回None表示统计所有时间
+        period_info = {
+            "start_date": None,
+            "end_date": None,
+            "days": None
+        }
+    
+    return {
+        "ranking": ranking,
+        "period": period_info
     }
 
 
@@ -793,21 +802,28 @@ def get_manager_sales(
         start_date, end_date, days
     )
     
-    # 如果没有提供日期范围，使用默认30天
+    # 如果没有提供日期范围，不应用时间筛选（统计所有历史数据）
     if not start_dt or not end_dt:
-        end_dt = get_hk_now()
-        start_dt = end_dt - timedelta(days=days or 30)
-    
-    from app.services.unified_statistics import UnifiedStatisticsService
+        start_dt = None
+        end_dt = None
     
     # 构建基础查询条件（不含负责人筛选，使用统一服务的方法）
+    # 注意：build_base_filters 期望 datetime 对象，而不是字符串
     base_filters = UnifiedStatisticsService.build_base_filters(
-        db, start_date, end_date, shop_ids, None, region, None
+        db, start_dt, end_dt, shop_ids, None, region, None
     )
     
     # 获取负责人统计（使用统一服务）
     # 注意：统一服务会自动过滤掉没有负责人的订单
-    manager_stats = UnifiedStatisticsService.get_manager_statistics(db, base_filters)
+    try:
+        manager_stats = UnifiedStatisticsService.get_manager_statistics(db, base_filters)
+    except Exception as e:
+        from loguru import logger
+        import traceback
+        logger.error(f"获取负责人统计失败: {e}")
+        logger.error(traceback.format_exc())
+        # 返回空列表而不是抛出异常
+        manager_stats = []
     
     # 如果指定了负责人，只返回该负责人的数据
     if manager:
@@ -821,16 +837,21 @@ def get_manager_sales(
     
     if manager:
         # 如果指定了负责人，只统计该负责人的日趋势
+        # 使用与 get_manager_statistics 相同的逻辑处理空值
+        from sqlalchemy import case
+        manager_expr = case(
+            (Shop.default_manager.is_(None), '未分配'),
+            (Shop.default_manager == '', '未分配'),
+            else_=Shop.default_manager
+        )
         daily_trends = db.query(
             func.date(Order.order_time).label("date"),
             func.count(func.distinct(parent_order_key)).label("orders"),  # 每日订单数（按父订单去重）
         ).join(
-            Product, Order.product_id == Product.id
+            Shop, Order.shop_id == Shop.id
         ).filter(
             and_(*base_filters),
-            Product.manager == manager,
-            Product.manager.isnot(None),
-            Product.manager != ''
+            manager_expr == manager
         ).group_by(
             func.date(Order.order_time)
         ).order_by(
@@ -849,17 +870,21 @@ def get_manager_sales(
     else:
         # 如果没指定负责人，统计所有负责人的日趋势（每日订单数）
         all_managers = [m['manager'] for m in manager_stats]
+        from sqlalchemy import case
+        manager_expr = case(
+            (Shop.default_manager.is_(None), '未分配'),
+            (Shop.default_manager == '', '未分配'),
+            else_=Shop.default_manager
+        )
         for mgr in all_managers:
             daily_trends = db.query(
                 func.date(Order.order_time).label("date"),
                 func.count(func.distinct(parent_order_key)).label("orders"),  # 每日订单数（按父订单去重）
             ).join(
-                Product, Order.product_id == Product.id
+                Shop, Order.shop_id == Shop.id
             ).filter(
                 and_(*base_filters),
-                Product.manager == mgr,
-                Product.manager.isnot(None),
-                Product.manager != ''
+                manager_expr == mgr
             ).group_by(
                 func.date(Order.order_time)
             ).order_by(
@@ -887,15 +912,24 @@ def get_manager_sales(
         })
     
     # 计算实际使用的天数（用于返回）
-    actual_days = (end_date - start_date).days + 1
+    if start_dt and end_dt:
+        actual_days = (end_dt - start_dt).days + 1
+        period_info = {
+            "start_date": start_dt.isoformat(),
+            "end_date": end_dt.isoformat(),
+            "days": actual_days
+        }
+    else:
+        # 如果没有日期范围，返回None表示统计所有时间
+        period_info = {
+            "start_date": None,
+            "end_date": None,
+            "days": None
+        }
     
     return {
         "managers": manager_data,
-        "period": {
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-            "days": actual_days
-        }
+        "period": period_info
     }
 
 
@@ -965,34 +999,48 @@ def get_payment_collection(
         filters.append(Order.shop_id.in_(shop_ids))
     
     # 按店铺和回款日期分组统计
+    # 注意：回款金额应按父订单去重统计，与签收订单总价保持一致
+    from app.services.unified_statistics import UnifiedStatisticsService
+    parent_order_key = UnifiedStatisticsService.get_parent_order_key()
     
-    results = db.query(
+    # 先按父订单分组，计算每个父订单的回款金额和回款日期
+    parent_order_collections = db.query(
+        parent_order_key.label('parent_key'),
         Shop.id.label("shop_id"),
         Shop.shop_name,
         collection_date_expr.label("collection_date"),
-        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("collection_amount"),
-        func.count(Order.id).label("order_count")
+        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("parent_amount"),
     ).join(
         Shop, Shop.id == Order.shop_id
     ).filter(
         and_(*filters)
     ).group_by(
+        parent_order_key,
         Shop.id,
         Shop.shop_name,
         collection_date_expr
+    ).subquery()
+    
+    # 再按店铺和回款日期分组统计
+    results = db.query(
+        parent_order_collections.c.shop_id,
+        parent_order_collections.c.shop_name,
+        parent_order_collections.c.collection_date,
+        func.sum(parent_order_collections.c.parent_amount).label("collection_amount"),
+        func.count(parent_order_collections.c.parent_key).label("order_count")
+    ).group_by(
+        parent_order_collections.c.shop_id,
+        parent_order_collections.c.shop_name,
+        parent_order_collections.c.collection_date
     ).order_by(
-        collection_date_expr,
-        Shop.shop_name
+        parent_order_collections.c.collection_date,
+        parent_order_collections.c.shop_name
     ).all()
     
-    # 计算总计
+    # 计算总计（按父订单去重）
     total_collection = db.query(
-        func.sum(_convert_to_cny(Order.total_price, usd_rate)).label("total_amount"),
-        func.count(Order.id).label("total_orders")
-    ).join(
-        Shop, Shop.id == Order.shop_id
-    ).filter(
-        and_(*filters)
+        func.sum(parent_order_collections.c.parent_amount).label("total_amount"),
+        func.count(parent_order_collections.c.parent_key).label("total_orders")
     ).first()
     
     # 格式化结果：按日期和店铺组织数据
@@ -1101,10 +1149,10 @@ def get_delay_rate(
         start_date, end_date, days
     )
     
-    # 如果没有提供日期范围，使用默认7天
+    # 如果没有提供日期范围，不应用时间筛选（统计所有历史数据）
     if not start_dt or not end_dt:
-        end_dt = get_hk_now()
-        start_dt = end_dt - timedelta(days=days or 7)
+        start_dt = None
+        end_dt = None
     
     # 构建基础过滤条件（使用统一服务的方法）
     base_filters = UnifiedStatisticsService.build_base_filters(
@@ -1142,15 +1190,27 @@ def get_delay_rate(
     # 计算延迟率
     delay_rate = (delayed_orders / total_orders) if total_orders > 0 else 0.0
     
+    # 计算实际使用的天数（用于返回）
+    if start_dt and end_dt:
+        actual_days = (end_dt - start_dt).days + 1
+        period_info = {
+            "start_date": start_dt.isoformat(),
+            "end_date": end_dt.isoformat(),
+            "days": actual_days
+        }
+    else:
+        # 如果没有日期范围，返回None表示统计所有时间
+        period_info = {
+            "start_date": None,
+            "end_date": None,
+            "days": None
+        }
+    
     return {
         "delay_rate": round(delay_rate, 4),  # 返回0-1之间的小数
         "delayed_orders": delayed_orders,
         "total_orders": total_orders,
-        "period": {
-            "start_date": start_dt.isoformat(),
-            "end_date": end_dt.isoformat(),
-            "days": (end_dt - start_dt).days + 1
-        }
+        "period": period_info
     }
 
 
