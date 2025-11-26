@@ -1431,18 +1431,20 @@ function OrderList() {
             }),
           }}
           scroll={{ 
-            x: 'max-content',
+            x: isMobile ? 'max-content' : 'max-content',
             y: isMobile ? undefined : 'calc(100vh - 400px)',
           }}
+          size={isMobile ? "small" : "middle"}
           pagination={pagination.total > 0 ? {
             current: pagination.current,
             pageSize: pagination.pageSize,
             total: pagination.total,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showLessItems: false,
+            showSizeChanger: !isMobile, // 移动端隐藏页面大小选择器
+            showQuickJumper: !isMobile, // 移动端隐藏快速跳转
+            showLessItems: isMobile, // 移动端显示更少的页码
             // showTotal 不设置，已移到表格上方显示
             pageSizeOptions: ['20', '50', '100', '200'],
+            simple: isMobile, // 移动端使用简单分页
             onChange: (page, pageSize) => {
               setPagination(prev => ({
                 ...prev,

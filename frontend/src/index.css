@@ -896,10 +896,28 @@ body {
     padding: 12px !important;
   }
 
-  /* 表格在移动端水平滚动 */
+  /* 表格在移动端水平滚动 - 优化触摸滚动 */
   .ant-table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    position: relative;
+  }
+
+  /* 表格容器添加滚动提示 */
+  .ant-table-wrapper::after {
+    content: '← 滑动查看更多 →';
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    font-size: 10px;
+    color: rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .theme-dark .ant-table-wrapper::after {
+    color: rgba(255, 255, 255, 0.3);
   }
 
   /* 订单列表表格在移动端优化 */
@@ -912,11 +930,26 @@ body {
     box-shadow: none;
   }
 
-  /* 复制按钮在移动端更小 */
+  /* 按钮在移动端 - 增大触摸区域 */
+  .ant-btn {
+    min-height: 44px !important; /* iOS推荐最小触摸区域 */
+    min-width: 44px !important;
+    font-size: 14px !important;
+    padding: 8px 16px !important;
+    touch-action: manipulation; /* 禁用双击缩放 */
+  }
+
+  .ant-btn-icon-only {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    padding: 8px !important;
+  }
+
+  /* 复制按钮在移动端优化 */
   .order-list-table .ant-btn-icon-only {
-    padding: 2px !important;
-    min-width: 24px !important;
-    height: 24px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    padding: 6px !important;
   }
 
   /* 卡片间距调整 */
@@ -928,6 +961,7 @@ body {
   .ant-row > .ant-col {
     padding-left: 8px !important;
     padding-right: 8px !important;
+    margin-bottom: 12px !important;
   }
 
   /* 统计卡片在移动端单列显示 */
@@ -939,6 +973,7 @@ body {
   .site-header {
     height: 56px !important;
     line-height: 56px !important;
+    padding: 0 12px !important;
   }
 
   /* 图表容器在移动端 */
@@ -951,24 +986,40 @@ body {
     margin-bottom: 16px !important;
   }
 
-  /* 按钮在移动端 */
-  .ant-btn {
-    min-height: 40px !important;
-    font-size: 14px !important;
-  }
-
-  /* 表格字体大小 */
+  /* 表格字体大小和间距优化 */
   .ant-table {
     font-size: 12px !important;
   }
 
   .ant-table-thead > tr > th {
-    padding: 8px 4px !important;
+    padding: 10px 6px !important;
     font-size: 11px !important;
+    white-space: nowrap;
   }
 
   .ant-table-tbody > tr > td {
+    padding: 10px 6px !important;
+    font-size: 12px !important;
+    word-break: break-word;
+  }
+
+  /* 表格行在移动端增大触摸区域 */
+  .ant-table-tbody > tr {
+    min-height: 48px !important;
+  }
+
+  .ant-table-tbody > tr > td {
+    vertical-align: middle !important;
+  }
+
+  /* 紧凑表格在移动端优化 */
+  .compact-table .ant-table-thead > tr > th {
     padding: 8px 4px !important;
+    font-size: 10px !important;
+  }
+
+  .compact-table .ant-table-tbody > tr > td {
+    padding: 6px 4px !important;
     font-size: 11px !important;
   }
 
@@ -977,12 +1028,16 @@ body {
     display: flex !important;
     flex-wrap: wrap !important;
     justify-content: center !important;
+    margin: 16px 0 !important;
   }
 
   .ant-pagination-item,
   .ant-pagination-prev,
   .ant-pagination-next {
     margin: 4px 2px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    line-height: 34px !important;
   }
 
   /* 抽屉菜单样式 */
@@ -990,16 +1045,105 @@ body {
     padding: 0 !important;
   }
 
-  /* 输入框在移动端 */
+  /* 输入框在移动端 - 防止iOS自动缩放 */
   .ant-input,
   .ant-input-number,
   .ant-select-selector {
-    font-size: 16px !important; /* 防止iOS自动缩放 */
+    font-size: 16px !important;
+    min-height: 44px !important;
+    padding: 8px 12px !important;
+    touch-action: manipulation;
+  }
+
+  /* 选择器在移动端 */
+  .ant-select {
+    min-height: 44px !important;
+  }
+
+  .ant-select-selector {
+    min-height: 44px !important;
+    padding: 4px 8px !important;
   }
 
   /* 日期选择器在移动端 */
   .ant-picker {
     width: 100% !important;
+    min-height: 44px !important;
+    font-size: 16px !important;
+  }
+
+  /* Space组件在移动端垂直排列 */
+  .ant-space {
+    flex-wrap: wrap !important;
+  }
+
+  /* Card在移动端 */
+  .ant-card {
+    margin-bottom: 12px !important;
+    border-radius: 8px !important;
+  }
+
+  .ant-card-body {
+    padding: 12px !important;
+  }
+
+  /* 筛选区域在移动端 */
+  .ant-card .ant-space {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .ant-card .ant-space-item {
+    width: 100% !important;
+    margin-bottom: 8px !important;
+  }
+
+  /* Select下拉框在移动端全宽 */
+  .ant-select,
+  .ant-picker,
+  .ant-input {
+    width: 100% !important;
+  }
+
+  /* 标签在移动端 */
+  .ant-tag {
+    font-size: 12px !important;
+    padding: 4px 8px !important;
+    margin: 2px !important;
+  }
+
+  /* 表格滚动条优化 */
+  .ant-table-body::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .ant-table-body::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+  }
+
+  .theme-dark .ant-table-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  /* 触摸反馈优化 */
+  .ant-btn:active,
+  .ant-table-tbody > tr:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+    transition: all 0.1s ease;
+  }
+
+  /* 禁用文本选择（移动端优化） */
+  .ant-table-tbody > tr {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* 允许文本选择（对于需要复制的字段） */
+  .ant-table-tbody > tr > td[data-copyable] {
+    -webkit-user-select: text;
+    user-select: text;
   }
 }
 
@@ -1011,18 +1155,68 @@ body {
 
   .ant-card {
     border-radius: 4px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .ant-card-body {
+    padding: 10px !important;
   }
 
   h1 {
     font-size: 20px !important;
+    margin-bottom: 12px !important;
   }
 
   h2 {
     font-size: 18px !important;
+    margin-bottom: 10px !important;
   }
 
   h3 {
     font-size: 16px !important;
+    margin-bottom: 8px !important;
+  }
+
+  /* 表格在超小屏幕进一步优化 */
+  .ant-table {
+    font-size: 11px !important;
+  }
+
+  .ant-table-thead > tr > th {
+    padding: 8px 4px !important;
+    font-size: 10px !important;
+  }
+
+  .ant-table-tbody > tr > td {
+    padding: 8px 4px !important;
+    font-size: 11px !important;
+  }
+
+  /* 按钮在超小屏幕 */
+  .ant-btn {
+    min-height: 40px !important;
+    font-size: 13px !important;
+    padding: 6px 12px !important;
+  }
+
+  /* 输入框在超小屏幕 */
+  .ant-input,
+  .ant-select-selector,
+  .ant-picker {
+    font-size: 16px !important; /* 保持16px防止iOS缩放 */
+    min-height: 40px !important;
+  }
+
+  /* 统计卡片在超小屏幕 */
+  .stat-card {
+    padding: 12px !important;
+  }
+
+  /* 分页器在超小屏幕简化 */
+  .ant-pagination-item {
+    min-width: 32px !important;
+    min-height: 32px !important;
+    font-size: 12px !important;
   }
 }
 
