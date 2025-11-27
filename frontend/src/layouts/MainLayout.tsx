@@ -11,7 +11,6 @@ import {
   WalletOutlined,
   LogoutOutlined,
   UserOutlined,
-  RobotOutlined,
   MenuOutlined,
   GlobalOutlined,
 } from '@ant-design/icons'
@@ -54,11 +53,6 @@ const menuItems = [
     key: '/finance',
     icon: <WalletOutlined />,
     label: '财务管理',
-  },
-  {
-    key: '/forggpt',
-    icon: <RobotOutlined />,
-    label: 'ForgGPT',
   },
 ]
 

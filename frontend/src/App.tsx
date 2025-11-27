@@ -9,7 +9,6 @@ import ProductList from './pages/ProductList'
 import Logistics from './pages/Logistics'
 import Finance from './pages/Finance'
 import SalesStatistics from './pages/SalesStatistics'
-import ForgGPT from './pages/ForgGPT'
 
 function App() {
   return (
@@ -32,7 +31,6 @@ function App() {
           <Route path="logistics" element={<Logistics />} />
           <Route path="finance" element={<Finance />} />
           <Route path="statistics" element={<SalesStatistics />} />
-          <Route path="forggpt" element={<ForgGPT />} />
         </Route>
       </Routes>
     </BrowserRouter>

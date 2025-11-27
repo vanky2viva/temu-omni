@@ -2,8 +2,25 @@
  * Dashboard 状态管理（使用 Zustand）
  */
 import { create } from 'zustand'
-import { DashboardState, DashboardCommand } from '@/types/chatkit'
 import dayjs from 'dayjs'
+
+// Dashboard 状态和命令类型定义
+interface DashboardState {
+  dateRange: {
+    start: string
+    end: string
+  }
+  selectedShops: number[]
+  selectedMetric: 'gmv' | 'orders' | 'profit' | 'cost'
+  chartType: 'line' | 'bar' | 'pie'
+  focusedSku?: string
+  focusedProductId?: number
+}
+
+interface DashboardCommand {
+  type: 'SET_DATE_RANGE' | 'SET_METRIC_CHART' | 'FOCUS_SKU' | 'COMPARE_SHOPS' | 'REFRESH_DATA'
+  payload: any
+}
 
 interface DashboardStore extends DashboardState {
   dispatchCommand: (command: DashboardCommand) => void

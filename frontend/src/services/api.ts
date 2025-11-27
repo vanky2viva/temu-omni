@@ -158,28 +158,6 @@ export const importApi = {
     api.get(`/import/shops/${shopId}/history/${importId}`),
 }
 
-// ForgGPT API
-export const forggptApi = {
-  // 发送消息（普通响应）
-  chat: (data: {
-    message: string
-    session_id?: string
-    shop_ids?: number[]
-    date_range?: { start: string; end: string }
-    stream?: boolean
-    history?: Array<{ role: string; content: string }>
-  }) => api.post('/forggpt/chat', data, { timeout: 60000 }),
-  
-  // 获取对话历史
-  getHistory: (sessionId: string) => api.get(`/forggpt/history/${sessionId}`),
-  
-  // 上传文件
-  uploadFile: (file: File) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    return api.post('/forggpt/upload', formData, { timeout: 120000 })
-  },
-}
 
 // AI配置API
 export const aiConfigApi = {

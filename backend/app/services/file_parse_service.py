@@ -1,4 +1,4 @@
-"""文件解析服务（用于 ForgGPT）"""
+"""文件解析服务"""
 import os
 import json
 import pandas as pd
