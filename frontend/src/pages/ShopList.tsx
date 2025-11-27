@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Table, Button, Space, Modal, Form, Input, Switch, message, Tag, Tooltip, Select, Progress, Descriptions } from 'antd'
+import { Table, Button, Space, Modal, Form, Input, Switch, message, Tag, Tooltip, Select, Progress, Descriptions, Card, Typography } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ApiOutlined, CheckCircleOutlined, WarningOutlined, SyncOutlined, UploadOutlined } from '@ant-design/icons'
 import { shopApi, syncApi } from '@/services/api'
 import ImportDataModal from '@/components/ImportDataModal'
+
+const { Text } = Typography
 
 function ShopList() {
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -82,7 +84,9 @@ function ShopList() {
   const [syncingShopId, setSyncingShopId] = useState<number | null>(null)
   const [syncProgress, setSyncProgress] = useState<any>(null)
   const [syncProgressModalVisible, setSyncProgressModalVisible] = useState(false)
+  const [syncLogs, setSyncLogs] = useState<any[]>([])
   const progressIntervalRef = useRef<number | null>(null)
+  const logScrollRef = useRef<HTMLDivElement>(null)
 
   // 同步数据
   const syncMutation = useMutation({
@@ -113,18 +117,47 @@ function ShopList() {
       clearInterval(progressIntervalRef.current)
     }
     
-    // 立即查询一次进度
-    syncApi.getSyncProgress(shopId).then((response: any) => {
-      const progress = response?.data || response
-      setSyncProgress(progress)
-    })
+    // 立即查询一次进度和日志
+    const fetchProgressAndLogs = async () => {
+      try {
+        const [progressResponse, logsResponse] = await Promise.all([
+          syncApi.getSyncProgress(shopId),
+          syncApi.getSyncLogs(shopId, 50)
+        ])
+        const progress = progressResponse?.data || progressResponse
+        const logs = logsResponse?.data || []
+        setSyncProgress(progress)
+        setSyncLogs(logs)
+        // 自动滚动到顶部（最新日志在前）
+        setTimeout(() => {
+          if (logScrollRef.current) {
+            logScrollRef.current.scrollTop = 0
+          }
+        }, 100)
+      } catch (error) {
+        console.error('获取进度或日志失败:', error)
+      }
+    }
     
-    // 每500ms查询一次进度，更频繁的更新
+    fetchProgressAndLogs()
+    
+    // 每1秒查询一次进度和日志
     progressIntervalRef.current = window.setInterval(async () => {
       try {
-        const response: any = await syncApi.getSyncProgress(shopId)
-        const progress = response?.data || response
+        const [progressResponse, logsResponse] = await Promise.all([
+          syncApi.getSyncProgress(shopId),
+          syncApi.getSyncLogs(shopId, 50)
+        ])
+        const progress = progressResponse?.data || progressResponse
+        const logs = logsResponse?.data || []
         setSyncProgress(progress)
+        setSyncLogs(logs)
+        // 自动滚动到顶部（最新日志在前）
+        setTimeout(() => {
+          if (logScrollRef.current) {
+            logScrollRef.current.scrollTop = 0
+          }
+        }, 100)
         
         // 如果同步完成或失败，停止轮询
         const status = progress?.status
@@ -144,16 +177,6 @@ function ShopList() {
           
           // 显示结果
           if (status === 'completed') {
-            // 构建详细的成功消息
-            const orderStats = progress?.orders || {}
-            const productStats = progress?.products || {}
-            const orderTotal = orderStats.total || 0
-            const orderNew = orderStats.new || 0
-            const orderUpdated = orderStats.updated || 0
-            const productTotal = productStats.total || 0
-            const productNew = productStats.new || 0
-            const productUpdated = productStats.updated || 0
-            
             let successMsg = '数据同步完成！\n\n'
             
             // 订单同步结果
@@ -217,54 +240,13 @@ function ShopList() {
               duration: 5, // 显示5秒
             })
             
-            // 延迟关闭模态框，让用户看到完成状态
-            setTimeout(() => {
-              setSyncProgressModalVisible(false)
-              setSyncProgress(null)
-              // 强制清除所有遮罩层
-              setTimeout(() => {
-                // 清除所有残留的遮罩层
-                const masks = document.querySelectorAll('.ant-modal-mask')
-                masks.forEach((mask) => {
-                  mask.remove()
-                })
-                // 清除可能残留的模态框容器
-                const wrappers = document.querySelectorAll('.ant-modal-wrap')
-                wrappers.forEach((wrapper) => {
-                  if (!wrapper.querySelector('.ant-modal')) {
-                    wrapper.remove()
-                  }
-                })
-                // 清除body上的样式
-                document.body.style.overflow = ''
-                document.body.style.paddingRight = ''
-              }, 200)
-            }, 3000) // 3秒后自动关闭，给用户更多时间查看统计信息
+            // 不自动关闭，让用户手动关闭以查看详细结果和日志
           } else {
             message.error({
               content: `同步失败: ${progress?.error || '未知错误'}`,
               duration: 5,
             })
-            // 错误时也延迟关闭，让用户看到错误信息
-            setTimeout(() => {
-              setSyncProgressModalVisible(false)
-              setSyncProgress(null)
-              // 强制清除所有遮罩层
-              setTimeout(() => {
-                const masks = document.querySelectorAll('.ant-modal-mask')
-                masks.forEach((mask) => {
-                  mask.remove()
-                })
-                const wrappers = document.querySelectorAll('.ant-modal-wrap')
-                wrappers.forEach((wrapper) => {
-                  if (!wrapper.querySelector('.ant-modal')) {
-                    wrapper.remove()
-                  }
-                })
-                document.body.style.overflow = ''
-                document.body.style.paddingRight = ''
-              }, 200)
-            }, 3000) // 3秒后自动关闭
+            // 不自动关闭，让用户手动关闭以查看详细错误信息
           }
         }
       } catch (error) {
@@ -508,6 +490,7 @@ function ShopList() {
     setImportingShop(null)
     setIsImportModalOpen(false)
   }
+
 
 
   const columns = [
@@ -828,6 +811,85 @@ function ShopList() {
             />
             <div style={{ marginTop: 16 }}>
               <p><strong>当前状态：</strong>{syncProgress.current_step || '准备中...'}</p>
+              
+              {/* 显示预估时间和处理速度 */}
+              {syncProgress.status === 'running' && syncProgress.time_info && (
+                <div style={{ marginTop: 12, padding: 12, background: '#e6f7ff', borderRadius: 4, border: '1px solid #91d5ff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div>
+                      <strong>处理速度：</strong>
+                      <Text strong style={{ color: '#1890ff' }}>
+                        {syncProgress.time_info.processing_speed?.toFixed(1) || 0} 订单/秒
+                      </Text>
+                    </div>
+                    {syncProgress.estimated_completion_timestamp && (
+                      <div>
+                        <strong>预计完成：</strong>
+                        <Text strong style={{ color: '#1890ff' }}>
+                          {new Date(syncProgress.estimated_completion_timestamp * 1000).toLocaleTimeString()}
+                        </Text>
+                      </div>
+                    )}
+                  </div>
+                  {syncProgress.time_info.estimated_remaining_seconds && (
+                    <div style={{ fontSize: '12px', color: '#666' }}>
+                      剩余时间：约 {Math.floor(syncProgress.time_info.estimated_remaining_seconds / 60)} 分 {Math.floor(syncProgress.time_info.estimated_remaining_seconds % 60)} 秒
+                    </div>
+                  )}
+                  {syncProgress.time_info.processed_count !== undefined && syncProgress.time_info.total_count !== undefined && (
+                    <div style={{ fontSize: '12px', color: '#666', marginTop: 4 }}>
+                      进度：{syncProgress.time_info.processed_count} / {syncProgress.time_info.total_count} 订单
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* 同步日志输出框 - 同步中或已完成时都显示 */}
+              {(syncProgress.status === 'running' || syncProgress.status === 'completed' || syncProgress.status === 'error') && (
+                <Card 
+                  title={`同步日志 ${syncProgress.status === 'completed' ? '(已完成)' : syncProgress.status === 'error' ? '(失败)' : '(进行中)'}`}
+                  size="small" 
+                  style={{ marginTop: 16 }}
+                  bodyStyle={{ padding: 12, maxHeight: '400px', overflow: 'auto' }}
+                >
+                  <div 
+                    ref={logScrollRef}
+                    style={{ 
+                      fontFamily: 'monospace', 
+                      fontSize: '12px',
+                      lineHeight: '1.6',
+                      maxHeight: '350px',
+                      overflowY: 'auto',
+                      background: '#1e1e1e',
+                      color: '#d4d4d4',
+                      padding: '12px',
+                      borderRadius: '4px'
+                    }}
+                  >
+                    {syncLogs.length === 0 ? (
+                      <div style={{ color: '#888' }}>等待日志输出...</div>
+                    ) : (
+                      // 日志已经是从新到旧排序（最新的在前），直接显示
+                      syncLogs.map((log: any, index: number) => {
+                        const logTime = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ''
+                        const logLevel = log.level || 'info'
+                        const logColor = 
+                          logLevel === 'error' ? '#f48771' :
+                          logLevel === 'warning' ? '#dcdcaa' :
+                          logLevel === 'success' ? '#4ec9b0' :
+                          '#d4d4d4'
+                        
+                        return (
+                          <div key={index} style={{ marginBottom: 4 }}>
+                            <span style={{ color: '#808080' }}>[{logTime}]</span>{' '}
+                            <span style={{ color: logColor }}>{log.message}</span>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </Card>
+              )}
               
               {syncProgress.status === 'completed' && (
                 <div style={{ marginTop: 16, padding: 12, background: '#f6f8fa', borderRadius: 4 }}>

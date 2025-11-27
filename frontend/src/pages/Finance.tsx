@@ -19,14 +19,11 @@ const { RangePicker } = DatePicker
 function Finance() {
   const [isMobile, setIsMobile] = useState(false)
   
-  // 日期范围状态，默认为本月
-  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>([
-    dayjs().startOf('month'),
-    dayjs().endOf('month'),
-  ])
+  // 日期范围状态，默认为全部数据
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null)
   
-  // 是否选择全部历史数据
-  const [isAllData, setIsAllData] = useState(false)
+  // 是否选择全部历史数据，默认为true（显示全部数据）
+  const [isAllData, setIsAllData] = useState(true)
 
   // 检测是否为移动设备
   useEffect(() => {
@@ -434,11 +431,18 @@ function Finance() {
                   <Button
                     key={type}
                     size="small"
+                    type={isActive ? 'primary' : 'default'}
                     onClick={() => handleQuickDateSelect(type)}
                     style={{
-                      background: isActive ? 'rgba(88, 166, 255, 0.2)' : 'rgba(30, 41, 59, 0.6)',
-                      border: isActive ? '1px solid rgba(88, 166, 255, 0.5)' : '1px solid rgba(99, 102, 241, 0.3)',
-                      color: '#cbd5e1',
+                      background: isActive 
+                        ? 'linear-gradient(135deg, rgba(88, 166, 255, 0.3) 0%, rgba(88, 166, 255, 0.2) 100%)' 
+                        : 'rgba(30, 41, 59, 0.6)',
+                      border: isActive 
+                        ? '1px solid rgba(88, 166, 255, 0.8)' 
+                        : '1px solid rgba(99, 102, 241, 0.3)',
+                      color: isActive ? '#58a6ff' : '#cbd5e1',
+                      fontWeight: isActive ? 'bold' : 'normal',
+                      boxShadow: isActive ? '0 2px 4px rgba(88, 166, 255, 0.2)' : 'none',
                     }}
                   >
                     {labels[type]}
@@ -455,8 +459,8 @@ function Finance() {
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
             flexShrink: 0,
-          }}>
-            本月概览
+            }}>
+            {isAllData ? '全部概览' : (dateRange ? `${dateRange[0].format('YYYY年MM月DD日')} - ${dateRange[1].format('YYYY年MM月DD日')} 概览` : '本月概览')}
           </h3>
         </div>
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>

@@ -49,13 +49,66 @@ order_detail = await client.get_order_detail(
 
 ### 3. 获取商品列表
 
+**重要：商品列表同步使用CN区域配置**
+
+商品列表同步必须使用CN区域的配置（`cn_app_key`, `cn_app_secret`, `cn_access_token`）和CN端点。
+
+#### API端点配置
+
+- **端点URL**: 使用店铺配置的 `cn_api_base_url` 或默认 `https://openapi.kuajingmaihuo.com/openapi/router`
+- **API接口**: `bg.glo.goods.list.get`
+- **认证**: 使用CN区域的 `cn_app_key`, `cn_app_secret`, `cn_access_token`
+
+#### 请求参数
+
 ```python
-products = await client.get_products(
-    access_token="your_access_token",
-    page=1,
-    page_size=100
+request_data = {
+    "page": 1,           # 页码（从1开始）
+    "pageSize": 100,     # 每页数量
+    "skcSiteStatus": 1   # 可选：SKC站点状态（0=未加入站点，1=已加入站点/在售）
+}
+```
+
+#### 响应格式
+
+```json
+{
+    "data": [...],        // 商品列表
+    "totalCount": 100     // 商品总数
+}
+```
+
+#### 使用示例
+
+```python
+from app.services.temu_service import TemuService
+
+# 通过TemuService获取商品列表（自动使用CN配置）
+temu_service = TemuService(shop=shop)
+products = await temu_service.get_products(
+    page_number=1,
+    page_size=100,
+    skc_site_status=1  # 可选：只获取在售商品
 )
 ```
+
+#### 配置要求
+
+1. **店铺配置**（Shop表）：
+   - `cn_app_key`: CN区域App Key
+   - `cn_app_secret`: CN区域App Secret
+   - `cn_access_token`: CN区域Access Token
+   - `cn_api_base_url`: CN区域API端点（可选，默认：`https://openapi.kuajingmaihuo.com/openapi/router`）
+
+2. **环境变量**（可选，作为店铺配置的备用）：
+   - `TEMU_CN_APP_KEY`: CN区域App Key
+   - `TEMU_CN_APP_SECRET`: CN区域App Secret
+
+#### 注意事项
+
+- ⚠️ **必须使用CN区域配置**：商品列表同步不支持使用标准区域的配置
+- ⚠️ **接口选择**：仅使用 `bg.glo.goods.list.get` 接口，`bg.goods.list.get` 在Partner端点上不存在
+- ⚠️ **代理设置**：CN端点不需要通过代理，直接访问
 
 ### 4. 获取活动列表
 

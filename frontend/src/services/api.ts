@@ -62,7 +62,9 @@ export const syncApi = {
   getSyncStatus: (shopId: number) => 
     api.get(`/sync/shops/${shopId}/status`),
   getSyncProgress: (shopId: number) => 
-    api.get(`/sync/shops/${shopId}/progress`, { timeout: 5000 }), // 5秒超时，避免请求卡住
+    api.get(`/sync/shops/${shopId}/progress`, { timeout: 30000 }), // 30秒超时
+  getSyncLogs: (shopId: number, limit: number = 100) => 
+    api.get(`/sync/shops/${shopId}/logs?limit=${limit}`, { timeout: 10000 }),
   verifyToken: (shopId: number) => 
     api.post(`/sync/shops/${shopId}/verify-token`),
 }

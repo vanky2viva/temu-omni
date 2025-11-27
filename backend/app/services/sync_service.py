@@ -143,7 +143,7 @@ class SyncService:
             full_sync: 是否全量同步
                 - True: 全量同步，不限制时间范围（如果begin_time未指定，则从最早开始）
                 - False: 增量同步，从最后同步时间开始（如果从未同步，则同步最近7天）
-            progress_callback: 进度回调函数，接收 (当前进度百分比, 当前步骤描述) 参数
+            progress_callback: 进度回调函数，接收 (当前进度百分比, 当前步骤描述, time_info) 参数
             
         Returns:
             同步统计 {new: 新增数量, updated: 更新数量, total: 总数}
@@ -151,6 +151,7 @@ class SyncService:
         stats = {"new": 0, "updated": 0, "total": 0, "failed": 0}
         self._current_stats = stats  # 用于在_process_order中更新统计
         self._progress_callback = progress_callback  # 保存回调函数
+        self._sync_start_time = datetime.now()  # 记录同步开始时间
         
         try:
             # 设置结束时间为当前时间
@@ -199,31 +200,106 @@ class SyncService:
                 
                 # 首次获取到总数时更新进度
                 if page_number == 1 and total_items > 0 and progress_callback:
-                    progress_callback(20, f"发现 {total_items} 个订单，开始同步...")
+                    progress_callback(20, f"发现 {total_items} 个订单，开始同步...", None)
+                    logger.info(f"发现 {total_items} 个订单，开始同步...")
                 
                 if not page_items:
                     break
                 
+                # 性能优化：批量预加载当前页的订单ID，减少数据库查询
+                order_sns = [item.get('orderSn') or item.get('order_sn') for item in page_items if item.get('orderSn') or item.get('order_sn')]
+                existing_orders_map = {}
+                if order_sns:
+                    # 批量查询当前页可能存在的订单
+                    existing_orders = self.db.query(Order).filter(
+                        Order.shop_id == self.shop.id,
+                        Order.temu_order_id.in_(order_sns)
+                    ).all()
+                    # 构建订单SN到订单对象的映射
+                    for order in existing_orders:
+                        existing_orders_map[order.temu_order_id] = order
+                
+                # 批量处理订单（每100个提交一次，提高性能）
+                batch_size = 100
+                batch_count = 0
+                
                 # 处理每个订单
                 for item in page_items:
                     try:
-                        self._process_order(item)
-                        # 立即提交每个订单，避免批量插入时的重复键错误
-                        self.db.commit()
+                        # 传递预加载的订单映射，减少查询
+                        self._process_order(item, existing_orders_map=existing_orders_map)
+                        batch_count += 1
                         stats["total"] += 1
                         
-                        # 实时更新进度（订单同步占20%-60%）
-                        if progress_callback and total_items > 0:
+                        # 批量提交：每100个订单提交一次，或处理完当前页时提交
+                        if batch_count >= batch_size or item == page_items[-1]:
+                            self.db.commit()
+                            batch_count = 0
+                        
+                        # 优化进度更新频率：每50个订单更新一次（减少回调开销）
+                        if progress_callback and total_items > 0 and stats["total"] % 50 == 0:
                             progress_percent = 20 + int((stats["total"] / total_items) * 40)
+                            
+                            # 计算处理速度和剩余时间
+                            current_time = datetime.now()
+                            start_time = getattr(self, '_sync_start_time', current_time)
+                            elapsed_time = (current_time - start_time).total_seconds()
+                            
+                            # 构建时间信息
+                            time_info = None
+                            if elapsed_time > 0 and stats["total"] > 0:
+                                processing_speed = stats["total"] / elapsed_time
+                                remaining_items = total_items - stats["total"]
+                                estimated_remaining_seconds = remaining_items / processing_speed if processing_speed > 0 else 0
+                                
+                                time_info = {
+                                    "elapsed_seconds": elapsed_time,
+                                    "processing_speed": processing_speed,
+                                    "estimated_remaining_seconds": estimated_remaining_seconds,
+                                    "processed_count": stats["total"],
+                                    "total_count": total_items
+                                }
+                                
+                                # 每处理100个订单记录一次详细日志
+                                if stats["total"] % 100 == 0:
+                                    # 格式化剩余时间
+                                    if estimated_remaining_seconds < 60:
+                                        time_str = f"{int(estimated_remaining_seconds)}秒"
+                                    elif estimated_remaining_seconds < 3600:
+                                        minutes = int(estimated_remaining_seconds // 60)
+                                        seconds = int(estimated_remaining_seconds % 60)
+                                        time_str = f"{minutes}分{seconds}秒"
+                                    else:
+                                        hours = int(estimated_remaining_seconds // 3600)
+                                        minutes = int((estimated_remaining_seconds % 3600) // 60)
+                                        time_str = f"{hours}小时{minutes}分钟"
+                                    
+                                    log_msg = (
+                                        f"正在同步订单: {stats['total']}/{total_items} | "
+                                        f"速度: {processing_speed:.1f} 订单/秒 | "
+                                        f"剩余时间: {time_str} | "
+                                        f"新增: {stats['new']}, 更新: {stats['updated']}"
+                                    )
+                                    # 通过回调函数记录日志
+                                    if hasattr(progress_callback, '_log_callback'):
+                                        progress_callback._log_callback(log_msg)
+                            
                             progress_callback(
                                 progress_percent,
-                                f"正在同步订单: {stats['total']}/{total_items}"
+                                f"正在同步订单: {stats['total']}/{total_items} (新增: {stats['new']}, 更新: {stats['updated']})",
+                                time_info
                             )
                             
                     except Exception as e:
                         logger.error(f"处理订单失败: {e}, 订单数据: {item}")
                         self.db.rollback()  # 回滚失败的订单
                         stats["failed"] += 1
+                        batch_count = 0  # 重置批量计数
+                
+                # 确保当前页的所有订单都已提交
+                if batch_count > 0:
+                    self.db.commit()
+                    batch_count = 0
                 
                 # 检查是否还有更多页
                 if page_number * page_size >= total_items:
@@ -252,12 +328,13 @@ class SyncService:
             # 确保数据库会话正确关闭（虽然依赖注入会处理，但这里确保资源释放）
             pass
     
-    def _process_order(self, order_data: Dict[str, Any]):
+    def _process_order(self, order_data: Dict[str, Any], existing_orders_map: Optional[Dict[str, Any]] = None):
         """
         处理单个订单数据（三层架构：先存raw表，再映射到业务表）
         
         Args:
             order_data: 订单数据（包含parentOrderMap和orderList）
+            existing_orders_map: 预加载的订单映射（可选，用于性能优化）
         """
         parent_order = order_data.get('parentOrderMap', {})
         order_list = order_data.get('orderList', [])
@@ -282,7 +359,7 @@ class SyncService:
                 continue
             
             # 步骤2: 使用原有逻辑处理订单（保持稳定性），但关联raw_data_id
-            self._process_order_legacy(order_item, parent_order, order_data, raw_order)
+            self._process_order_legacy(order_item, parent_order, order_data, raw_order, existing_orders_map)
     
     def _save_order_to_raw(
         self, 
@@ -397,7 +474,8 @@ class SyncService:
         order_item: Dict[str, Any], 
         parent_order: Dict[str, Any],
         full_order_data: Dict[str, Any],
-        raw_order: Optional[TemuOrdersRaw] = None
+        raw_order: Optional[TemuOrdersRaw] = None,
+        existing_orders_map: Optional[Dict[str, Any]] = None
     ):
         """
         原有的订单处理逻辑（保持稳定性，但关联raw_data_id）
@@ -425,23 +503,38 @@ class SyncService:
             spu_id_value = order_item.get('spuId') or order_item.get('spu_id')
             spu_id = str(spu_id_value) if spu_id_value is not None else ''
         
-        # 首先尝试精确匹配
-        existing_order = self.db.query(Order).filter(
-            Order.order_sn == order_sn,
-            Order.product_sku == product_sku,
-            Order.spu_id == spu_id
-        ).first()
+        # 性能优化：优先使用预加载的订单映射，减少数据库查询
+        existing_order = None
+        if existing_orders_map and order_sn in existing_orders_map:
+            # 从预加载的映射中获取订单
+            candidate_order = existing_orders_map[order_sn]
+            # 检查是否匹配（order_sn + product_sku + spu_id）
+            if (candidate_order.order_sn == order_sn and 
+                candidate_order.product_sku == product_sku and 
+                candidate_order.spu_id == spu_id):
+                existing_order = candidate_order
+            elif candidate_order.order_sn == order_sn and candidate_order.spu_id == spu_id:
+                existing_order = candidate_order
         
-        if not existing_order and spu_id:
+        # 如果预加载映射中没有找到，再查询数据库（降级处理）
+        if not existing_order:
+            # 首先尝试精确匹配
             existing_order = self.db.query(Order).filter(
                 Order.order_sn == order_sn,
+                Order.product_sku == product_sku,
                 Order.spu_id == spu_id
             ).first()
-        
-        if not existing_order:
-            existing_order = self.db.query(Order).filter(
-                Order.temu_order_id == order_sn
-            ).first()
+            
+            if not existing_order and spu_id:
+                existing_order = self.db.query(Order).filter(
+                    Order.order_sn == order_sn,
+                    Order.spu_id == spu_id
+                ).first()
+            
+            if not existing_order:
+                existing_order = self.db.query(Order).filter(
+                    Order.temu_order_id == order_sn
+                ).first()
         
         if existing_order:
             # 更新现有订单
@@ -1195,13 +1288,19 @@ class SyncService:
                         
                         # 步骤2: 处理商品（关联raw_data_id）
                         self._process_product(product_item, raw_product)
-                        # 立即提交每个商品，避免批量插入时的重复键错误
-                        self.db.commit()
                         stats["total"] += 1
+                        
+                        # 批量提交：每100个商品提交一次，提高性能
+                        if stats["total"] % 100 == 0:
+                            self.db.commit()
                     except Exception as e:
                         logger.error(f"处理商品失败: {e}, 商品ID: {product_id}, 商品名称: {product_name}")
                         self.db.rollback()  # 回滚失败的商品
                         stats["failed"] += 1
+                
+                # 确保当前页的所有商品都已提交
+                if stats["total"] % 100 != 0:
+                    self.db.commit()
                 
                 # 记录当前页统计
                 logger.info(

@@ -237,12 +237,12 @@ class TemuService:
         skc_site_status: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        获取商品列表（使用 bg.goods.list.get 接口）
+        获取商品列表（使用 bg.glo.goods.list.get 接口）
         
         根据API文档：https://agentpartner.temu.com/document?cataId=875198836203&docId=899313688269
         
-        如果配置了 CN access_token，使用 CN 端点的 app_key/secret 和 CN access_token
-        否则使用标准端点的 app_key/secret 和标准 access_token
+        使用 CN 区域的配置（cn_app_key, cn_app_secret, cn_access_token）
+        端点：使用店铺配置的 cn_api_base_url 或默认 https://openapi.kuajingmaihuo.com/openapi/router
         
         Args:
             page_number: 页码（从1开始）
@@ -254,92 +254,77 @@ class TemuService:
             商品数据
         """
         try:
-            # 如果配置了 CN access_token，使用 CN 端点
-            # 重要：CN 区域的 app_key、secret、access_token 和接口地址必须都来自 CN 区域
-            if self.shop.cn_access_token:
-                logger.info(f"使用 CN 端点获取商品列表 - 店铺: {self.shop.shop_name}")
-                
-                # 获取 CN 区域配置（必须全部来自 CN 区域）
-                from app.core.config import settings
-                cn_api_url = self.shop.cn_api_base_url or 'https://openapi.kuajingmaihuo.com/openapi/router'
-                # CN App Key和Secret必须从环境变量或店铺配置中获取，不能硬编码
-                cn_app_key = self.shop.cn_app_key or settings.TEMU_CN_APP_KEY
-                cn_app_secret = self.shop.cn_app_secret or settings.TEMU_CN_APP_SECRET
-                cn_access_token = self.shop.cn_access_token
-                
-                # 验证 CN 配置完整性
-                if not cn_app_key or not cn_app_secret:
-                    raise ValueError(
-                        "CN 区域配置不完整：必须同时配置 cn_app_key、cn_app_secret 和 cn_access_token"
-                    )
-                
-                # CN端点不需要通过代理，可以直接访问
-                # 创建 CN 客户端（使用 CN 区域的 app_key、secret 和接口地址）
-                # 注意：CN端点不需要通过代理，直接访问
-                cn_client = TemuAPIClient(
-                    app_key=cn_app_key,
-                    app_secret=cn_app_secret,
-                    proxy_url=""  # 空字符串表示不使用代理，CN端点直接访问
+            # 使用 CN 区域配置获取商品列表
+            # 使用店铺配置的 cn_api_base_url 或默认 https://openapi.kuajingmaihuo.com/openapi/router 端点
+            # 使用 bg.glo.goods.list.get 接口（测试确认此接口可用，bg.goods.list.get 在 Partner 端点上不存在）
+            
+            # 检查CN区域配置
+            if not self.shop.cn_access_token:
+                raise ValueError(
+                    f"店铺 {self.shop.shop_name} 未配置 CN Access Token。"
+                    f"商品列表同步需要使用 CN 区域的 access_token。"
                 )
-                cn_client.base_url = cn_api_url
-                
-                logger.info(
-                    f"CN 端点配置 - API URL: {cn_api_url}, "
-                    f"App Key: {cn_app_key[:10]}..., "
-                    f"Token: {cn_access_token[:10]}..."
+            
+            from app.core.config import settings
+            
+            # 获取 CN 区域配置（必须全部来自 CN 区域）
+            cn_api_url = self.shop.cn_api_base_url or 'https://openapi.kuajingmaihuo.com/openapi/router'
+            cn_app_key = self.shop.cn_app_key or settings.TEMU_CN_APP_KEY
+            cn_app_secret = self.shop.cn_app_secret or settings.TEMU_CN_APP_SECRET
+            cn_access_token = self.shop.cn_access_token
+            
+            # 验证 CN 配置完整性
+            if not cn_app_key or not cn_app_secret:
+                raise ValueError(
+                    "CN 区域配置不完整：必须同时配置 cn_app_key、cn_app_secret 和 cn_access_token"
                 )
-                
-                # CN 端点使用 bg.goods.list.get API
-                # 根据API文档，参数名是 page 和 pageSize（不是 pageNumber）
-                request_data = {
-                    "page": page_number,  # 页码（从1开始）
-                    "pageSize": page_size,  # 页面大小
-                }
-                
-                # 如果指定了skc_site_status，添加筛选参数（1=已加入站点/在售）
-                if skc_site_status is not None:
-                    request_data["skcSiteStatus"] = skc_site_status
-                    logger.debug(f"使用状态筛选参数 - skcSiteStatus: {skc_site_status}")
-                
-                # CN端点使用平铺参数
-                products = await cn_client._request(
-                    api_type="bg.goods.list.get",
-                    request_data=request_data,
-                    access_token=cn_access_token,
-                    flat_params=True
-                )
-                
-                await cn_client.close()
-            else:
-                # 使用标准端点（US/EU/GLOBAL）
-                # 使用标准端点的 app_key/secret 和标准 access_token
-                if not self.shop.access_token:
-                    raise ValueError(
-                        f"店铺 {self.shop.shop_name} 未配置 Access Token。"
-                        f"请配置标准端点的 Access Token 或 CN 端点的 Access Token。"
-                    )
-                
-                # 使用标准端点的客户端
-                standard_client = self._get_standard_client()
-                
-                logger.info(
-                    f"使用标准端点获取商品列表 - 店铺: {self.shop.shop_name}, "
-                    f"区域: {self.shop.region}, "
-                    f"API URL: {standard_client.base_url}"
-                )
-                
-                products = await standard_client.get_products(
-                    access_token=self.access_token,
-                    page_number=page_number,
-                    page_size=page_size,
-                    goods_status=goods_status
-                )
-                
-                await standard_client.close()
+            
+            # 创建 CN 客户端（使用 CN 区域的 app_key、secret 和接口地址）
+            cn_client = TemuAPIClient(
+                app_key=cn_app_key,
+                app_secret=cn_app_secret,
+                proxy_url=""  # 空字符串表示不使用代理，CN端点直接访问
+            )
+            cn_client.base_url = cn_api_url
+            
+            logger.info(
+                f"使用 CN 端点获取商品列表 - 店铺: {self.shop.shop_name}, "
+                f"API URL: {cn_api_url}, "
+                f"页码: {page_number}, 每页: {page_size}"
+            )
+            
+            # 构建请求参数
+            request_data = {
+                "page": page_number,  # 页码（从1开始）
+                "pageSize": page_size,  # 页面大小
+            }
+            
+            # 如果指定了skc_site_status，添加筛选参数（1=已加入站点/在售）
+            if skc_site_status is not None:
+                request_data["skcSiteStatus"] = skc_site_status
+                logger.debug(f"使用状态筛选参数 - skcSiteStatus: {skc_site_status}")
+            
+            # 使用 bg.glo.goods.list.get 接口（测试确认此接口可用）
+            logger.info(f"使用 bg.glo.goods.list.get 接口获取商品列表...")
+            products = await cn_client._request(
+                api_type="bg.glo.goods.list.get",
+                request_data=request_data,
+                access_token=cn_access_token,
+                flat_params=True
+            )
+            api_type_used = "bg.glo.goods.list.get"
+            logger.info(f"✅ 成功使用 bg.glo.goods.list.get 接口获取商品列表")
+            
+            await cn_client.close()
+            
+            if products is None:
+                raise ValueError("未能获取商品数据，接口返回空结果")
             
             logger.info(
                 f"获取商品成功 - 店铺: {self.shop.shop_name}, "
-                f"页码: {page_number}"
+                f"页码: {page_number}, "
+                f"使用的接口: {api_type_used}, "
+                f"使用的端点: {cn_api_url}"
             )
             
             return products
