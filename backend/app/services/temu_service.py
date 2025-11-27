@@ -237,16 +237,14 @@ class TemuService:
         skc_site_status: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        获取商品列表（根据API端点动态选择接口类型）
+        获取商品列表（固定使用PARTNER端点）
         
         根据API文档：https://agentpartner.temu.com/document?cataId=875198836203&docId=899313688269
         
-        使用 CN 区域的配置（cn_app_key, cn_app_secret, cn_access_token）
-        端点：使用店铺配置的 cn_api_base_url 或默认 https://openapi.kuajingmaihuo.com/openapi/router
-        
-        根据API端点自动选择接口类型：
-        - PARTNER区域（openapi-b-partner.temu.com）: 使用 bg.glo.goods.list.get
-        - CN区域（openapi.kuajingmaihuo.com）: 使用 bg.goods.list.get
+        固定使用：
+        - 端点：https://openapi-b-partner.temu.com/openapi/router
+        - 接口：bg.glo.goods.list.get
+        - 配置：使用店铺的 cn_app_key、cn_app_secret、cn_access_token
         
         Args:
             page_number: 页码（从1开始）
@@ -258,10 +256,6 @@ class TemuService:
             商品数据
         """
         try:
-            # 使用 CN 区域配置获取商品列表
-            # 使用店铺配置的 cn_api_base_url 或默认 https://openapi.kuajingmaihuo.com/openapi/router 端点
-            # 根据API端点动态选择接口类型（PARTNER区域使用bg.glo.goods.list.get，CN区域使用bg.goods.list.get）
-            
             # 检查CN区域配置
             if not self.shop.cn_access_token:
                 raise ValueError(
@@ -271,8 +265,8 @@ class TemuService:
             
             from app.core.config import settings
             
-            # 获取 CN 区域配置（必须全部来自 CN 区域）
-            cn_api_url = self.shop.cn_api_base_url or 'https://openapi.kuajingmaihuo.com/openapi/router'
+            # 固定使用PARTNER端点
+            partner_api_url = 'https://openapi-b-partner.temu.com/openapi/router'
             cn_app_key = self.shop.cn_app_key or settings.TEMU_CN_APP_KEY
             cn_app_secret = self.shop.cn_app_secret or settings.TEMU_CN_APP_SECRET
             cn_access_token = self.shop.cn_access_token
@@ -283,17 +277,17 @@ class TemuService:
                     "CN 区域配置不完整：必须同时配置 cn_app_key、cn_app_secret 和 cn_access_token"
                 )
             
-            # 创建 CN 客户端（使用 CN 区域的 app_key、secret 和接口地址）
-            cn_client = TemuAPIClient(
+            # 创建客户端（使用 CN 区域的 app_key、secret 和固定的PARTNER端点）
+            partner_client = TemuAPIClient(
                 app_key=cn_app_key,
                 app_secret=cn_app_secret,
-                proxy_url=""  # 空字符串表示不使用代理，CN端点直接访问
+                proxy_url=""  # 空字符串表示不使用代理，PARTNER端点直接访问
             )
-            cn_client.base_url = cn_api_url
+            partner_client.base_url = partner_api_url
             
             logger.info(
-                f"使用 CN 端点获取商品列表 - 店铺: {self.shop.shop_name}, "
-                f"API URL: {cn_api_url}, "
+                f"使用PARTNER端点获取商品列表 - 店铺: {self.shop.shop_name}, "
+                f"API URL: {partner_api_url}, "
                 f"页码: {page_number}, 每页: {page_size}"
             )
             
@@ -308,31 +302,20 @@ class TemuService:
                 request_data["skcSiteStatus"] = skc_site_status
                 logger.debug(f"使用状态筛选参数 - skcSiteStatus: {skc_site_status}")
             
-            # 根据API URL动态选择API类型
-            # PARTNER区域（openapi-b-partner）使用 bg.glo.goods.list.get
-            # CN区域（openapi.kuajingmaihuo.com）使用 bg.goods.list.get
-            if 'openapi-b-partner' in cn_api_url:
-                api_type = "bg.glo.goods.list.get"
-                logger.info(f"检测到PARTNER区域接口 ({cn_api_url})，使用: {api_type}")
-            elif 'partner' in cn_api_url.lower() and 'openapi-b' in cn_api_url:
-                api_type = "bg.glo.goods.list.get"
-                logger.info(f"检测到PARTNER区域接口 ({cn_api_url})，使用: {api_type}")
-            else:
-                api_type = "bg.goods.list.get"
-                logger.info(f"使用CN区域接口 ({cn_api_url}): {api_type}")
-            
-            # 使用动态选择的API类型
+            # 固定使用 bg.glo.goods.list.get 接口
+            api_type = "bg.glo.goods.list.get"
             logger.info(f"使用 {api_type} 接口获取商品列表...")
-            products = await cn_client._request(
+            
+            products = await partner_client._request(
                 api_type=api_type,
                 request_data=request_data,
                 access_token=cn_access_token,
                 flat_params=True
             )
-            api_type_used = api_type
+            
             logger.info(f"✅ 成功使用 {api_type} 接口获取商品列表")
             
-            await cn_client.close()
+            await partner_client.close()
             
             if products is None:
                 raise ValueError("未能获取商品数据，接口返回空结果")
@@ -340,8 +323,8 @@ class TemuService:
             logger.info(
                 f"获取商品成功 - 店铺: {self.shop.shop_name}, "
                 f"页码: {page_number}, "
-                f"使用的接口: {api_type_used}, "
-                f"使用的端点: {cn_api_url}"
+                f"使用的接口: {api_type}, "
+                f"使用的端点: {partner_api_url}"
             )
             
             return products
