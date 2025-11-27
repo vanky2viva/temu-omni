@@ -134,7 +134,12 @@ function ShopList() {
             logScrollRef.current.scrollTop = 0
           }
         }, 100)
-      } catch (error) {
+      } catch (error: any) {
+        // 如果是超时错误，不显示错误信息，继续重试
+        if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+          console.warn('获取进度或日志超时，将在下次轮询时重试')
+          return
+        }
         console.error('获取进度或日志失败:', error)
       }
     }
@@ -249,7 +254,11 @@ function ShopList() {
             // 不自动关闭，让用户手动关闭以查看详细错误信息
           }
         }
-      } catch (error) {
+      } catch (error: any) {
+        // 如果是超时错误，静默处理，继续轮询
+        if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+          return
+        }
         console.error('获取进度失败:', error)
       }
     }, 500) // 每500ms轮询一次，更快地更新进度
