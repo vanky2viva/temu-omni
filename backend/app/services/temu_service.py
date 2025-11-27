@@ -237,12 +237,16 @@ class TemuService:
         skc_site_status: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        获取商品列表（使用 bg.glo.goods.list.get 接口）
+        获取商品列表（根据API端点动态选择接口类型）
         
         根据API文档：https://agentpartner.temu.com/document?cataId=875198836203&docId=899313688269
         
         使用 CN 区域的配置（cn_app_key, cn_app_secret, cn_access_token）
         端点：使用店铺配置的 cn_api_base_url 或默认 https://openapi.kuajingmaihuo.com/openapi/router
+        
+        根据API端点自动选择接口类型：
+        - PARTNER区域（openapi-b-partner.temu.com）: 使用 bg.glo.goods.list.get
+        - CN区域（openapi.kuajingmaihuo.com）: 使用 bg.goods.list.get
         
         Args:
             page_number: 页码（从1开始）
@@ -256,7 +260,7 @@ class TemuService:
         try:
             # 使用 CN 区域配置获取商品列表
             # 使用店铺配置的 cn_api_base_url 或默认 https://openapi.kuajingmaihuo.com/openapi/router 端点
-            # 使用 bg.glo.goods.list.get 接口（测试确认此接口可用，bg.goods.list.get 在 Partner 端点上不存在）
+            # 根据API端点动态选择接口类型（PARTNER区域使用bg.glo.goods.list.get，CN区域使用bg.goods.list.get）
             
             # 检查CN区域配置
             if not self.shop.cn_access_token:
@@ -304,16 +308,29 @@ class TemuService:
                 request_data["skcSiteStatus"] = skc_site_status
                 logger.debug(f"使用状态筛选参数 - skcSiteStatus: {skc_site_status}")
             
-            # 使用 bg.glo.goods.list.get 接口（测试确认此接口可用）
-            logger.info(f"使用 bg.glo.goods.list.get 接口获取商品列表...")
+            # 根据API URL动态选择API类型
+            # PARTNER区域（openapi-b-partner）使用 bg.glo.goods.list.get
+            # CN区域（openapi.kuajingmaihuo.com）使用 bg.goods.list.get
+            if 'openapi-b-partner' in cn_api_url:
+                api_type = "bg.glo.goods.list.get"
+                logger.info(f"检测到PARTNER区域接口 ({cn_api_url})，使用: {api_type}")
+            elif 'partner' in cn_api_url.lower() and 'openapi-b' in cn_api_url:
+                api_type = "bg.glo.goods.list.get"
+                logger.info(f"检测到PARTNER区域接口 ({cn_api_url})，使用: {api_type}")
+            else:
+                api_type = "bg.goods.list.get"
+                logger.info(f"使用CN区域接口 ({cn_api_url}): {api_type}")
+            
+            # 使用动态选择的API类型
+            logger.info(f"使用 {api_type} 接口获取商品列表...")
             products = await cn_client._request(
-                api_type="bg.glo.goods.list.get",
+                api_type=api_type,
                 request_data=request_data,
                 access_token=cn_access_token,
                 flat_params=True
             )
-            api_type_used = "bg.glo.goods.list.get"
-            logger.info(f"✅ 成功使用 bg.glo.goods.list.get 接口获取商品列表")
+            api_type_used = api_type
+            logger.info(f"✅ 成功使用 {api_type} 接口获取商品列表")
             
             await cn_client.close()
             
