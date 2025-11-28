@@ -10,7 +10,7 @@ import ProductList from './pages/ProductList'
 import Logistics from './pages/Logistics'
 import Finance from './pages/Finance'
 import SalesStatistics from './pages/SalesStatistics'
-import FrogGPT from './pages/FrogGPT/index'
+import FrogGPT from './pages/FrogGPT/FrogGPTV2'
 
 function App() {
   return (

@@ -298,12 +298,13 @@ function MainLayout() {
             </Dropdown>
           </div>
         </Header>
-        <Content style={{ margin: isMobile ? '16px 8px 8px' : '24px 16px 16px' }}>
+        <Content style={{ margin: 0, height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
           <div 
             className="site-content" 
             style={{ 
-              padding: isMobile ? 12 : 24, 
-              minHeight: 360 
+              padding: 0, 
+              height: '100%',
+              overflow: 'hidden',
             }}
           >
             <Outlet />

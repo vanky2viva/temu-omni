@@ -249,6 +249,28 @@ export const frogGptApi = {
   // 获取数据摘要
   getDataSummary: (days?: number) => 
     api.get('/frog-gpt/data-summary', { params: { days } }),
+  
+  // 获取OpenRouter API配置
+  getApiConfig: () => api.get('/frog-gpt/api-config'),
+  
+  // 获取完整的OpenRouter API key
+  getFullApiKey: () => api.get('/frog-gpt/api-config/full'),
+  
+  // 获取所有AI提供商的完整API key
+  getAllProvidersApiKeys: () => api.get('/frog-gpt/api-config/all-providers'),
+  
+  // 更新OpenRouter API配置
+  updateApiConfig: (apiKey: string) => 
+    api.put('/frog-gpt/api-config', { api_key: apiKey }),
+}
+
+// 系统AI配置API
+export const systemApi = {
+  // 获取AI配置
+  getAiConfig: () => api.get('/system/ai-config/'),
+  
+  // 更新AI配置
+  updateAiConfig: (config: any) => api.put('/system/ai-config/', config),
 }
 
 export default api

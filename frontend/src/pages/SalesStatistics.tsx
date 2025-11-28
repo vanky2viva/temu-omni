@@ -259,14 +259,15 @@ function SalesStatistics() {
       },
       legend: {
         data: ['总订单量', ...shopNames],
-        bottom: 8,
-        textStyle: { color: '#8b949e', fontSize: 11 },
+        bottom: 4,
+        textStyle: { color: '#8b949e', fontSize: 10 },
+        itemGap: 8,
       },
       grid: {
         left: '3%',
         right: '4%',
-        bottom: '12%',
-        top: '8%',
+        bottom: '10%',
+        top: '5%',
         containLabel: true,
       },
       xAxis: {
@@ -775,28 +776,32 @@ function SalesStatistics() {
 
   return (
     <div className="bulma-section bulma-grid-bg" style={{ 
-      padding: isMobile ? '16px' : '24px',
+      padding: isMobile ? '8px' : '12px',
       background: 'linear-gradient(135deg, #0d1117 0%, #161b22 100%)',
-      minHeight: '100vh',
+      height: '100vh',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
     }}>
       {/* 页面头部 - Bulma 风格 */}
       <div style={{ 
-        marginBottom: 32,
+        marginBottom: isMobile ? 8 : 12,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
         flexWrap: isMobile ? 'wrap' : 'nowrap',
-        gap: 16,
+        gap: 8,
+        flexShrink: 0,
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 className="bulma-title" style={{ 
             margin: 0,
-            fontSize: isMobile ? '24px' : '32px',
+            fontSize: isMobile ? '18px' : '24px',
             display: 'flex',
             alignItems: 'center',
-            gap: 12,
+            gap: 8,
           }}>
-            <RocketOutlined style={{ color: '#00d1b2', fontSize: isMobile ? '24px' : '32px' }} />
+            <RocketOutlined style={{ color: '#00d1b2', fontSize: isMobile ? '18px' : '24px' }} />
             <span style={{
               background: 'linear-gradient(135deg, #00d1b2 0%, #3273dc 100%)',
             WebkitBackgroundClip: 'text',
@@ -806,13 +811,6 @@ function SalesStatistics() {
             销售数据分析
             </span>
           </h1>
-          <p style={{ 
-            margin: '8px 0 0 0',
-            color: '#8b949e',
-            fontSize: isMobile ? '12px' : '14px',
-          }}>
-            实时监控销售业绩，洞察业务趋势，助力数据驱动决策
-          </p>
         </div>
         <Space wrap direction={isMobile ? "vertical" : "horizontal"} style={{ width: isMobile ? '100%' : 'auto' }}>
           <Tooltip title={isRefreshing ? "正在刷新数据..." : "刷新数据"}>
@@ -868,8 +866,9 @@ function SalesStatistics() {
 
       {/* 筛选区域 - Bulma Card 风格 */}
       <div className="bulma-card" style={{ 
-          marginBottom: 24,
-        padding: isMobile ? '12px' : '20px',
+          marginBottom: isMobile ? 8 : 12,
+        padding: isMobile ? '8px' : '12px',
+        flexShrink: 0,
       }}>
         <Space 
           size={isMobile ? "middle" : "large"} 
@@ -1020,13 +1019,14 @@ function SalesStatistics() {
       {/* 核心指标卡片 - Bulma Card 风格 */}
       <div style={{ 
         display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(240px, 1fr))',
-        gap: isMobile ? 12 : 16,
-        marginBottom: isMobile ? 16 : 24,
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)',
+        gap: isMobile ? 8 : 10,
+        marginBottom: isMobile ? 8 : 12,
+        flexShrink: 0,
       }}>
         {/* 总销量 */}
         <div className="bulma-card bulma-glow" style={{ 
-          padding: isMobile ? '16px' : '24px',
+          padding: isMobile ? '10px' : '14px',
           position: 'relative',
           overflow: 'hidden',
         }}>
@@ -1045,34 +1045,34 @@ function SalesStatistics() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: isMobile ? 12 : 16,
+              marginBottom: isMobile ? 6 : 8,
             }}>
               <span style={{ 
                 color: '#8b949e', 
-                fontSize: isMobile ? '13px' : '14px',
+                fontSize: isMobile ? '11px' : '12px',
                 fontWeight: 500,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                gap: 6,
               }}>
-                <ShoppingOutlined style={{ color: '#00d1b2', fontSize: isMobile ? '16px' : '14px' }} />
+                <ShoppingOutlined style={{ color: '#00d1b2', fontSize: isMobile ? '12px' : '12px' }} />
                   总销量
                 </span>
-              <ThunderboltOutlined style={{ color: '#00d1b2', fontSize: isMobile ? '20px' : '24px', opacity: 0.3 }} />
+              <ThunderboltOutlined style={{ color: '#00d1b2', fontSize: isMobile ? '14px' : '16px', opacity: 0.3 }} />
             </div>
             <div className="bulma-stat-value" style={{ 
-              fontSize: isMobile ? '24px' : '36px',
-              marginBottom: isMobile ? 6 : 8,
+              fontSize: isMobile ? '18px' : '24px',
+              marginBottom: isMobile ? 4 : 4,
             }}>
               {totalQuantity.toLocaleString()}
             </div>
-            <div style={{ color: '#8b949e', fontSize: isMobile ? '11px' : '12px' }}>件</div>
+            <div style={{ color: '#8b949e', fontSize: isMobile ? '10px' : '11px' }}>件</div>
           </div>
         </div>
 
         {/* 总订单数 */}
         <div className="bulma-card bulma-glow" style={{ 
-          padding: isMobile ? '16px' : '24px',
+          padding: isMobile ? '10px' : '14px',
           position: 'relative',
           overflow: 'hidden',
         }}>
@@ -1091,24 +1091,24 @@ function SalesStatistics() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: isMobile ? 12 : 16,
+              marginBottom: isMobile ? 6 : 8,
             }}>
               <span style={{ 
                 color: '#8b949e', 
-                fontSize: isMobile ? '13px' : '14px',
+                fontSize: isMobile ? '11px' : '12px',
                 fontWeight: 500,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                gap: 6,
               }}>
-                <BarChartOutlined style={{ color: '#3273dc', fontSize: isMobile ? '16px' : '14px' }} />
+                <BarChartOutlined style={{ color: '#3273dc', fontSize: isMobile ? '12px' : '12px' }} />
                   总订单数
                 </span>
-              <CheckCircleOutlined style={{ color: '#3273dc', fontSize: isMobile ? '20px' : '24px', opacity: 0.3 }} />
+              <CheckCircleOutlined style={{ color: '#3273dc', fontSize: isMobile ? '14px' : '16px', opacity: 0.3 }} />
             </div>
             <div className="bulma-stat-value" style={{ 
-              fontSize: isMobile ? '24px' : '36px',
-              marginBottom: isMobile ? 6 : 8,
+              fontSize: isMobile ? '18px' : '24px',
+              marginBottom: isMobile ? 4 : 4,
               background: 'linear-gradient(135deg, #3273dc 0%, #2366d1 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
@@ -1116,13 +1116,13 @@ function SalesStatistics() {
             }}>
               {totalOrders.toLocaleString()}
             </div>
-            <div style={{ color: '#8b949e', fontSize: isMobile ? '11px' : '12px' }}>单</div>
+            <div style={{ color: '#8b949e', fontSize: isMobile ? '10px' : '11px' }}>单</div>
           </div>
         </div>
 
         {/* GMV */}
         <div className="bulma-card bulma-glow" style={{ 
-          padding: isMobile ? '16px' : '24px',
+          padding: isMobile ? '10px' : '14px',
           position: 'relative',
           overflow: 'hidden',
         }}>
@@ -1141,24 +1141,24 @@ function SalesStatistics() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: isMobile ? 12 : 16,
+              marginBottom: isMobile ? 6 : 8,
             }}>
               <span style={{ 
                 color: '#8b949e', 
-                fontSize: isMobile ? '13px' : '14px',
+                fontSize: isMobile ? '11px' : '12px',
                 fontWeight: 500,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                gap: 6,
               }}>
-                <DollarOutlined style={{ color: '#ffdd57', fontSize: isMobile ? '16px' : '14px' }} />
+                <DollarOutlined style={{ color: '#ffdd57', fontSize: isMobile ? '12px' : '12px' }} />
                   GMV
                 </span>
-              <RiseOutlined style={{ color: '#ffdd57', fontSize: isMobile ? '20px' : '24px', opacity: 0.3 }} />
+              <RiseOutlined style={{ color: '#ffdd57', fontSize: isMobile ? '14px' : '16px', opacity: 0.3 }} />
             </div>
             <div className="bulma-stat-value" style={{ 
-              fontSize: isMobile ? '24px' : '36px',
-              marginBottom: isMobile ? 6 : 8,
+              fontSize: isMobile ? '18px' : '24px',
+              marginBottom: isMobile ? 4 : 4,
               background: 'linear-gradient(135deg, #ffdd57 0%, #ffd83d 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
@@ -1166,15 +1166,15 @@ function SalesStatistics() {
             }}>
               {totalGmv > 0 ? `¥${(totalGmv / 1000).toFixed(1)}k` : '暂无数据'}
             </div>
-            <div style={{ color: '#8b949e', fontSize: isMobile ? '11px' : '12px' }}>
-              {totalGmv > 0 && `平均订单: ¥${avgOrderValue}`}
+            <div style={{ color: '#8b949e', fontSize: isMobile ? '10px' : '11px' }}>
+              {totalGmv > 0 && `平均: ¥${avgOrderValue}`}
             </div>
           </div>
         </div>
 
         {/* 利润 */}
         <div className="bulma-card bulma-glow" style={{ 
-          padding: isMobile ? '16px' : '24px',
+          padding: isMobile ? '10px' : '14px',
           position: 'relative',
           overflow: 'hidden',
         }}>
@@ -1195,31 +1195,31 @@ function SalesStatistics() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: isMobile ? 12 : 16,
+              marginBottom: isMobile ? 6 : 8,
             }}>
               <span style={{ 
                 color: '#8b949e', 
-                fontSize: isMobile ? '13px' : '14px',
+                fontSize: isMobile ? '11px' : '12px',
                 fontWeight: 500,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                gap: 6,
               }}>
                 <TrophyOutlined style={{ 
                   color: totalProfit >= 0 ? '#48c774' : '#f14668',
-                  fontSize: isMobile ? '16px' : '14px',
+                  fontSize: isMobile ? '12px' : '12px',
                 }} />
                   利润
                 </span>
               <TrophyOutlined style={{ 
                 color: totalProfit >= 0 ? '#48c774' : '#f14668', 
-                fontSize: isMobile ? '20px' : '24px',
+                fontSize: isMobile ? '14px' : '16px',
                 opacity: 0.3 
               }} />
             </div>
             <div className="bulma-stat-value" style={{ 
-              fontSize: isMobile ? '24px' : '36px',
-              marginBottom: isMobile ? 6 : 8,
+              fontSize: isMobile ? '18px' : '24px',
+              marginBottom: isMobile ? 4 : 4,
               background: totalProfit >= 0
                 ? 'linear-gradient(135deg, #48c774 0%, #3ec46d 100%)'
                 : 'linear-gradient(135deg, #f14668 0%, #ef2e55 100%)',
@@ -1233,7 +1233,7 @@ function SalesStatistics() {
             </div>
             <div style={{ 
               color: '#8b949e', 
-              fontSize: isMobile ? '11px' : '12px',
+              fontSize: isMobile ? '10px' : '11px',
               display: 'flex',
               alignItems: 'center',
               gap: 4,
@@ -1241,7 +1241,7 @@ function SalesStatistics() {
               {totalProfit !== null && totalProfit !== undefined && (
                 <>
                   <PercentageOutlined style={{ fontSize: isMobile ? '9px' : '10px' }} />
-                  利润率: {profitMargin}%
+                  {profitMargin}%
                 </>
               )}
             </div>
@@ -1253,42 +1253,51 @@ function SalesStatistics() {
       <div style={{ 
         display: 'grid',
         gridTemplateColumns: isMobile ? '1fr' : '0.8fr 1.2fr',
-        gap: isMobile ? 8 : 12,
-        marginBottom: isMobile ? 16 : 24,
+        gap: isMobile ? 6 : 8,
+        marginBottom: isMobile ? 8 : 12,
+        flex: 1,
+        minHeight: 0,
+        overflow: 'hidden',
       }}>
         {/* 左侧：每日销量表格 */}
         <div className="bulma-card" style={{ 
-          padding: isMobile ? '6px' : '8px',
+          padding: isMobile ? '4px' : '6px',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          height: '100%',
         }}>
           <header style={{
             display: 'flex',
             alignItems: 'center',
-            marginBottom: 8,
-            paddingBottom: 6,
+            marginBottom: 4,
+            paddingBottom: 4,
             borderBottom: '1px solid #30363d',
+            flexShrink: 0,
           }}>
-            <BarChartOutlined style={{ color: '#00d1b2', fontSize: '12px', marginRight: 6 }} />
+            <BarChartOutlined style={{ color: '#00d1b2', fontSize: '11px', marginRight: 4 }} />
             <span style={{ 
               color: '#c9d1d9', 
               fontWeight: 600,
-              fontSize: '13px',
+              fontSize: '11px',
             }}>
               每日店铺订单与销量
             </span>
           </header>
           <div style={{ 
-            maxHeight: isMobile ? '400px' : '500px', 
+            flex: 1,
             overflowY: 'auto', 
             overflowX: isMobile ? 'auto' : 'hidden',
             WebkitOverflowScrolling: 'touch',
             touchAction: 'pan-x pan-y',
+            minHeight: 0,
           }}>
             <Table
               columns={dailySalesColumns}
               dataSource={dailySalesTableData}
               pagination={false}
               scroll={{ 
-                y: isMobile ? '350px' : '450px',
+                y: 'calc(100vh - 650px)',
                 x: isMobile ? 'max-content' : undefined,
               }}
               size={isMobile ? "small" : "small"}
@@ -1332,28 +1341,33 @@ function SalesStatistics() {
         {/* 右侧：销量趋势图表 */}
       {chartOption && (
           <div className="bulma-card" style={{ 
-            padding: isMobile ? '8px' : '12px',
+            padding: isMobile ? '4px' : '6px',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            height: '100%',
           }}>
             <header style={{
               display: 'flex',
               alignItems: 'center',
-              marginBottom: isMobile ? 8 : 10,
-              paddingBottom: isMobile ? 6 : 8,
+              marginBottom: 4,
+              paddingBottom: 4,
               borderBottom: '1px solid #30363d',
+              flexShrink: 0,
             }}>
-              <LineChartOutlined style={{ color: '#00d1b2', fontSize: isMobile ? '12px' : '14px', marginRight: 6 }} />
+              <LineChartOutlined style={{ color: '#00d1b2', fontSize: isMobile ? '11px' : '12px', marginRight: 4 }} />
               <span style={{ 
                 color: '#c9d1d9', 
                 fontWeight: 600,
-                fontSize: isMobile ? '12px' : '14px',
+                fontSize: isMobile ? '11px' : '12px',
               }}>
                 店铺业绩对比
               </span>
             </header>
-            <div style={{ marginTop: isMobile ? '-4px' : '-8px' }}>
+            <div style={{ flex: 1, minHeight: 0, marginTop: '-4px' }}>
           <ReactECharts 
             option={chartOption} 
-                style={{ height: isMobile ? '250px' : '480px' }}
+                style={{ height: '100%', minHeight: '200px' }}
             opts={{ renderer: 'svg' }}
           />
             </div>
@@ -1362,10 +1376,18 @@ function SalesStatistics() {
       </div>
 
       {/* Tab切换 - Bulma Card 风格 */}
-      <div className="bulma-card" style={{ padding: isMobile ? '12px' : '24px' }}>
+      <div className="bulma-card" style={{ 
+        padding: isMobile ? '8px' : '12px',
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}>
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
           items={[
             {
               key: 'sku',
@@ -1376,14 +1398,14 @@ function SalesStatistics() {
                 </Space>
               ),
               children: (
-                <div style={{ padding: 0 }}>
+                <div style={{ padding: 0, flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <Table
                   columns={skuColumns}
                   dataSource={skuRanking?.ranking || []}
                   rowKey={(record, index) => record?.sku || record?.rank?.toString() || `sku-${index}`}
                   loading={skuLoading}
                   pagination={{
-                    pageSize: 20,
+                    pageSize: 15,
                     showSizeChanger: true,
                     showTotal: (total) => (
                       <span style={{ color: '#8b949e' }}>
@@ -1391,7 +1413,8 @@ function SalesStatistics() {
                       </span>
                     ),
                   }}
-                    style={{ background: 'transparent' }}
+                    style={{ background: 'transparent', flex: 1 }}
+                    scroll={{ y: 'calc(100vh - 750px)' }}
                 />
                 </div>
               ),
@@ -1405,14 +1428,14 @@ function SalesStatistics() {
                 </Space>
               ),
               children: (
-                <div style={{ padding: 0 }}>
+                <div style={{ padding: 0, flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   <Table
                     columns={managerColumns}
                     dataSource={managerSales?.managers || []}
                     rowKey="manager"
                     loading={managerLoading}
                     pagination={{
-                      pageSize: 20,
+                      pageSize: 15,
                       showSizeChanger: true,
                       showTotal: (total) => (
                         <span style={{ color: '#8b949e' }}>
@@ -1420,7 +1443,8 @@ function SalesStatistics() {
                         </span>
                       ),
                     }}
-                    style={{ background: 'transparent' }}
+                    style={{ background: 'transparent', flex: 1 }}
+                    scroll={{ y: 'calc(100vh - 750px)' }}
                   />
                 </div>
               ),

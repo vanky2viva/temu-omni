@@ -104,12 +104,13 @@ async def chat(
                 # 如果获取数据失败，继续但不包含系统上下文
                 pass
         
-        # 调用OpenRouter API
+        # 调用OpenRouter API（传递db以从数据库读取API key）
         response = await frog_gpt_service.chat_completion(
             messages=messages,
             model=request.model,
             temperature=request.temperature,
-            max_tokens=request.max_tokens
+            max_tokens=request.max_tokens,
+            db=db
         )
         
         return response
@@ -218,11 +219,12 @@ async def chat_with_files(
             except Exception as e:
                 pass
         
-        # 调用OpenRouter API
+        # 调用OpenRouter API（传递db以从数据库读取API key）
         response = await frog_gpt_service.chat_completion(
             messages=message_list,
             model=model,
-            temperature=temperature
+            temperature=temperature,
+            db=db
         )
         
         return response
@@ -235,13 +237,14 @@ async def chat_with_files(
 
 @router.get("/models", response_model=ModelsResponse)
 async def get_models(
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     获取可用的AI模型列表
     """
     try:
-        models = await frog_gpt_service.get_models()
+        models = await frog_gpt_service.get_models(db=db)
         return {"models": models}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取模型列表失败: {str(e)}")
@@ -286,4 +289,122 @@ async def get_data_summary_for_ai(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取数据摘要失败: {str(e)}")
+
+
+class OpenRouterConfigResponse(BaseModel):
+    """OpenRouter配置响应"""
+    api_key: str = ""  # 部分隐藏的API key
+    has_api_key: bool = False  # 是否有API key
+
+
+class OpenRouterConfigUpdate(BaseModel):
+    """OpenRouter配置更新"""
+    api_key: str = ""
+
+
+@router.get("/api-config", response_model=OpenRouterConfigResponse)
+def get_openrouter_config(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取OpenRouter API配置"""
+    from app.models.system_config import SystemConfig
+    
+    config = db.query(SystemConfig).filter(SystemConfig.key == "openrouter_api_key").first()
+    api_key = config.value if config and config.value else ""
+    
+    # 部分隐藏API key（只显示前8位和后4位）
+    masked_key = ""
+    if api_key:
+        if len(api_key) > 12:
+            masked_key = api_key[:8] + "..." + api_key[-4:]
+        else:
+            masked_key = api_key[:4] + "..." + api_key[-2:] if len(api_key) > 6 else "***"
+    
+    return {
+        "api_key": masked_key,
+        "has_api_key": bool(api_key)
+    }
+
+
+class FullApiKeyResponse(BaseModel):
+    """完整API key响应"""
+    api_key: str
+    has_api_key: bool
+
+
+@router.get("/api-config/full")
+def get_full_openrouter_api_key(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取完整的OpenRouter API key（用于显示）"""
+    from app.models.system_config import SystemConfig
+    
+    config = db.query(SystemConfig).filter(SystemConfig.key == "openrouter_api_key").first()
+    api_key = config.value if config and config.value else ""
+    
+    return {
+        "api_key": api_key,
+        "has_api_key": bool(api_key)
+    }
+
+
+@router.get("/api-config/all-providers")
+def get_all_providers_api_keys(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取所有AI提供商的完整API key"""
+    from app.models.system_config import SystemConfig
+    
+    def get_full_key(key: str) -> str:
+        config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        return config.value if config and config.value else ""
+    
+    return {
+        "openrouter": {
+            "api_key": get_full_key("openrouter_api_key"),
+            "has_api_key": bool(get_full_key("openrouter_api_key"))
+        },
+        "openai": {
+            "api_key": get_full_key("openai_api_key"),
+            "has_api_key": bool(get_full_key("openai_api_key"))
+        },
+        "deepseek": {
+            "api_key": get_full_key("deepseek_api_key"),
+            "has_api_key": bool(get_full_key("deepseek_api_key"))
+        }
+    }
+
+
+@router.put("/api-config")
+def update_openrouter_config(
+    config: OpenRouterConfigUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """更新OpenRouter API配置"""
+    from app.models.system_config import SystemConfig
+    
+    # 如果API key为空，不更新（保留原值）
+    if not config.api_key:
+        return {"message": "API key未更新（保留原值）"}
+    
+    # 更新或创建配置
+    api_key_config = db.query(SystemConfig).filter(SystemConfig.key == "openrouter_api_key").first()
+    if api_key_config:
+        api_key_config.value = config.api_key
+    else:
+        api_key_config = SystemConfig(
+            key="openrouter_api_key",
+            value=config.api_key,
+            description="OpenRouter API密钥",
+            is_encrypted=True
+        )
+        db.add(api_key_config)
+    
+    db.commit()
+    
+    return {"message": "OpenRouter API配置更新成功"}
 

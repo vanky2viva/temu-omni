@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 import httpx
 from loguru import logger
 from app.core.config import settings
+from sqlalchemy.orm import Session
 
 
 class FrogGPTService:
@@ -12,6 +13,7 @@ class FrogGPTService:
     
     def __init__(self):
         """初始化服务"""
+        # 优先使用环境变量，如果没有则从数据库读取（在需要时）
         self.api_key = settings.OPENROUTER_API_KEY
         self.default_model = settings.OPENROUTER_MODEL
         self.timeout = settings.OPENROUTER_TIMEOUT
@@ -25,12 +27,34 @@ class FrogGPTService:
             follow_redirects=True
         )
     
+    def get_api_key_from_db(self, db: Session) -> Optional[str]:
+        """从数据库获取API key"""
+        from app.models.system_config import SystemConfig
+        
+        config = db.query(SystemConfig).filter(SystemConfig.key == "openrouter_api_key").first()
+        if config and config.value:
+            return config.value
+        
+        # 如果数据库中没有，返回环境变量中的值
+        return self.api_key
+    
+    def get_api_key(self, db: Optional[Session] = None) -> Optional[str]:
+        """获取API key（优先从数据库，其次环境变量）"""
+        if db:
+            db_key = self.get_api_key_from_db(db)
+            if db_key:
+                return db_key
+        
+        # 如果数据库中没有或没有提供db，使用环境变量
+        return self.api_key
+    
     async def chat_completion(
         self,
         messages: List[Dict[str, str]],
         model: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        db: Optional[Session] = None
     ) -> Dict[str, Any]:
         """
         发送聊天完成请求到OpenRouter
@@ -45,7 +69,18 @@ class FrogGPTService:
             API响应数据
         """
         try:
-            model = model or self.default_model
+            # 处理AUTO模式：如果model为"auto"，使用OpenRouter的自动路由
+            use_auto_routing = False
+            if model and model.lower() == "auto":
+                # OpenRouter的自动路由：使用通用模型，OpenRouter会在多个提供商间智能选择
+                # 根据OpenRouter文档，可以通过provider配置实现智能路由
+                model = "openai/gpt-4o-mini"  # 使用通用模型作为基础
+                use_auto_routing = True
+            else:
+                model = model or self.default_model
+            
+            # 获取API key（优先从数据库）
+            api_key = self.get_api_key(db)
             
             # 构建请求头
             headers = {
@@ -53,8 +88,8 @@ class FrogGPTService:
             }
             
             # 如果提供了API Key，添加到请求头
-            if self.api_key:
-                headers["Authorization"] = f"Bearer {self.api_key}"
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
             
             # 如果提供了HTTP Referer，添加到请求头（用于免费使用）
             if self.http_referer:
@@ -70,6 +105,14 @@ class FrogGPTService:
                 "messages": messages,
                 "temperature": temperature,
             }
+            
+            # 如果使用AUTO模式，添加provider配置以实现智能路由
+            # OpenRouter会根据价格、性能等因素自动选择最佳提供商
+            if use_auto_routing:
+                payload["provider"] = {
+                    "sort": "price",  # 按价格排序，选择最经济的提供商
+                    "allow_fallbacks": True,  # 允许备用提供商
+                }
             
             if max_tokens:
                 payload["max_tokens"] = max_tokens
@@ -94,17 +137,23 @@ class FrogGPTService:
             logger.error(f"OpenRouter API请求异常: {e}")
             raise
     
-    async def get_models(self) -> List[Dict[str, Any]]:
+    async def get_models(self, db: Optional[Session] = None) -> List[Dict[str, Any]]:
         """
         获取可用的AI模型列表
+        
+        Args:
+            db: 数据库会话（可选，用于从数据库读取API key）
         
         Returns:
             模型列表
         """
         try:
+            # 获取API key（优先从数据库）
+            api_key = self.get_api_key(db)
+            
             headers = {}
-            if self.api_key:
-                headers["Authorization"] = f"Bearer {self.api_key}"
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
             
             response = await self.client.get(
                 f"{self.base_url}/models",
