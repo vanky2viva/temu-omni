@@ -186,8 +186,6 @@ const AiChatPanel: React.FC<AiChatPanelProps> = ({ shopId, shopName, onDecisionP
           flexDirection: 'column',
         },
       }}
-        flexDirection: 'column',
-      }}
     >
       {/* 顶部标题栏 */}
       <div
