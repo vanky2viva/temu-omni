@@ -31,7 +31,7 @@ import {
 import { Welcome } from '@ant-design/x'
 import { frogGptApi, shopApi, statisticsApi, analyticsApi } from '@/services/api'
 import AiChatPanelV2 from './components/AiChatPanelV2'
-import DecisionPanel from './components/DecisionPanel'
+import DecisionHybridBoard from './components/DecisionHybridBoard'
 import MetricOverview from './MetricOverview'
 import TrendsCharts from './components/TrendsCharts'
 import type { DecisionData, MetricData, TrendData, SkuRankingItem } from './types'
@@ -684,7 +684,7 @@ const FrogGPTV2: React.FC = () => {
         {/* 左侧：数据 & 决策视图（42%） */}
         <div style={{ width: '42%', display: 'flex', flexDirection: 'column', gap: '12px', overflow: 'auto', paddingBottom: 8 }}>
           {/* AI 结构化决策区置顶 */}
-          <DecisionPanel decisionData={decisionData} />
+          <DecisionHybridBoard decisionData={decisionData} />
 
           {/* 运营指标速览 */}
           {metrics.length > 0 && <MetricOverview metrics={metrics} />}

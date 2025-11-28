@@ -72,6 +72,7 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<ChatMessage[]>(messages)
+  const decisionDraftRef = useRef<DecisionData | null>(null)
   const lastUserMessage = useMemo(
     () => [...messages].reverse().find(msg => msg.role === 'user'),
     [messages],
@@ -131,6 +132,8 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
   const handleSend = useCallback(async (value: string) => {
     const content = value.trim()
     if (!content || loading) return
+    decisionDraftRef.current = null
+    onDecisionParsed?.(null)
 
     const userMessage: ChatMessage = {
       id: uuidv4(),
@@ -216,6 +219,11 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
               return msg
             })
           })
+          const parsedDraft = extractDecisionFromMarkdown(assistantMessageContent)
+          if (parsedDraft && JSON.stringify(parsedDraft) !== JSON.stringify(decisionDraftRef.current)) {
+            decisionDraftRef.current = parsedDraft
+            onDecisionParsed?.(parsedDraft)
+          }
         } else if (chunk.type === 'done') {
           // 流式响应完成
           console.log('流式响应完成:', {
@@ -226,6 +234,7 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
           // 提取决策数据
           const decisionData = extractDecisionFromMarkdown(assistantMessageContent)
           if (decisionData) {
+            decisionDraftRef.current = decisionData
             onDecisionParsed?.(decisionData)
           }
         } else if (chunk.type === 'usage') {
