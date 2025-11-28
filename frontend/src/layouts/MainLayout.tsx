@@ -298,13 +298,11 @@ function MainLayout() {
             </Dropdown>
           </div>
         </Header>
-        <Content style={{ margin: 0, height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+        <Content style={{ margin: 0, minHeight: 'calc(100vh - 64px)' }}>
           <div 
             className="site-content" 
             style={{ 
-              padding: 0, 
-              height: '100%',
-              overflow: 'hidden',
+              padding: 0,
             }}
           >
             <Outlet />

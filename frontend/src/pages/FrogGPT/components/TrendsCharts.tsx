@@ -135,69 +135,7 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
     }
   }, [trendData])
 
-  // 退款率趋势图配置
-  const refundRateChartOption = useMemo(() => {
-    const dates = trendData.map(item => dayjs(item.date).format('MM-DD'))
-    
-    return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'cross' },
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        borderColor: '#f14668',
-        borderWidth: 1,
-        textStyle: { color: '#fff' },
-      },
-      grid: {
-        left: '3%',
-        right: '4%',
-        bottom: '12%',
-        top: '8%',
-        containLabel: true,
-      },
-      xAxis: {
-        type: 'category',
-        boundaryGap: false,
-        data: dates,
-        axisLine: { lineStyle: { color: '#30363d' } },
-        axisLabel: {
-          color: '#8b949e',
-          rotate: 45,
-          fontSize: 11,
-        },
-      },
-      yAxis: {
-        type: 'value',
-        name: '退款率（%）',
-        nameTextStyle: { color: '#8b949e', fontSize: 11 },
-        axisLine: { lineStyle: { color: '#30363d' } },
-        axisLabel: { color: '#8b949e', fontSize: 11 },
-        splitLine: { lineStyle: { color: '#21262d', type: 'dashed' } },
-      },
-      series: [
-        {
-          name: '退款率',
-          type: 'line',
-          data: trendData.map(item => item.refundRate.toFixed(2)),
-          smooth: true,
-          lineStyle: { width: 3, color: '#f14668' },
-          itemStyle: { color: '#f14668' },
-          areaStyle: {
-            color: {
-              type: 'linear',
-              x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [
-                { offset: 0, color: 'rgba(241, 70, 104, 0.3)' },
-                { offset: 1, color: 'rgba(241, 70, 104, 0.05)' },
-              ],
-            },
-          },
-        },
-      ],
-    }
-  }, [trendData])
-
+ // 退款率趋势图配置
   // SKU Top 表格列配置
   const skuColumns = [
     {
@@ -295,17 +233,13 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {/* GMV/订单/利润趋势图 */}
       <Card
+        className="frog-gpt-section-card"
         title={
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <LineChartOutlined style={{ color: '#00d1b2' }} />
             <span>运营趋势分析</span>
           </span>
         }
-        style={{
-          background: '#020617',
-          borderColor: '#1E293B',
-          borderRadius: '12px',
-        }}
         styles={{
           header: {
             background: 'transparent',
@@ -322,48 +256,15 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
         />
       </Card>
 
-      {/* 退款率趋势图 */}
-      <Card
-        title={
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <LineChartOutlined style={{ color: '#f14668' }} />
-            <span>退款率趋势</span>
-          </span>
-        }
-        style={{
-          background: '#020617',
-          borderColor: '#1E293B',
-          borderRadius: '12px',
-        }}
-        styles={{
-          header: {
-            background: 'transparent',
-            borderBottom: '1px solid #1E293B',
-            color: '#e2e8f0',
-          },
-          body: { padding: '12px' },
-        }}
-      >
-        <ReactECharts
-          option={refundRateChartOption}
-          style={{ height: '200px' }}
-          opts={{ renderer: 'svg' }}
-        />
-      </Card>
-
       {/* SKU Top 表格 */}
       <Card
+        className="frog-gpt-section-card"
         title={
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <BarChartOutlined style={{ color: '#60a5fa' }} />
             <span>SKU Top 排行</span>
           </span>
         }
-        style={{
-          background: '#020617',
-          borderColor: '#1E293B',
-          borderRadius: '12px',
-        }}
         styles={{
           header: {
             background: 'transparent',
@@ -388,4 +289,3 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
 }
 
 export default TrendsCharts
-

@@ -23,28 +23,22 @@ const MetricOverview: React.FC<MetricOverviewProps> = ({ metrics }) => {
 
   return (
     <Card
-      title="运营指标速览"
-      style={{
-        background: '#020617',
-        borderColor: '#1E293B',
-        borderRadius: '12px',
-        marginBottom: '16px',
-      }}
-      headStyle={{
-        color: '#fff',
-        borderBottomColor: '#1E293B',
-      }}
-      styles={{ body: { padding: '16px' } }}
+      title={
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ArrowUpOutlined style={{ color: '#60a5fa' }} />
+          <span>运营指标速览</span>
+        </span>
+      }
+      className="frog-gpt-section-card"
+      styles={{ body: { padding: '16px' }, header: { background: 'transparent', color: '#e2e8f0' } }}
     >
       <Row gutter={[12, 12]}>
         {metrics.map((metric, index) => (
           <Col span={12} key={index}>
             <Card
+              className="frog-gpt-section-card"
               style={{
-                background: '#0f172a',
-                borderColor: '#1E293B',
-                borderRadius: '8px',
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+                background: 'linear-gradient(135deg, rgba(96, 165, 250, 0.08), rgba(15, 23, 42, 0.9))',
               }}
               styles={{ body: { padding: '12px' } }}
             >
@@ -63,6 +57,7 @@ const MetricOverview: React.FC<MetricOverviewProps> = ({ metrics }) => {
                       style={{
                         color: metric.trend === 'up' ? '#52c41a' : metric.trend === 'down' ? '#ff4d4f' : '#8c8c8c',
                         fontSize: '12px',
+                        marginLeft: 6,
                       }}
                     >
                       {metric.trendValue}
@@ -79,4 +74,3 @@ const MetricOverview: React.FC<MetricOverviewProps> = ({ metrics }) => {
 }
 
 export default MetricOverview
-

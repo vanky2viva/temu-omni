@@ -1,0 +1,217 @@
+.frog-gpt-page {
+  position: relative;
+  background: radial-gradient(120% 160% at 10% 20%, rgba(96, 165, 250, 0.08), transparent 40%),
+    radial-gradient(120% 140% at 90% 10%, rgba(45, 212, 191, 0.08), transparent 45%),
+    #0a1224;
+}
+
+.frog-gpt-hero-card {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(120deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.65)),
+    radial-gradient(120% 120% at 15% 30%, rgba(96, 165, 250, 0.15), transparent 50%),
+    radial-gradient(80% 120% at 85% 10%, rgba(45, 212, 191, 0.15), transparent 55%);
+  border: 1px solid #1e2a44;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  animation: frog-gpt-gradient-shift 18s ease-in-out infinite alternate;
+}
+
+.frog-gpt-hero-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(40% 40% at 70% 20%, rgba(96, 165, 250, 0.12), transparent 60%);
+  filter: blur(40px);
+  opacity: 0.7;
+  animation: frog-gpt-orbit 24s linear infinite;
+}
+
+.frog-gpt-hero-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(35% 35% at 20% 50%, rgba(16, 185, 129, 0.14), transparent 60%);
+  filter: blur(50px);
+  opacity: 0.5;
+  animation: frog-gpt-orbit 20s linear infinite reverse;
+}
+
+@keyframes frog-gpt-gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes frog-gpt-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.frog-gpt-section-card {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.3s ease;
+  border-color: #1e2a44 !important;
+  background: linear-gradient(160deg, #0c1426 0%, #0f172a 40%, #0b1224 100%) !important;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.frog-gpt-section-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(96, 165, 250, 0.6) !important;
+  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(96, 165, 250, 0.2);
+}
+
+.frog-gpt-prompt-item {
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.75)) !important;
+  border: 1px solid rgba(96, 165, 250, 0.25) !important;
+  color: #e2e8f0 !important;
+  transition: all 0.25s ease !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.frog-gpt-prompt-item:hover {
+  transform: translateY(-3px) scale(1.01);
+  border-color: rgba(96, 165, 250, 0.6) !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.frog-gpt-chat-card {
+  border-color: #1d2a44 !important;
+  background: radial-gradient(120% 120% at 30% 10%, rgba(96, 165, 250, 0.12), transparent 55%),
+    radial-gradient(120% 120% at 80% 0%, rgba(16, 185, 129, 0.12), transparent 55%),
+    #0b1120 !important;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.45);
+}
+
+.frog-gpt-chat-scroll {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.75));
+}
+
+.frog-gpt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: #93c5fd;
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  font-size: 12px;
+  animation: frog-gpt-pulse 8s ease-in-out infinite;
+}
+
+.frog-gpt-badge.success {
+  color: #6ee7b7;
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.frog-gpt-badge.warn {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.frog-gpt-soft-text {
+  color: #94a3b8;
+}
+
+.frog-gpt-floating {
+  position: relative;
+  overflow: hidden;
+}
+
+.frog-gpt-floating::after {
+  content: '';
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(94, 234, 212, 0.15), transparent 60%);
+  top: -30px;
+  right: -30px;
+  filter: blur(24px);
+  animation: frog-gpt-float 12s ease-in-out infinite alternate;
+}
+
+@keyframes frog-gpt-float {
+  from {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(10px);
+    opacity: 0.9;
+  }
+}
+
+@keyframes frog-gpt-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(96, 165, 250, 0);
+  }
+}
+
+.frog-gpt-thought {
+  border: 1px dashed rgba(96, 165, 250, 0.4);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.frog-gpt-suggestion-trigger {
+  color: #93c5fd !important;
+}
+
+.frog-gpt-suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.frog-gpt-suggestion-chip {
+  background: #0f172a;
+  border: 1px solid #1E293B;
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: #e2e8f0;
+  min-width: 180px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+.frog-gpt-suggestion-chip:hover {
+  transform: translateY(-2px);
+  border-color: rgba(96, 165, 250, 0.6);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.frog-gpt-suggestion-chip-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.frog-gpt-suggestion-chip-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.frog-gpt-tag {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(148, 163, 184, 0.08);
+  color: #e2e8f0;
+}

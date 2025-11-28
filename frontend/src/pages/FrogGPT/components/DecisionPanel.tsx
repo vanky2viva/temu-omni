@@ -2,7 +2,7 @@
  * AI 结构化决策区组件
  * 显示 RiskLevel 卡片 + Summary 卡片 + Action List 卡片
  */
-import React from 'react'
+import React, { useMemo } from 'react'
 import { Card, Tag, Typography, List, Space, Badge } from 'antd'
 import {
   CheckCircleOutlined,
@@ -11,6 +11,7 @@ import {
   RocketOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
+import { ThoughtChain, type ThoughtChainItem } from '@ant-design/x'
 import type { DecisionData } from '../types'
 
 const { Text, Paragraph } = Typography
@@ -70,14 +71,55 @@ const DecisionPanel: React.FC<DecisionPanelProps> = ({ decisionData }) => {
     }
   }
 
+  const thoughtChainItems = useMemo<ThoughtChainItem[]>(() => {
+    if (!decisionData) {
+      return [
+        {
+          key: 'pending-data',
+          title: '等待 AI 推理',
+          description: '在右侧对话中发起问题，FrogGPT 将自动生成决策链路',
+          status: 'pending',
+        },
+      ]
+    }
+
+    const items: ThoughtChainItem[] = []
+
+    if (decisionData.decisionSummary) {
+      items.push({
+        key: 'summary',
+        title: '决策总结',
+        description: decisionData.decisionSummary,
+        status: 'success',
+      })
+    }
+
+    decisionData.actions?.forEach((action, index) => {
+      items.push({
+        key: `action-${index}`,
+        title: action.type,
+        description: action.reason || action.target,
+        extra: action.delta,
+        status: 'success',
+      })
+    })
+
+    if (decisionData.metadata?.analysisDate) {
+      items.push({
+        key: 'analysis-time',
+        title: '分析时间',
+        description: decisionData.metadata.analysisDate,
+        status: 'success',
+      })
+    }
+
+    return items
+  }, [decisionData])
+
   if (!decisionData) {
     return (
       <Card
-        style={{
-          background: '#020617',
-          borderColor: '#1E293B',
-          borderRadius: '12px',
-        }}
+        className="frog-gpt-section-card"
         styles={{
           header: {
             background: 'transparent',
@@ -106,9 +148,37 @@ const DecisionPanel: React.FC<DecisionPanelProps> = ({ decisionData }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <Card
+        className="frog-gpt-section-card"
+        title={
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ThunderboltOutlined style={{ color: '#60a5fa' }} />
+            <span>AI 推理链路</span>
+          </span>
+        }
+        styles={{
+          header: {
+            background: 'transparent',
+            borderBottom: '1px solid #1E293B',
+            color: '#e2e8f0',
+          },
+          body: { padding: '12px' },
+        }}
+      >
+        <ThoughtChain
+          items={thoughtChainItems}
+          size="small"
+          className="frog-gpt-thought"
+          styles={{
+            item: { color: '#e2e8f0' },
+          }}
+        />
+      </Card>
+
       {/* 风险等级卡片 */}
       {decisionData.riskLevel && (
         <Card
+          className="frog-gpt-section-card"
           style={{
             background: riskConfig.bgColor,
             border: `2px solid ${riskConfig.borderColor}`,
@@ -149,6 +219,7 @@ const DecisionPanel: React.FC<DecisionPanelProps> = ({ decisionData }) => {
       {/* 决策总结卡片 */}
       {decisionData.decisionSummary && (
         <Card
+          className="frog-gpt-section-card"
           title={
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <RocketOutlined style={{ color: '#60a5fa' }} />
@@ -183,6 +254,7 @@ const DecisionPanel: React.FC<DecisionPanelProps> = ({ decisionData }) => {
       {/* 动作建议列表卡片 */}
       {decisionData.actions && decisionData.actions.length > 0 && (
         <Card
+          className="frog-gpt-section-card"
           title={
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <ThunderboltOutlined style={{ color: '#60a5fa' }} />
@@ -274,4 +346,3 @@ const DecisionPanel: React.FC<DecisionPanelProps> = ({ decisionData }) => {
 }
 
 export default DecisionPanel
-

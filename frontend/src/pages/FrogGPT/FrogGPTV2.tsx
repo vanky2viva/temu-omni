@@ -3,7 +3,7 @@
  * 使用 Ant Design X 组件重构
  */
 import React, { useState, useEffect, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   Card,
   Select,
@@ -15,51 +15,29 @@ import {
   message,
   Modal,
   Input,
-  Form,
-  Tabs,
   AutoComplete,
   Tooltip,
   Row,
   Col,
   Divider,
+  Segmented,
 } from 'antd'
 import {
   SaveOutlined,
   ReloadOutlined,
   RobotOutlined,
   SettingOutlined,
-  EyeOutlined,
-  EyeInvisibleOutlined,
 } from '@ant-design/icons'
-import { Prompts } from '@ant-design/x'
-import { frogGptApi, shopApi, systemApi, statisticsApi, analyticsApi } from '@/services/api'
+import { Welcome } from '@ant-design/x'
+import { frogGptApi, shopApi, statisticsApi, analyticsApi } from '@/services/api'
 import AiChatPanelV2 from './components/AiChatPanelV2'
 import DecisionPanel from './components/DecisionPanel'
 import MetricOverview from './MetricOverview'
 import TrendsCharts from './components/TrendsCharts'
-import {
-  BarChartOutlined,
-  RocketOutlined,
-  FileTextOutlined,
-  ThunderboltOutlined,
-} from '@ant-design/icons'
-import type { DecisionData, MetricData, QuickPrompt, TrendData, SkuRankingItem } from './types'
+import type { DecisionData, MetricData, TrendData, SkuRankingItem } from './types'
+import './frog-gpt.css'
 
-const { Text, Title } = Typography
-
-// 获取分类图标
-const getCategoryIcon = (category?: string) => {
-  switch (category) {
-    case 'analysis':
-      return <BarChartOutlined />
-    case 'optimization':
-      return <RocketOutlined />
-    case 'report':
-      return <FileTextOutlined />
-    default:
-      return <ThunderboltOutlined />
-  }
-}
+const { Text } = Typography
 
 const FrogGPTV2: React.FC = () => {
   // 状态管理
@@ -70,13 +48,14 @@ const FrogGPTV2: React.FC = () => {
   const [selectedShopId, setSelectedShopId] = useState<number | undefined>()
   const [decisionData, setDecisionData] = useState<DecisionData | null>(null)
   const [configModalVisible, setConfigModalVisible] = useState(false)
-  const [activeProvider, setActiveProvider] = useState<string>('openrouter')
-  const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({})
-  const [fullApiKeys, setFullApiKeys] = useState<Record<string, string>>({})
   const [modelSearchValue, setModelSearchValue] = useState<string | null>(null)
   const [externalMessage, setExternalMessage] = useState<string | null>(null)
-  const [form] = Form.useForm()
-  const queryClient = useQueryClient()
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({
+    openrouter: '',
+    openai: '',
+    anthropic: '',
+    gemini: '',
+  })
 
   // 获取可用模型列表
   const { data: modelsData } = useQuery({
@@ -137,12 +116,6 @@ const FrogGPTV2: React.FC = () => {
   const { data: apiConfig } = useQuery({
     queryKey: ['frog-gpt-api-config'],
     queryFn: frogGptApi.getApiConfig,
-  })
-
-  // 获取系统AI配置
-  const { data: aiConfig } = useQuery({
-    queryKey: ['system-ai-config'],
-    queryFn: systemApi.getSystemAiConfig,
   })
 
   // 处理模型选项
@@ -339,6 +312,7 @@ const FrogGPTV2: React.FC = () => {
   // 加载保存的配置（包括模型选择）
   useEffect(() => {
     const savedConfig = localStorage.getItem('frog-gpt-config')
+    const savedKeys = localStorage.getItem('frog-gpt-api-keys')
     if (savedConfig) {
       try {
         const config = JSON.parse(savedConfig)
@@ -362,6 +336,19 @@ const FrogGPTV2: React.FC = () => {
       // 如果没有保存的配置，使用默认值
       setSelectedModel('auto')
     }
+    if (savedKeys) {
+      try {
+        const parsed = JSON.parse(savedKeys)
+        setApiKeys({
+          openrouter: parsed.openrouter || '',
+          openai: parsed.openai || '',
+          anthropic: parsed.anthropic || '',
+          gemini: parsed.gemini || '',
+        })
+      } catch (error) {
+        console.error('加载API Key失败:', error)
+      }
+    }
   }, [])
 
   // 保存配置（包括模型选择）
@@ -374,6 +361,7 @@ const FrogGPTV2: React.FC = () => {
       shopId: selectedShopId,
     }
     localStorage.setItem('frog-gpt-config', JSON.stringify(config))
+    localStorage.setItem('frog-gpt-api-keys', JSON.stringify(apiKeys))
     message.success('配置已保存')
   }
 
@@ -385,7 +373,14 @@ const FrogGPTV2: React.FC = () => {
     setDataSummaryDays(7)
     setSelectedShopId(undefined)
     setModelSearchValue(null)
+    setApiKeys({
+      openrouter: '',
+      openai: '',
+      anthropic: '',
+      gemini: '',
+    })
     localStorage.removeItem('frog-gpt-config')
+    localStorage.removeItem('frog-gpt-api-keys')
     message.success('已重置为默认配置')
   }
 
@@ -400,207 +395,151 @@ const FrogGPTV2: React.FC = () => {
 
   return (
     <div
+      className="frog-gpt-page"
       style={{
         height: 'calc(100vh - 64px)',
         display: 'flex',
         flexDirection: 'column',
-        background: '#0f172a',
-        padding: '16px',
-        gap: '16px',
+        padding: '18px',
+        gap: '14px',
       }}
     >
-      {/* 顶部工具栏 */}
+      {/* 顶部英雄区 */}
       <Card
-        style={{
-          background: '#1e293b',
-          borderColor: '#334155',
-          borderRadius: '12px',
-        }}
-        styles={{ body: { padding: '12px 16px' } }}
+        className="frog-gpt-hero-card frog-gpt-floating"
+        styles={{ body: { padding: '18px 20px', position: 'relative' } }}
+        variant="borderless"
       >
-        <Row justify="space-between" align="middle" gutter={[16, 16]}>
-          {/* 左侧：标题 */}
-          <Col>
-            <Space>
-              <RobotOutlined style={{ fontSize: '20px', color: '#60a5fa' }} />
-              <Title level={4} style={{ margin: 0, color: '#fff' }}>
-                FrogGPT 2.0
-              </Title>
-              <Text type="secondary" style={{ color: '#94a3b8', fontSize: '12px' }}>
-                AI 运营控制台
-              </Text>
-            </Space>
-          </Col>
-
-          {/* 中部：当前配置显示 */}
+        <Row gutter={[16, 12]} align="middle" wrap>
           <Col flex="auto">
-            <Space size="middle" wrap style={{ justifyContent: 'center', width: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Text style={{ color: '#94a3b8', fontSize: '12px' }}>当前模型:</Text>
-                <Tag color="blue" style={{ margin: 0 }}>
-                  {selectedModelDisplay || selectedModel || '未选择'}
-                </Tag>
-              </div>
-              <Divider type="vertical" style={{ borderColor: '#334155', height: '20px' }} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Text style={{ color: '#94a3b8', fontSize: '12px' }}>温度:</Text>
-                <Text style={{ color: '#e2e8f0', fontSize: '12px' }}>{temperature}</Text>
-              </div>
-              <Divider type="vertical" style={{ borderColor: '#334155', height: '20px' }} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Text style={{ color: '#94a3b8', fontSize: '12px' }}>数据范围:</Text>
-                <Text style={{ color: '#e2e8f0', fontSize: '12px' }}>{dataSummaryDays}天</Text>
-              </div>
+            <Welcome
+              icon={<RobotOutlined style={{ color: '#60a5fa', fontSize: '22px' }} />}
+              title={
+                <Space size="middle">
+                  <Text style={{ color: '#e2e8f0', fontSize: '18px', fontWeight: 600 }}>
+                    FrogGPT 2.0 · 智能运营驾驶舱
+                  </Text>
+                  <Tag color="blue" className="frog-gpt-tag" style={{ margin: 0 }}>
+                    OpenRouter Ready
+                  </Tag>
+                </Space>
+              }
+              description={
+                <Space size="small" wrap>
+                  <Text className="frog-gpt-soft-text">更灵动的动画、更友好的互动体验</Text>
+                  <Divider type="vertical" style={{ borderColor: '#1f2937' }} />
+                  <Text className="frog-gpt-soft-text">左侧数据洞察 · 右侧实时对话</Text>
+                </Space>
+              }
+              extra={
+                <Space size="small" wrap>
+                  <span className="frog-gpt-badge success">✅ 已接入 OpenRouter API Key</span>
+                  <span className="frog-gpt-badge warn">📅 数据窗口 {dataSummaryDays} 天</span>
+                </Space>
+              }
+            />
+            <Space wrap size="small" style={{ marginTop: 12 }}>
+              <span className="frog-gpt-badge">
+                🤖 模型: {selectedModelDisplay || selectedModel || 'AUTO'}
+              </span>
+              <span className="frog-gpt-badge">
+                🎛️ 温度: {temperature}
+              </span>
+              <span className="frog-gpt-badge success">
+                🛰️ 数据源: {includeSystemData ? '包含系统数据' : '对话模式'}
+              </span>
             </Space>
           </Col>
-
-          {/* 右侧：操作按钮 */}
-          <Col>
-            <Space>
-              <Button
-                type="text"
-                icon={<SettingOutlined />}
-                onClick={handleOpenConfig}
-                style={{ color: '#60a5fa' }}
-              >
-                设置
-              </Button>
-              <Button
-                type="text"
-                icon={<SaveOutlined />}
-                onClick={handleSaveConfig}
-                style={{ color: '#60a5fa' }}
-              >
-                保存配置
-              </Button>
-              <Button
-                type="text"
-                icon={<ReloadOutlined />}
-                onClick={handleResetConfig}
-                style={{ color: '#60a5fa' }}
-              >
-                重置默认
-              </Button>
+          <Col xs={24} md="auto">
+            <Space direction="vertical" size="small" align="end">
+              <Space wrap>
+                <Select
+                  allowClear
+                  value={selectedShopId}
+                  onChange={(value) => setSelectedShopId(value ?? undefined)}
+                  placeholder="全部店铺"
+                  style={{ minWidth: 200 }}
+                  options={(shops || []).map((shop: any) => ({
+                    label: shop.name,
+                    value: shop.id,
+                  }))}
+                />
+                <Segmented
+                  size="middle"
+                  value={dataSummaryDays}
+                  onChange={(value) => setDataSummaryDays(value as number)}
+                  options={[
+                    { label: '近3天', value: 3 },
+                    { label: '近7天', value: 7 },
+                    { label: '近14天', value: 14 },
+                    { label: '30天', value: 30 },
+                  ]}
+                />
+              </Space>
+              <Space wrap align="center">
+                <Segmented
+                  size="middle"
+                  value={temperature}
+                  onChange={(value) => setTemperature(Number(value))}
+                  options={[
+                    { label: '稳定', value: 0.3 },
+                    { label: '均衡', value: 0.7 },
+                    { label: '创意', value: 0.9 },
+                  ]}
+                />
+                <Space size={4} align="center">
+                  <Text className="frog-gpt-soft-text">数据</Text>
+                  <Switch
+                    size="small"
+                    checked={includeSystemData}
+                    onChange={setIncludeSystemData}
+                  />
+                </Space>
+                <Button
+                  type="text"
+                  icon={<SettingOutlined />}
+                  onClick={handleOpenConfig}
+                  style={{ color: '#93c5fd' }}
+                >
+                  高级设置
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  onClick={handleSaveConfig}
+                >
+                  保存偏好
+                </Button>
+                <Button
+                  ghost
+                  type="primary"
+                  icon={<ReloadOutlined />}
+                  onClick={handleResetConfig}
+                >
+                  重置
+                </Button>
+              </Space>
             </Space>
           </Col>
         </Row>
       </Card>
 
       {/* 主内容区：左右分栏 */}
-      <div style={{ display: 'flex', gap: '16px', flex: 1, overflow: 'hidden' }}>
-        {/* 左侧：数据 & 决策视图（40%） */}
-        <div style={{ width: '40%', display: 'flex', flexDirection: 'column', gap: '12px', overflow: 'auto' }}>
+      <div style={{ display: 'flex', gap: '14px', flex: 1, overflow: 'hidden' }}>
+        {/* 左侧：数据 & 决策视图（42%） */}
+        <div style={{ width: '42%', display: 'flex', flexDirection: 'column', gap: '12px', overflow: 'auto', paddingBottom: 8 }}>
+          {/* AI 结构化决策区置顶 */}
+          <DecisionPanel decisionData={decisionData} />
+
           {/* 运营指标速览 */}
           {metrics.length > 0 && <MetricOverview metrics={metrics} />}
 
           {/* 运营图表区 */}
           <TrendsCharts trendData={trendData} skuRanking={skuRanking} />
-
-          {/* AI 结构化决策区 */}
-          <DecisionPanel decisionData={decisionData} />
-
-          {/* 快捷问题区 - 使用 Ant Design X Prompts 组件 */}
-          <Card
-            style={{
-              background: '#020617',
-              borderColor: '#1E293B',
-              borderRadius: '12px',
-            }}
-            styles={{
-              header: {
-                background: 'transparent',
-                borderBottom: '1px solid #1E293B',
-                color: '#e2e8f0',
-              },
-              body: { padding: '16px' },
-            }}
-          >
-            <Prompts
-              title={
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#e2e8f0' }}>
-                  <ThunderboltOutlined style={{ color: '#60a5fa' }} />
-                  <span>快捷问题</span>
-                </span>
-              }
-              vertical
-              wrap
-              items={[
-                {
-                  key: '1',
-                  label: '生成今日运营总结',
-                  icon: <FileTextOutlined />,
-                  description: '包括GMV、订单量、利润率等关键指标',
-                },
-                {
-                  key: '2',
-                  label: '分析最近 7 天 GMV 变化原因',
-                  icon: <BarChartOutlined />,
-                  description: '提供优化建议',
-                },
-                {
-                  key: '3',
-                  label: '列出退货率最高的 5 个 SKU',
-                  icon: <BarChartOutlined />,
-                  description: '分析退货原因',
-                },
-                {
-                  key: '4',
-                  label: '帮我写 3 个高转化标题',
-                  icon: <RocketOutlined />,
-                  description: '基于当前热销商品',
-                },
-                {
-                  key: '5',
-                  label: '优化高退货率 SKU',
-                  icon: <RocketOutlined />,
-                  description: '提供具体的优化方案',
-                },
-              ]}
-              onItemClick={(info) => {
-                const promptMap: Record<string, string> = {
-                  '1': '请生成今日的运营总结报告，包括GMV、订单量、利润率等关键指标。',
-                  '2': '分析最近 7 天 GMV 变化的原因，并提供优化建议。',
-                  '3': '请列出退货率最高的 5 个 SKU，并分析原因。',
-                  '4': '基于当前热销商品，帮我生成 3 个高转化率的商品标题。',
-                  '5': '分析高退货率 SKU 的问题，并提供具体的优化方案。',
-                }
-                const prompt = promptMap[info.data.key as string]
-                if (prompt) {
-                  handleQuickPromptClick(prompt)
-                }
-              }}
-              styles={{
-                list: {
-                  background: 'transparent',
-                  gap: '8px',
-                },
-                item: {
-                  background: '#0f172a',
-                  border: '1px solid #1E293B',
-                  borderRadius: '8px',
-                  color: '#94a3b8',
-                  transition: 'all 0.3s',
-                  padding: '12px',
-                  cursor: 'pointer',
-                },
-                content: {
-                  color: '#e2e8f0',
-                },
-                title: {
-                  color: '#e2e8f0',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                },
-              }}
-              classNames={{
-                item: 'frog-gpt-prompt-item',
-              }}
-            />
-          </Card>
         </div>
 
-        {/* 右侧：AI Chat 面板（60%） */}
-        <div style={{ width: '60%', height: '100%' }}>
+        {/* 右侧：AI Chat 面板（58%） */}
+        <div style={{ width: '58%', height: '100%' }}>
           <AiChatPanelV2
             shopId={selectedShopId?.toString()}
             shopName={currentShopName}
@@ -768,6 +707,42 @@ const FrogGPTV2: React.FC = () => {
               包含系统数据将在对话中包含运营数据摘要，帮助 AI 提供更准确的建议。
             </Text>
           </div>
+
+          {/* 模型 API Key 配置 */}
+          <div>
+            <Text strong style={{ color: '#e2e8f0', display: 'block', marginBottom: '8px' }}>
+              模型 API Key 配置
+            </Text>
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <Input
+                value={apiKeys.openrouter}
+                onChange={(e) => setApiKeys(prev => ({ ...prev, openrouter: e.target.value }))}
+                placeholder="OpenRouter API Key（推荐）"
+                allowClear
+              />
+              <Input
+                value={apiKeys.openai}
+                onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}
+                placeholder="OpenAI API Key"
+                allowClear
+              />
+              <Input
+                value={apiKeys.anthropic}
+                onChange={(e) => setApiKeys(prev => ({ ...prev, anthropic: e.target.value }))}
+                placeholder="Anthropic/Claude API Key"
+                allowClear
+              />
+              <Input
+                value={apiKeys.gemini}
+                onChange={(e) => setApiKeys(prev => ({ ...prev, gemini: e.target.value }))}
+                placeholder="Google Gemini API Key"
+                allowClear
+              />
+            </Space>
+            <Text type="secondary" style={{ color: '#94a3b8', fontSize: '12px', marginTop: '8px', display: 'block' }}>
+              支持主流模型接入，优先使用 OpenRouter；如需切换模型，请在上方选择对应模型并保存。
+            </Text>
+          </div>
         </div>
       </Modal>
     </div>
@@ -775,4 +750,3 @@ const FrogGPTV2: React.FC = () => {
 }
 
 export default FrogGPTV2
-
