@@ -1,11 +1,12 @@
 /**
  * AI 聊天面板组件 V2.0
- * 使用 Ant Design X 组件：Bubble, Sender, XMarkdown
+ * 使用 Ant Design X 组件：Bubble, Sender, Attachments, FileCard
  */
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Card, Space, Typography, Avatar, Spin } from 'antd'
+import { Card, Space, Typography, Avatar, Spin, message } from 'antd'
 import { RobotOutlined, UserOutlined } from '@ant-design/icons'
-import { Bubble, Sender, ThoughtChain, type SenderProps } from '@ant-design/x'
+import type { UploadFile } from 'antd'
+import { Sender, ThoughtChain, FileCard, type SenderProps } from '@ant-design/x'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -36,11 +37,33 @@ interface AiChatPanelV2Props {
 const extractDecisionFromMarkdown = (content: string): DecisionData | null => {
   try {
     // 使用正则表达式提取 ```json ... ``` 代码块
-    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/)
+    // 支持多种格式：```json、```JSON、``` json等
+    const jsonMatch = content.match(/```(?:json|JSON)\s*([\s\S]*?)\s*```/i)
     if (jsonMatch && jsonMatch[1]) {
       const jsonStr = jsonMatch[1].trim()
       const decisionData = JSON.parse(jsonStr) as DecisionData
-      return decisionData
+      
+      // 验证必需字段
+      if (!decisionData.decisionSummary || !decisionData.riskLevel || !decisionData.actions || !Array.isArray(decisionData.actions) || decisionData.actions.length === 0) {
+        console.warn('决策卡片数据缺少必需字段:', decisionData)
+        return null
+      }
+      
+      // 验证 actions 格式
+      const validActions = decisionData.actions.filter((action: any) => 
+        action.type && action.target
+      )
+      
+      if (validActions.length === 0) {
+        console.warn('决策卡片 actions 格式无效')
+        return null
+      }
+      
+      // 返回验证后的数据
+      return {
+        ...decisionData,
+        actions: validActions,
+      }
     }
   } catch (error) {
     console.error('解析决策 JSON 失败:', error)
@@ -69,6 +92,9 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
   ])
   const [loading, setLoading] = useState(false)
   const [inputValue, setInputValue] = useState('')
+  const [attachments, setAttachments] = useState<File[]>([])
+  const [attachmentFiles, setAttachmentFiles] = useState<UploadFile[]>([])
+  const [isDragging, setIsDragging] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<ChatMessage[]>(messages)
@@ -80,6 +106,7 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
 
   const promptItems = useMemo(() => {
     const baseItems = [
+      { key: 'stock-plan', label: '制定备货计划', description: '根据回款和销量制定未来一周/月备货计划', icon: <RobotOutlined /> },
       { key: 'summary', label: '生成今日运营总结', description: 'GMV、订单量、利润率要点', icon: <RobotOutlined /> },
       { key: 'gmv', label: '分析最近7天 GMV 异动', description: '洞察变化原因并给优化建议', icon: <RobotOutlined /> },
       { key: 'refund', label: '高退货 SKU 排查', description: '找出Top5并分析原因', icon: <RobotOutlined /> },
@@ -97,6 +124,9 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
     }
     if (text.includes('转化') || text.includes('标题')) {
       contextItems.push({ key: 'ctx-title', label: '生成高转化标题+卖点', description: '输出3条并附理由', icon: <RobotOutlined /> })
+    }
+    if (text.includes('备货') || text.includes('库存') || text.includes('采购')) {
+      contextItems.push({ key: 'stock-plan-month', label: '制定一个月备货计划', description: '基于回款和销量数据', icon: <RobotOutlined /> })
     }
     if (contextItems.length === 0 && lastUserMessage) {
       contextItems.push({ key: 'ctx-follow', label: '继续深挖上条问题', description: '补充数据或给下一步行动', icon: <RobotOutlined /> })
@@ -127,18 +157,21 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
   }, [messages])
 
   /**
-   * 处理发送消息（使用流式响应）
+   * 处理发送消息（使用流式响应，支持文件上传）
    */
-  const handleSend = useCallback(async (value: string) => {
+  const handleSend = useCallback(async (value: string, files?: File[]) => {
     const content = value.trim()
-    if (!content || loading) return
+    const filesToSend = files || attachments
+    
+    // 如果没有内容且没有文件，则不发送
+    if ((!content && filesToSend.length === 0) || loading) return
     decisionDraftRef.current = null
     onDecisionParsed?.(null)
 
     const userMessage: ChatMessage = {
       id: uuidv4(),
       role: 'user',
-      content,
+      content: content || (filesToSend.length > 0 ? `上传了 ${filesToSend.length} 个文件` : ''),
       timestamp: Date.now(),
     }
 
@@ -149,6 +182,7 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
         previousCount: prev.length,
         newCount: newMessages.length,
         message: userMessage,
+        filesCount: filesToSend.length,
       })
       return newMessages
     })
@@ -160,6 +194,88 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
     let messageModel: string | undefined = undefined
 
     try {
+      // 如果有文件，使用带文件的 API
+      if (filesToSend.length > 0) {
+        const formData = new FormData()
+        formData.append('messages', JSON.stringify([
+          ...messagesRef.current.map(msg => ({
+            role: msg.role,
+            content: msg.content,
+          })),
+          {
+            role: 'user',
+            content: content || '',
+          },
+        ]))
+        formData.append('model', model || 'auto')
+        formData.append('temperature', String(temperature))
+        formData.append('include_system_data', String(includeSystemData))
+        if (dataSummaryDays) {
+          formData.append('data_summary_days', String(dataSummaryDays))
+        }
+        if (shopId) {
+          formData.append('shop_id', String(shopId))
+        }
+        
+        // 添加文件
+        filesToSend.forEach((file) => {
+          formData.append('files', file)
+        })
+
+        // 调用带文件的 API（非流式）
+        try {
+          const response = await frogGptApi.chatWithFiles(formData)
+          
+          // 处理响应（根据后端返回格式调整）
+          const responseData = response.data || response
+          if (responseData && (responseData.content || responseData.message)) {
+            assistantMessageContent = responseData.content || responseData.message || ''
+            messageModel = responseData.model
+            
+            setMessages(prev => {
+              return prev.map(msg => {
+                if (msg.id === assistantMessageId) {
+                  return {
+                    ...msg,
+                    content: assistantMessageContent,
+                    isLoading: false,
+                  }
+                }
+                return msg
+              })
+            })
+            
+            // 提取决策数据
+            const decisionData = extractDecisionFromMarkdown(assistantMessageContent)
+            if (decisionData) {
+              decisionDraftRef.current = decisionData
+              onDecisionParsed?.(decisionData)
+            }
+          } else {
+            throw new Error('响应中没有内容')
+          }
+        } catch (error: any) {
+          const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message || '文件上传失败'
+          setMessages(prev => {
+            return prev.map(msg => {
+              if (msg.id === assistantMessageId) {
+                return {
+                  ...msg,
+                  content: `❌ 抱歉，文件处理失败：${errorMessage}`,
+                  isLoading: false,
+                }
+              }
+              return msg
+            })
+          })
+        } finally {
+          // 清空附件
+          setAttachments([])
+          setAttachmentFiles([])
+        }
+        return
+      }
+
       // 记录请求信息（用于调试）
       console.log('发送流式聊天请求:', {
         model,
@@ -169,13 +285,14 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
         shopId: shopId ? parseInt(shopId) : undefined,
       })
       
-      // 创建初始助手消息
+      // 创建初始助手消息（带加载状态）
       const initialAssistantMessage: ChatMessage = {
         id: assistantMessageId,
         role: 'assistant',
         content: '',
         timestamp: Date.now(),
-      }
+        isLoading: true, // 标记为加载中
+      } as ChatMessage
       
       setMessages(prev => [...prev, initialAssistantMessage])
       
@@ -214,6 +331,7 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
                 return {
                   ...msg,
                   content: assistantMessageContent,
+                  isLoading: false, // 有内容后取消加载状态
                 }
               }
               return msg
@@ -229,6 +347,19 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
           console.log('流式响应完成:', {
             contentLength: assistantMessageContent.length,
             finishReason: chunk.finish_reason,
+          })
+          
+          // 确保取消加载状态
+          setMessages(prev => {
+            return prev.map(msg => {
+              if (msg.id === assistantMessageId) {
+                return {
+                  ...msg,
+                  isLoading: false,
+                }
+              }
+              return msg
+            })
           })
           
           // 提取决策数据
@@ -262,6 +393,7 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
             return {
               ...msg,
               content: `❌ 抱歉，发生了错误：${errorMessage}`,
+              isLoading: false, // 取消加载状态
             }
           }
           return msg
@@ -269,8 +401,13 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
       })
     } finally {
       setLoading(false)
+      // 清空附件
+      if (attachments.length > 0) {
+        setAttachments([])
+        setAttachmentFiles([])
+      }
     }
-  }, [model, temperature, includeSystemData, dataSummaryDays, shopId, onDecisionParsed, loading])
+  }, [model, temperature, includeSystemData, dataSummaryDays, shopId, onDecisionParsed, loading, attachments])
 
   // 处理外部消息（快捷问题）
   useEffect(() => {
@@ -283,6 +420,44 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
       sendMessage()
     }
   }, [externalMessage, handleSend, onExternalMessageSent])
+
+  // 处理文件粘贴和拖拽
+  const handlePasteFile = useCallback((files: FileList) => {
+    const fileArray = Array.from(files)
+    const validFiles = fileArray.filter(file => {
+      // 限制文件大小（10MB）
+      if (file.size > 10 * 1024 * 1024) {
+        message.warning(`文件 ${file.name} 超过 10MB 限制`)
+        return false
+      }
+      return true
+    })
+    
+    if (validFiles.length > 0) {
+      setAttachments(prev => [...prev, ...validFiles])
+      
+      // 创建 UploadFile 对象用于显示
+      const uploadFiles: UploadFile[] = validFiles.map((file, index) => ({
+        uid: `${file.name}-${Date.now()}-${index}`,
+        name: file.name,
+        status: 'done' as const,
+        url: URL.createObjectURL(file),
+        originFileObj: file,
+      } as UploadFile))
+      
+      setAttachmentFiles(prev => [...prev, ...uploadFiles])
+      message.success(`已添加 ${validFiles.length} 个文件`)
+    }
+  }, [])
+
+  // 处理文件删除
+  const handleRemoveFile = useCallback((uid: string) => {
+    const uploadFile = attachmentFiles.find(f => f.uid === uid)
+    if (uploadFile?.originFileObj) {
+      setAttachments(prev => prev.filter(f => f !== uploadFile.originFileObj))
+    }
+    setAttachmentFiles(prev => prev.filter(f => f.uid !== uid))
+  }, [attachmentFiles])
 
   const renderSenderSuffix: NonNullable<SenderProps['suffix']> = (ori, { components }) => {
     const { ClearButton } = components
@@ -312,6 +487,9 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
         },
       }}
     >
+      <div className="frog-gpt-chat-meta" style={{ flexShrink: 0 }}>
+        <div className="frog-gpt-chat-led" />
+      </div>
       {/* 消息列表区域 */}
       <div
         ref={scrollContainerRef}
@@ -319,11 +497,15 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '16px',
+          padding: '6px',
           borderRadius: 12,
+          minHeight: 0,
+          maxHeight: '100%',
+          position: 'relative',
+          zIndex: 1,
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', minHeight: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', minHeight: '100%' }}>
           {loading && (
             <ThoughtChain
               className="frog-gpt-thought"
@@ -363,10 +545,10 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
               key={message.id} 
               style={{ 
                 display: 'flex', 
-                gap: '12px', 
+                gap: '6px', 
                 width: '100%',
-                minHeight: '40px',
-                marginBottom: '16px',
+                minHeight: '32px',
+                marginBottom: '4px',
               }}
             >
               {message.role === 'user' ? (
@@ -417,7 +599,7 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
                     style={{
                       maxWidth: '70%',
                       flex: '0 1 auto',
-                      background: 'rgba(255, 255, 255, 0.12)',
+                      background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.1))',
                       borderRadius: '12px',
                       padding: '12px 16px',
                       color: '#e2e8f0',
@@ -426,9 +608,18 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
                       lineHeight: '1.6',
                       fontSize: '14px',
                       minHeight: '20px',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2), 0 0 10px rgba(59, 130, 246, 0.1)',
+                      textShadow: '0 0 8px rgba(59, 130, 246, 0.3)',
                     }}
                   >
-                    <ReactMarkdown
+                    {(!message.content || message.content.trim() === '') && message.isLoading ? (
+                      <Space>
+                        <Spin size="small" />
+                        <Text style={{ color: '#94a3b8' }}>正在思考...</Text>
+                      </Space>
+                    ) : (
+                      <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       rehypePlugins={[rehypeRaw, rehypeSanitize]}
                       components={{
@@ -472,6 +663,7 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
                     >
                       {message.content}
                     </ReactMarkdown>
+                    )}
                     {message.thinking && (
                       <div style={{ marginTop: '8px', padding: '8px', background: '#1e293b', borderRadius: '4px' }}>
                         <Text style={{ color: '#94a3b8', fontSize: '12px' }}>
@@ -506,29 +698,19 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
               暂无消息
             </div>
           )}
-          {loading && (
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <Avatar
-                icon={<RobotOutlined />}
-                style={{ backgroundColor: '#00d1b2', flexShrink: 0 }}
-              />
-              <Bubble
-                placement="start"
-                content={
-                  <Space>
-                    <Spin size="small" />
-                    <Text style={{ color: '#94a3b8' }}>正在思考...</Text>
-                  </Space>
-                }
-              />
-            </div>
-          )}
           <div ref={messagesEndRef} />
         </div>
       </div>
 
       {/* 底部提示词 + 输入区域 */}
-      <div style={{ padding: '12px 16px 12px', borderTop: '1px solid #1E293B', background: '#0b1120' }}>
+      <div style={{ 
+        padding: '4px 8px 4px', 
+        borderTop: '1px solid #1E293B', 
+        background: '#0b1120', 
+        flexShrink: 0,
+        position: 'relative',
+        zIndex: 2,
+      }}>
         <div className="frog-gpt-suggestion-row">
           {promptItems.map(item => (
             <div
@@ -536,6 +718,8 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
               className="frog-gpt-suggestion-chip"
               onClick={() => {
                 const promptMap: Record<string, string> = {
+                  'stock-plan': '根据过去一周的回款数据和销量，制定未来一周的按SKU货号的备货计划。请分析每个SKU的销量趋势和回款情况，预测未来需求，并给出详细的备货建议。',
+                  'stock-plan-month': '根据过去一周的回款数据和销量，制定未来一个月的按SKU货号的备货计划。请分析每个SKU的销量趋势和回款情况，预测未来需求，并给出详细的备货建议。',
                   summary: '请生成今日的运营总结报告，包括GMV、订单量、利润率等关键指标，并给出一句话洞察。',
                   gmv: '分析最近 7 天 GMV 变化的原因，按渠道/类目拆解主要驱动，并提供优化建议。',
                   refund: '请列出退货率最高的 5 个 SKU，分析原因并给出改进措施，包括标题、素材和客服话术。',
@@ -563,25 +747,171 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
           ))}
         </div>
 
-        <div style={{ marginTop: 10 }}>
+        {/* 显示已上传的文件 */}
+        {attachmentFiles.length > 0 && (
+          <div style={{ marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {attachmentFiles.map((file) => (
+              <div key={file.uid} style={{ position: 'relative' }}>
+                <FileCard
+                  name={file.name}
+                  style={{
+                    background: 'rgba(10, 10, 26, 0.8)',
+                    border: '1px solid rgba(139, 92, 246, 0.4)',
+                    borderRadius: 8,
+                    padding: '8px 12px',
+                    transition: 'all 0.2s',
+                    boxShadow: '0 2px 8px rgba(139, 92, 246, 0.2), 0 0 10px rgba(139, 92, 246, 0.1)',
+                  }}
+                />
+                <button
+                  onClick={() => handleRemoveFile(file.uid)}
+                  style={{
+                    position: 'absolute',
+                    top: 4,
+                    right: 4,
+                    background: 'rgba(239, 68, 68, 0.9)',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: 20,
+                    height: 20,
+                    cursor: 'pointer',
+                    color: '#fff',
+                    fontSize: 14,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    lineHeight: 1,
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(239, 68, 68, 1)'
+                    e.currentTarget.style.transform = 'scale(1.1)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)'
+                    e.currentTarget.style.transform = 'scale(1)'
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div 
+          className={`frog-gpt-drag-area ${isDragging ? 'drag-over' : ''}`}
+          style={{ marginTop: attachments.length > 0 ? 0 : 10 }}
+          onDrop={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setIsDragging(false)
+            const files = e.dataTransfer.files
+            if (files.length > 0) {
+              handlePasteFile(files)
+            }
+          }}
+          onDragOver={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            if (!isDragging) {
+              setIsDragging(true)
+            }
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setIsDragging(false)
+          }}
+        >
           <Sender
             value={inputValue}
             onChange={(value) => setInputValue(value || '')}
             onSubmit={(value) => {
-              if (value?.trim() && !loading) {
-                handleSend(value)
+              if ((value?.trim() || attachments.length > 0) && !loading) {
+                handleSend(value || '', attachments)
                 setInputValue('')
               }
             }}
+            onPasteFile={handlePasteFile}
             submitType="enter"
             loading={loading}
             disabled={loading}
-            placeholder="向 FrogGPT 提问，例如：分析最近7天 GMV 变化原因"
+            placeholder="向 FrogGPT 提问，例如：分析最近7天 GMV 变化原因（支持拖拽/粘贴文件）"
             suffix={renderSenderSuffix}
+            header={
+              attachmentFiles.length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '8px 0' }}>
+                  {attachmentFiles.map((file) => (
+                    <div key={file.uid} style={{ position: 'relative' }}>
+                      <FileCard
+                        name={file.name}
+                      style={{
+                        background: 'rgba(10, 10, 26, 0.8)',
+                        border: '1px solid rgba(139, 92, 246, 0.4)',
+                        borderRadius: 8,
+                        padding: '8px 12px',
+                        boxShadow: '0 2px 8px rgba(139, 92, 246, 0.2), 0 0 10px rgba(139, 92, 246, 0.1)',
+                      }}
+                      />
+                      <button
+                        onClick={() => handleRemoveFile(file.uid)}
+                        style={{
+                          position: 'absolute',
+                          top: 4,
+                          right: 4,
+                          background: 'rgba(239, 68, 68, 0.9)',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: 20,
+                          height: 20,
+                          cursor: 'pointer',
+                          color: '#fff',
+                          fontSize: 14,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          lineHeight: 1,
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(239, 68, 68, 1)'
+                          e.currentTarget.style.transform = 'scale(1.1)'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)'
+                          e.currentTarget.style.transform = 'scale(1)'
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : false
+            }
             footer={() => null}
             styles={{
-              content: { background: '#0f172a', borderRadius: 12, border: '1px solid #1E293B' },
-              suffix: { paddingRight: 4 },
+              root: { 
+                border: '1px solid rgba(139, 92, 246, 0.4)', 
+                borderRadius: 16, 
+                boxShadow: 
+                  '0 12px 36px rgba(139, 92, 246, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.2), 0 0 20px rgba(139, 92, 246, 0.3)',
+                background: 'linear-gradient(135deg, rgba(10, 10, 26, 0.95), rgba(26, 10, 46, 0.95))',
+                backdropFilter: 'blur(20px)',
+                transition: 'all 0.3s',
+              },
+              content: { 
+                background: 'rgba(10, 10, 26, 0.8)', 
+                borderRadius: 16, 
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                color: '#e2e8f0',
+              },
+              input: {
+                color: '#e2e8f0',
+                textShadow: '0 0 10px rgba(139, 92, 246, 0.3)',
+              },
+              suffix: { paddingRight: 8 },
             }}
           />
         </div>

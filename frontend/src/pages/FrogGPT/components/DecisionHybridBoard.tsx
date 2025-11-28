@@ -20,7 +20,10 @@ export default function DecisionHybridBoard({ decisionData }: DecisionHybridBoar
     return (
       <Card
         className="frog-gpt-section-card"
-        styles={{ body: { padding: 16 } }}
+        styles={{ 
+          body: { padding: '6px' },
+          header: { padding: '4px 8px' }
+        }}
         title={
           <Space>
             <ThunderboltOutlined style={{ color: '#60a5fa' }} />
@@ -92,31 +95,56 @@ export default function DecisionHybridBoard({ decisionData }: DecisionHybridBoar
   return (
     <Card
       className="frog-gpt-section-card"
-      styles={{ body: { padding: 12 } }}
+      styles={{ 
+        body: { padding: '6px' },
+        root: { width: '100%', maxWidth: '100%', position: 'relative', zIndex: 1 },
+        header: { 
+          background: 'transparent',
+          borderBottom: '1px solid rgba(96, 165, 250, 0.2)',
+          padding: '6px 10px'
+        }
+      }}
       title={
         <Space>
-          <ThunderboltOutlined style={{ color: '#60a5fa' }} />
-          <span>AI 决策链路</span>
+          <ThunderboltOutlined style={{ color: '#60a5fa', fontSize: '14px' }} />
+          <span style={{ fontSize: '13px', fontWeight: 600 }}>AI 决策链路</span>
           {riskTag}
         </Space>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative', zIndex: 1 }}>
         <ThoughtChain
           items={thoughtItems}
           className="frog-gpt-thought"
-          styles={{ item: { color: '#e2e8f0' } }}
+          styles={{ 
+            item: { color: '#e2e8f0' },
+            root: { position: 'relative', zIndex: 1 }
+          }}
         />
 
         {actions.length > 0 && (
           <Card
             size="small"
-            style={{ background: '#0b1220', borderColor: '#1f2937' }}
-            styles={{ body: { padding: 8 } }}
+            style={{ 
+              background: 'linear-gradient(135deg, rgba(11, 18, 32, 0.9), rgba(15, 23, 42, 0.7))',
+              borderColor: 'rgba(96, 165, 250, 0.2)',
+              position: 'relative', 
+              zIndex: 1,
+              backdropFilter: 'blur(10px)'
+            }}
+            styles={{ 
+              body: { padding: '4px' },
+              root: { position: 'relative', zIndex: 1 },
+              header: {
+                background: 'transparent',
+                borderBottom: '1px solid rgba(96, 165, 250, 0.15)',
+                padding: '4px 8px'
+              }
+            }}
             title={
               <Space>
                 <LineChartOutlined style={{ color: '#60a5fa' }} />
-                <span>执行动作</span>
+                <span style={{ fontSize: '12px', fontWeight: 500 }}>执行动作</span>
               </Space>
             }
           >
@@ -124,7 +152,7 @@ export default function DecisionHybridBoard({ decisionData }: DecisionHybridBoar
               items={actions}
               variant="outlined"
               styles={{
-                root: { gap: 8 },
+                root: { gap: 8, position: 'relative', zIndex: 1 },
                 item: { background: '#0f172a', color: '#e2e8f0' },
               }}
             />

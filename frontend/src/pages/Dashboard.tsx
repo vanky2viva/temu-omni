@@ -40,38 +40,41 @@ function Dashboard() {
   // 自动刷新间隔（秒）- 默认5分钟刷新一次
   const REFRESH_INTERVAL = 5 * 60 * 1000 // 5分钟
   
-  // 获取总览数据（所有历史订单 - 用于总订单量、总GMV、总利润、利润率）
+  // 使用统一端点获取总览数据（所有历史订单 - 用于总订单量、总GMV、总利润、利润率）
   const { data: overview, isLoading: overviewLoading, refetch: refetchOverview } = useQuery({
-    queryKey: ['overview-all'],
-    queryFn: () => statisticsApi.getOverview(), // 不传时间参数，统计所有订单
-    staleTime: 0,
-    gcTime: 0, // React Query v5 中 cacheTime 改名为 gcTime
+    queryKey: ['statistics', 'unified', 'overview', {}], // 不传参数，获取全部数据
+    queryFn: () => statisticsApi.getUnifiedOverview(), // 使用统一端点
+    staleTime: 5 * 60 * 1000, // 5分钟缓存
+    gcTime: 10 * 60 * 1000, // 10分钟垃圾回收
     refetchInterval: REFRESH_INTERVAL, // 每5分钟自动刷新
   })
 
-  // 获取每日趋势数据
+  // 使用统一端点获取每日趋势数据
   const { data: dailyData, isLoading: dailyLoading, refetch: refetchDaily } = useQuery({
-    queryKey: ['daily', days],
-    queryFn: () => statisticsApi.getDaily({ days }),
-    staleTime: 0,
-    gcTime: 0, // React Query v5 中 cacheTime 改名为 gcTime
+    queryKey: ['statistics', 'unified', 'daily', { days }],
+    queryFn: () => statisticsApi.getUnifiedDaily({ days }), // 使用统一端点
+    staleTime: 5 * 60 * 1000, // 5分钟缓存
+    gcTime: 10 * 60 * 1000, // 10分钟垃圾回收
     refetchInterval: REFRESH_INTERVAL, // 每5分钟自动刷新
   })
 
-  // 获取销量总览数据
+  // 获取销量总览数据（暂时保留原有端点，因为salesOverview包含更多字段）
   const { data: salesOverview, isLoading: salesLoading, refetch: refetchSales } = useQuery({
     queryKey: ['sales-overview', days],
     queryFn: () => analyticsApi.getSalesOverview({ days }),
-    staleTime: 0,
-    gcTime: 0, // React Query v5 中 cacheTime 改名为 gcTime
+    staleTime: 5 * 60 * 1000, // 5分钟缓存
+    gcTime: 10 * 60 * 1000, // 10分钟垃圾回收
     refetchInterval: REFRESH_INTERVAL, // 每5分钟自动刷新
   })
 
   // 手动刷新所有数据
-  const handleRefresh = () => {
-    refetchOverview()
-    refetchDaily()
-    refetchSales()
+  const handleRefresh = async () => {
+    // 立即刷新所有数据，不等待缓存
+    await Promise.all([
+      refetchOverview(),
+      refetchDaily(),
+      refetchSales()
+    ])
   }
 
   // 趋势图配置 - 每日订单量柱状图和总订单量曲线图
@@ -414,12 +417,28 @@ function Dashboard() {
             loading={overviewLoading || dailyLoading || salesLoading}
             size={isMobile ? 'small' : 'middle'}
             style={{
-              borderColor: '#30363d',
-              color: '#c9d1d9',
-              background: '#161b22',
+              border: '1px solid rgba(88, 166, 255, 0.5)',
+              color: '#58a6ff',
+              background: 'linear-gradient(135deg, rgba(88, 166, 255, 0.15) 0%, rgba(88, 166, 255, 0.05) 100%)',
+              boxShadow: '0 4px 12px rgba(88, 166, 255, 0.2)',
+              fontWeight: 600,
+              transition: 'all 0.3s ease',
+              backdropFilter: 'blur(10px)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(88, 166, 255, 0.25) 0%, rgba(88, 166, 255, 0.15) 100%)';
+              e.currentTarget.style.boxShadow = '0 6px 20px rgba(88, 166, 255, 0.35)';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.borderColor = 'rgba(88, 166, 255, 0.8)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(88, 166, 255, 0.15) 0%, rgba(88, 166, 255, 0.05) 100%)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(88, 166, 255, 0.2)';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = 'rgba(88, 166, 255, 0.5)';
             }}
           >
-            {isMobile ? '刷新' : '手动刷新'}
+            刷新
           </Button>
         </div>
       </div>
@@ -480,7 +499,7 @@ function Dashboard() {
                   marginBottom: '4px',
                   textShadow: '0 0 20px rgba(250, 140, 22, 0.5)',
                 }}>
-                  {formatNumber(overview?.total_orders || 0, 0)}
+                  {formatNumber(overview?.order_count || overview?.total_orders || 0, 0)}
                 </div>
                 <div style={{ color: '#8b949e', fontSize: '12px' }}>
                   累计订单总数

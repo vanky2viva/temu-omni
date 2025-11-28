@@ -8,7 +8,6 @@ import {
   Card,
   Select,
   Switch,
-  Button,
   Space,
   Typography,
   Tag,
@@ -28,8 +27,8 @@ import {
   RobotOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
-import { Welcome } from '@ant-design/x'
-import { frogGptApi, shopApi, statisticsApi, analyticsApi } from '@/services/api'
+import { Welcome, Actions } from '@ant-design/x'
+import { frogGptApi, shopApi, statisticsApi } from '@/services/api'
 import AiChatPanelV2 from './components/AiChatPanelV2'
 import DecisionHybridBoard from './components/DecisionHybridBoard'
 import MetricOverview from './MetricOverview'
@@ -40,6 +39,18 @@ import './frog-gpt.css'
 const { Text } = Typography
 
 const FrogGPTV2: React.FC = () => {
+  // 检测是否为移动设备
+  const [isMobile, setIsMobile] = useState(false)
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+  
   // 状态管理
   const [selectedModel, setSelectedModel] = useState<string>('auto')
   const [temperature, setTemperature] = useState(0.7)
@@ -72,18 +83,21 @@ const FrogGPTV2: React.FC = () => {
     queryFn: shopApi.getShops,
   })
 
-  // 获取数据摘要（用于指标展示）- 全部时间数据
+  // 使用统一端点获取数据摘要（用于指标展示和AI）- 全部时间数据
   const { data: dataSummary } = useQuery({
-    queryKey: ['frog-gpt-data-summary', selectedShopId],
-    queryFn: () => frogGptApi.getDataSummary(undefined), // 不传days参数，获取全部数据
+    queryKey: ['statistics', 'unified', 'summary', { shop_ids: selectedShopId ? [selectedShopId] : undefined }],
+    queryFn: () => statisticsApi.getUnifiedSummary({
+      shop_ids: selectedShopId ? [selectedShopId] : undefined,
+      // 不传days参数，获取全部数据
+    }),
     enabled: includeSystemData,
   })
 
-  // 获取每日趋势数据 - 全部时间数据
+  // 使用统一端点获取每日趋势数据 - 全部时间数据
   const { data: dailyStats } = useQuery({
-    queryKey: ['daily-statistics', selectedShopId],
+    queryKey: ['statistics', 'unified', 'daily', { shop_ids: selectedShopId ? [selectedShopId] : undefined }],
     queryFn: () => {
-      return statisticsApi.getDaily({
+      return statisticsApi.getUnifiedDaily({
         shop_ids: selectedShopId ? [selectedShopId] : undefined,
         // 不传 start_date 和 end_date，获取全部数据
       })
@@ -91,13 +105,13 @@ const FrogGPTV2: React.FC = () => {
     enabled: includeSystemData,
   })
 
-  // 获取SKU销售排行 - 全部时间数据
+  // 使用统一端点获取SKU销售排行 - 全部时间数据，只获取前10个
   const { data: skuRankingData } = useQuery({
-    queryKey: ['sku-sales-ranking', selectedShopId],
+    queryKey: ['statistics', 'unified', 'sku-ranking', { shop_ids: selectedShopId ? [selectedShopId] : undefined, limit: 10 }],
     queryFn: () => {
-      return analyticsApi.getSkuSalesRanking({
+      return statisticsApi.getUnifiedSkuRanking({
         shop_ids: selectedShopId ? [selectedShopId] : undefined,
-        limit: 10,
+        limit: 10, // 只获取前10个
         // 不传 start_date 和 end_date，获取全部数据
       })
     },
@@ -284,67 +298,123 @@ const FrogGPTV2: React.FC = () => {
     return selectedModel
   }, [selectedModel, modelOptions])
 
-  // 计算指标数据
+  // 计算指标数据（基于真实数据）
   const metrics: MetricData[] = useMemo(() => {
     if (!dataSummary) return []
+    
+    // 计算趋势值（对比最近7天和之前7天的数据）
+    let gmvTrend: 'up' | 'down' | 'stable' = 'up'
+    let gmvTrendValue = '0.0%'
+    let ordersTrend: 'up' | 'down' | 'stable' = 'up'
+    let ordersTrendValue = '0.0%'
+    
+    if (dailyStats && Array.isArray(dailyStats) && dailyStats.length >= 14) {
+      // 最近7天
+      const recent7Days = dailyStats.slice(-7)
+      const recentGmv = recent7Days.reduce((sum: number, item: any) => sum + (item.gmv || 0), 0)
+      const recentOrders = recent7Days.reduce((sum: number, item: any) => sum + (item.orders || item.order_count || 0), 0)
+      
+      // 之前7天
+      const previous7Days = dailyStats.slice(-14, -7)
+      const previousGmv = previous7Days.reduce((sum: number, item: any) => sum + (item.gmv || 0), 0)
+      const previousOrders = previous7Days.reduce((sum: number, item: any) => sum + (item.orders || item.order_count || 0), 0)
+      
+      // 计算GMV趋势
+      if (previousGmv > 0) {
+        const gmvChange = ((recentGmv - previousGmv) / previousGmv) * 100
+        gmvTrend = gmvChange >= 0 ? 'up' : 'down'
+        gmvTrendValue = `${gmvChange >= 0 ? '+' : ''}${gmvChange.toFixed(1)}%`
+      }
+      
+      // 计算订单数趋势
+      if (previousOrders > 0) {
+        const ordersChange = ((recentOrders - previousOrders) / previousOrders) * 100
+        ordersTrend = ordersChange >= 0 ? 'up' : 'down'
+        ordersTrendValue = `${ordersChange >= 0 ? '+' : ''}${ordersChange.toFixed(1)}%`
+      }
+    }
     
     return [
       {
         label: `累计 GMV`,
         value: `¥${((dataSummary.overview?.total_gmv || 0) / 1000).toFixed(1)}k`,
-        trend: 'up',
-        trendValue: '+12.3%',
+        trend: gmvTrend,
+        trendValue: gmvTrendValue,
       },
       {
         label: `累计订单数`,
         value: (dataSummary.overview?.total_orders || 0).toLocaleString(),
-        trend: 'up',
-        trendValue: '+8.5%',
+        trend: ordersTrend,
+        trendValue: ordersTrendValue,
       },
       {
-        label: '退款率',
-        value: '2.3%',
-        trend: 'down',
-        trendValue: '-0.5%',
+        label: '延误率',
+        value: dataSummary.overview?.delay_rate ? `${dataSummary.overview.delay_rate.toFixed(1)}%` : '0.0%',
+        trend: dataSummary.overview?.delay_rate && dataSummary.overview.delay_rate > 5 ? 'up' : 'down',
+        trendValue: '0.0%', // 延误率趋势暂时不计算
       },
       {
         label: '平均客单价',
         value: `¥${((dataSummary.overview?.total_gmv || 0) / (dataSummary.overview?.total_orders || 1)).toFixed(2)}`,
       },
     ]
-  }, [dataSummary])
+  }, [dataSummary, dailyStats])
 
-  // 处理趋势数据（从API获取）
+  // 处理趋势数据（从统一端点获取）
   const trendData: TrendData[] = useMemo(() => {
     if (!dailyStats || !Array.isArray(dailyStats)) {
       return []
     }
     
-    return dailyStats.map((item: any) => ({
-      date: item.date || item.period || '',
-      gmv: item.gmv || item.total_gmv || 0,
-      orders: item.orders || item.order_count || 0,
-      profit: item.profit || item.total_profit || 0,
-      refundRate: item.refund_rate || 0,
-    })).sort((a, b) => a.date.localeCompare(b.date))
+    // 确保数据按日期排序，并转换为正确的数据类型
+    return dailyStats
+      .map((item: any) => ({
+        date: item.date || item.period || '',
+        gmv: Number(item.gmv) || Number(item.total_gmv) || 0,
+        orders: Number(item.orders) || Number(item.order_count) || 0,
+        profit: Number(item.profit) || Number(item.total_profit) || 0,
+        delayRate: Number(item.delay_rate) || 0,
+      }))
+      .filter(item => item.date) // 过滤掉没有日期的数据
+      .sort((a, b) => a.date.localeCompare(b.date)) // 按日期排序
   }, [dailyStats])
 
   // 处理SKU排行数据（从API获取）
   const skuRanking: SkuRankingItem[] = useMemo(() => {
-    if (!skuRankingData || !Array.isArray(skuRankingData)) {
+    // API返回格式: { ranking: [...], period: {...} }
+    const rankingList = skuRankingData?.ranking || skuRankingData
+    
+    if (!rankingList || !Array.isArray(rankingList)) {
       return []
     }
     
-    return skuRankingData.map((item: any, index: number) => ({
-      sku: item.sku || item.product_sku || `SKU-${index + 1}`,
-      productName: item.product_name || item.name || '未知商品',
-      quantity: item.quantity || item.sold_quantity || 0,
-      orders: item.orders || item.order_count || 0,
-      gmv: item.gmv || item.total_gmv || item.sales_amount || 0,
-      profit: item.profit || item.total_profit || 0,
-      refundRate: item.refund_rate || 0,
-      rank: index + 1,
-    })).slice(0, 10)
+    // 过滤并映射数据，排除无效的SKU（空值、'-'、'N/A'或数量为0）
+    return rankingList
+      .filter((item: any) => {
+        const sku = item.sku || item.product_sku
+        const quantity = item.quantity || item.total_quantity || item.sold_quantity || 0
+        // 过滤掉无效的SKU：空值、'-'、'N/A'，或数量为0
+        // 同时过滤掉商品名称为空或只有空白字符的情况
+        const productName = item.product_name || item.name || ''
+        return sku && 
+               sku !== '-' && 
+               sku !== 'N/A' && 
+               sku !== '' && 
+               quantity > 0 &&
+               productName.trim() !== '' &&
+               productName !== '-'
+      })
+      .map((item: any, index: number) => ({
+        sku: item.sku || item.product_sku || 'N/A',
+        productName: item.product_name || item.name || '未知商品',
+        quantity: item.quantity || item.total_quantity || item.sold_quantity || 0,
+        orders: item.orders || item.order_count || 0,
+        gmv: item.gmv || item.total_gmv || item.sales_amount || 0,
+        profit: item.profit || item.total_profit || 0,
+        delayRate: item.delay_rate || 0,
+        rank: index + 1, // 重新计算排名
+      }))
+      .slice(0, 10) // 只显示前10个
   }, [skuRankingData])
 
   // 当前店铺名称
@@ -363,6 +433,8 @@ const FrogGPTV2: React.FC = () => {
   const handleExternalMessageSent = () => {
     setExternalMessage(null)
   }
+
+
 
   // 加载保存的配置（包括模型选择）
   useEffect(() => {
@@ -536,43 +608,52 @@ const FrogGPTV2: React.FC = () => {
     }
   }
 
+  // 计算页面高度：100vh - Header高度（桌面端64px，移动端56px）- 额外边距（8px用于Content padding等）
+  const pageHeight = isMobile ? 'calc(100vh - 64px)' : 'calc(100vh - 72px)'
+  
   return (
     <div
       className="frog-gpt-page"
       style={{
-        height: 'calc(100vh - 64px)',
+        height: pageHeight,
+        maxHeight: pageHeight,
         display: 'flex',
         flexDirection: 'column',
-        padding: '18px',
-        gap: '14px',
+        padding: '6px',
+        gap: '4px',
+        position: 'relative',
+        overflow: 'hidden',
+        boxSizing: 'border-box',
       }}
     >
       {/* 顶部英雄区 */}
       <Card
         className="frog-gpt-hero-card frog-gpt-floating"
-        styles={{ body: { padding: '10px 16px', position: 'relative' } }}
+        styles={{ 
+          body: { padding: '4px 8px', position: 'relative', zIndex: 2 },
+          root: { position: 'relative', zIndex: 2, flexShrink: 0 }
+        }}
         variant="borderless"
       >
-        <Row gutter={[12, 8]} align="middle" wrap>
+        <Row gutter={[8, 4]} align="middle" wrap>
           <Col flex="auto">
             <Welcome
-              icon={<RobotOutlined style={{ color: '#60a5fa', fontSize: '18px' }} />}
+              icon={<RobotOutlined style={{ color: '#60a5fa', fontSize: '14px' }} />}
               title={
-                <Space size="small">
-                  <Text style={{ color: '#e2e8f0', fontSize: '16px', fontWeight: 600 }}>
+                <Space size="small" style={{ margin: 0 }}>
+                  <Text style={{ color: '#e2e8f0', fontSize: '13px', fontWeight: 600, lineHeight: 1.2 }}>
                     FrogGPT 2.0 · 智能运营驾驶舱
                   </Text>
-                  <Tag color="blue" className="frog-gpt-tag" style={{ margin: 0, fontSize: '12px', padding: '2px 8px' }}>
+                  <Tag color="blue" className="frog-gpt-tag" style={{ margin: 0, fontSize: '10px', padding: '1px 4px', lineHeight: 1.2 }}>
                     OpenRouter Ready
                   </Tag>
                 </Space>
               }
-              description={null}
               extra={
-                <Space size="small" wrap>
+                <Space size="small" wrap style={{ margin: 0 }}>
                   <span className={`frog-gpt-badge ${apiKeyStatus.valid ? 'success' : apiKeyStatus.configured ? 'warn' : ''}`}>
                     {apiKeyStatus.configured 
-                      ? (apiKeyStatus.valid ? '✅ OpenRouter API Key 已配置并验证' : '⚠️ OpenRouter API Key 配置异常')
+                      ? (apiKeyStatus.valid ? '✅ API Key 已验证' : '⚠️ API Key 配置异常')
                       : '❌ 未配置 OpenRouter API Key'}
                   </span>
                   <span className="frog-gpt-badge warn">📅 数据范围: 全部时间</span>
@@ -581,60 +662,33 @@ const FrogGPTV2: React.FC = () => {
             />
           </Col>
           <Col xs={24} md="auto">
-            <Space size="small" align="center" style={{ flexWrap: 'nowrap' }}>
-              <span className="frog-gpt-badge">
-                🤖 模型: {selectedModelDisplay || selectedModel || 'AUTO'}
-              </span>
-              <span className="frog-gpt-badge">
-                🎛️ 温度: {temperature}
-              </span>
-              <span className="frog-gpt-badge success">
-                🛰️ 数据源: {includeSystemData ? '包含系统数据' : '对话模式'}
-              </span>
-              <Tooltip title="测试 OpenRouter API 连接，验证是否能正确获得回复">
-                <Button
-                  type="primary"
-                  size="small"
-                  onClick={async () => {
-                    try {
-                      const hide = message.loading('正在测试连接...', 0)
-                      const result = await frogGptApi.testConnection(selectedModel || 'auto') as any
-                      hide()
-                      if (result.success) {
-                        message.success(`✅ 连接测试成功！使用的模型: ${result.model_used || selectedModel || 'auto'}`)
-                        if (result.response_content) {
-                          console.log('测试响应内容:', result.response_content)
-                        }
-                      } else {
-                        message.error(`❌ 连接测试失败: ${result.message}`)
-                      }
-                    } catch (error: any) {
-                      message.destroy()
-                      const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message || '未知错误'
-                      message.error(`❌ 连接测试失败: ${errorMsg}`)
-                      console.error('测试连接错误:', error)
-                    }
-                  }}
-                  style={{ marginLeft: '8px' }}
-                >
-                  🔗 测试连接
-                </Button>
-              </Tooltip>
+            <div className="frog-gpt-control-card">
+              <Space size="small" wrap align="center" style={{ margin: 0 }}>
+                <Tag color="geekblue" className="frog-gpt-chip">
+                  🤖 {selectedModelDisplay || selectedModel || 'AUTO'}
+                </Tag>
+                <Tag color="blue" className="frog-gpt-chip">
+                  🎛️ 温度 {temperature}
+                </Tag>
+                <Tag color={includeSystemData ? 'success' : 'default'} className="frog-gpt-chip">
+                  🛰️ {includeSystemData ? '包含系统数据' : '对话模式'}
+                </Tag>
                 <Select
                   allowClear
                   value={selectedShopId}
                   onChange={(value) => setSelectedShopId(value ?? undefined)}
                   placeholder="全部店铺"
-                  style={{ minWidth: 200 }}
-                showSearch
-                optionFilterProp="label"
+                  size="small"
+                  style={{ minWidth: 180 }}
+                  showSearch
+                  optionFilterProp="label"
                   options={(shops || []).map((shop: any) => ({
-                  label: shop.name || shop.shop_name || `店铺 ${shop.id}`,
+                    label: shop.name || shop.shop_name || `店铺 ${shop.id}`,
                     value: shop.id,
                   }))}
                 />
                 <Segmented
-                  size="middle"
+                  size="small"
                   value={temperature}
                   onChange={(value) => setTemperature(Number(value))}
                   options={[
@@ -651,50 +705,103 @@ const FrogGPTV2: React.FC = () => {
                     onChange={setIncludeSystemData}
                   />
                 </Space>
-                <Button
-                  type="text"
-                  icon={<SettingOutlined />}
-                  onClick={handleOpenConfig}
-                  style={{ color: '#93c5fd' }}
-                >
-                  高级设置
-                </Button>
-                <Button
-                  type="primary"
-                  icon={<SaveOutlined />}
-                  onClick={handleSaveConfig}
-                >
-                  保存偏好
-                </Button>
-                <Button
-                  ghost
-                  type="primary"
-                  icon={<ReloadOutlined />}
-                  onClick={handleResetConfig}
-                >
-                  重置
-                </Button>
-            </Space>
+                <Actions
+                  items={[
+                    {
+                      key: 'save',
+                      label: '保存偏好',
+                      icon: <SaveOutlined />,
+                      onItemClick: handleSaveConfig,
+                    },
+                    {
+                      key: 'reset',
+                      label: '重置',
+                      icon: <ReloadOutlined />,
+                      danger: true,
+                      onItemClick: handleResetConfig,
+                    },
+                    {
+                      key: 'advanced',
+                      label: '高级设置',
+                      icon: <SettingOutlined />,
+                      onItemClick: handleOpenConfig,
+                    },
+                  ]}
+                  variant="outlined"
+                  fadeIn
+                  styles={{
+                    root: { gap: 8 },
+                    item: { background: 'rgba(15,23,42,0.6)', color: '#e2e8f0', borderColor: '#1f2937' },
+                  }}
+                />
+              </Space>
+            </div>
           </Col>
         </Row>
       </Card>
 
       {/* 主内容区：左右分栏 */}
-      <div style={{ display: 'flex', gap: '14px', flex: 1, overflow: 'hidden' }}>
-        {/* 左侧：数据 & 决策视图（42%） */}
-        <div style={{ width: '42%', display: 'flex', flexDirection: 'column', gap: '12px', overflow: 'auto', paddingBottom: 8 }}>
+      <div style={{ 
+        display: 'flex', 
+        gap: '4px', 
+        flex: 1, 
+        overflow: 'hidden',
+        position: 'relative',
+        zIndex: 1,
+        minHeight: 0,
+        maxHeight: '100%',
+      }}>
+        {/* 左侧：数据 & 决策视图（45%） */}
+        <div 
+          className="frog-gpt-left-panel"
+          style={{ 
+            width: '45%', 
+            minWidth: 0, 
+            maxWidth: '45%',
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '4px', 
+            overflowY: 'auto', 
+            overflowX: 'hidden',
+            paddingRight: '2px',
+            position: 'relative',
+            zIndex: 1,
+            minHeight: 0,
+            maxHeight: '100%',
+          }}
+        >
           {/* AI 结构化决策区置顶 */}
-          <DecisionHybridBoard decisionData={decisionData} />
+          <div style={{ width: '100%', minWidth: 0, flexShrink: 0, position: 'relative', zIndex: 1 }}>
+            <DecisionHybridBoard decisionData={decisionData} />
+          </div>
 
           {/* 运营指标速览 */}
-          {metrics.length > 0 && <MetricOverview metrics={metrics} />}
+          {metrics.length > 0 && (
+            <div style={{ width: '100%', minWidth: 0, flexShrink: 0, position: 'relative', zIndex: 1 }}>
+              <MetricOverview metrics={metrics} />
+            </div>
+          )}
 
           {/* 运营图表区 */}
-          <TrendsCharts trendData={trendData} skuRanking={skuRanking} />
+          <div style={{ width: '100%', minWidth: 0, flexShrink: 0, position: 'relative', zIndex: 1 }}>
+            <TrendsCharts trendData={trendData} skuRanking={skuRanking} />
+          </div>
         </div>
 
-        {/* 右侧：AI Chat 面板（58%） */}
-        <div style={{ width: '58%', height: '100%' }}>
+        {/* 右侧：AI Chat 面板（55%） */}
+        <div 
+          className="frog-gpt-right-panel"
+          style={{ 
+            width: '55%', 
+            maxWidth: '55%',
+            minWidth: 0,
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
           <AiChatPanelV2
             shopId={selectedShopId?.toString()}
             shopName={currentShopName}

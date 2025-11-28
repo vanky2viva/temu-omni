@@ -57,16 +57,20 @@ def get_daily_statistics(
     shop_ids: Optional[List[int]] = Query(None),
     start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
-    days: int = 30,
+    days: Optional[int] = Query(None, description="统计天数（如果未提供start_date和end_date则使用此参数）"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     获取每日统计数据
     
-    返回指定时间范围内的每日订单、GMV、利润等数据
+    使用 UnifiedStatisticsService 确保统计口径一致
+    
+    返回指定时间范围内的每日订单、GMV、利润、延迟到货率等数据
     """
-    # 解析日期字符串
+    from app.services.unified_statistics import UnifiedStatisticsService
+    
+    # 解析日期范围（使用统一服务的方法）
     start_dt = None
     end_dt = None
     if start_date:
@@ -80,12 +84,27 @@ def get_daily_statistics(
         except ValueError:
             end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
     
+    # 使用统一服务的日期解析方法
+    # 如果都没有提供，获取全部历史数据（days=None）
+    if not start_dt and not end_dt:
+        start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
+            None, None, days
+        )
+    
+    # 构建查询条件（使用统一服务的方法）
+    filters = UnifiedStatisticsService.build_base_filters(
+        db, start_dt, end_dt, shop_ids, None, None, None
+    )
+    
+    # 使用统一服务的每日统计方法（如果存在）或使用 StatisticsService
+    # 由于需要按日分组，暂时使用 StatisticsService，但使用统一服务的过滤条件
+    # 如果days为None，传递None给get_daily_statistics以获取全部数据
     return StatisticsService.get_daily_statistics(
         db=db,
         shop_ids=shop_ids,
         start_date=start_dt,
         end_date=end_dt,
-        days=days
+        days=days if days is not None else None  # 传递None以获取全部数据
     )
 
 

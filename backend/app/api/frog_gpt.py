@@ -74,32 +74,74 @@ async def chat(
         # 如果需要包含系统数据上下文，在消息前添加系统提示
         if request.include_system_data:
             try:
-                # 获取系统数据摘要
-                # 如果 data_summary_days 为 None，获取全部时间数据
-                start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
-                    None, None, request.data_summary_days
-                )
+                # 使用统一端点逻辑获取系统数据摘要（带缓存，性能更好）
+                from app.api.statistics_unified import get_cached_or_compute, generate_cache_key
+                import json
+                
                 # 如果提供了shop_id，只获取该店铺的数据
                 shop_ids = [request.shop_id] if request.shop_id else None
-                filters = UnifiedStatisticsService.build_base_filters(
-                    db, start_dt, end_dt, shop_ids, None, None, None
-                )
-                overview = UnifiedStatisticsService.calculate_order_statistics(db, filters)
-                top_skus = UnifiedStatisticsService.get_sku_statistics(db, filters, limit=10)
-                top_managers = UnifiedStatisticsService.get_manager_statistics(db, filters)[:10]
-                profit_margin = (overview['total_profit'] / overview['total_gmv'] * 100) if overview['total_gmv'] > 0 else 0
                 
+                # 构建缓存键
+                params = {
+                    "shop_ids": sorted(shop_ids) if shop_ids else None,
+                    "days": request.data_summary_days,
+                }
+                cache_key = generate_cache_key("summary", params)
+                
+                def compute():
+                    # 解析日期范围
+                    start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
+                        None, None, request.data_summary_days
+                    )
+                    
+                    # 构建查询条件
+                    filters = UnifiedStatisticsService.build_base_filters(
+                        db, start_dt, end_dt, shop_ids, None, None, None
+                    )
+                    
+                    # 计算总览统计
+                    overview = UnifiedStatisticsService.calculate_order_statistics(db, filters)
+                    
+                    # 计算利润率
+                    profit_margin = (
+                        (overview['total_profit'] / overview['total_gmv'] * 100)
+                        if overview['total_gmv'] > 0 else 0
+                    )
+                    
+                    # 获取Top SKU（前10）
+                    top_skus = UnifiedStatisticsService.get_sku_statistics(db, filters, limit=10)
+                    
+                    # 获取Top负责人（前10）
+                    top_managers = UnifiedStatisticsService.get_manager_statistics(db, filters)[:10]
+                    
+                    return {
+                        "overview": {
+                            "total_orders": overview['order_count'],
+                            "total_quantity": overview['total_quantity'],
+                            "total_gmv": round(overview['total_gmv'], 2),
+                            "total_cost": round(overview['total_cost'], 2),
+                            "total_profit": round(overview['total_profit'], 2),
+                            "profit_margin": round(profit_margin, 2),
+                            "delay_rate": round(overview.get('delay_rate', 0), 2),
+                            "delay_count": overview.get('delay_count', 0),
+                        },
+                        "top_skus": top_skus,
+                        "top_managers": top_managers,
+                    }
+                
+                # 获取数据（带缓存）
+                summary_data = get_cached_or_compute(
+                    cache_key,
+                    compute,
+                    ttl=300,  # 5分钟缓存
+                    use_redis=True
+                )
+                
+                # 转换为AI模块需要的格式
                 data_summary = {
-                    "overview": {
-                        "total_orders": overview['order_count'],
-                        "total_quantity": overview['total_quantity'],
-                        "total_gmv": round(overview['total_gmv'], 2),
-                        "total_cost": round(overview['total_cost'], 2),
-                        "total_profit": round(overview['total_profit'], 2),
-                        "profit_margin": round(profit_margin, 2),
-                    },
-                    "top_skus": top_skus,
-                    "top_managers": top_managers,
+                    "overview": summary_data["overview"],
+                    "top_skus": summary_data["top_skus"],
+                    "top_managers": summary_data["top_managers"],
                 }
                 
                 # 构建系统上下文
@@ -259,30 +301,73 @@ async def chat_stream(
             # 如果需要包含系统数据上下文，在消息前添加系统提示
             if request.include_system_data:
                 try:
-                    # 获取系统数据摘要
-                    start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
-                        None, None, request.data_summary_days
-                    )
-                    shop_ids = [request.shop_id] if request.shop_id else None
-                    filters = UnifiedStatisticsService.build_base_filters(
-                        db, start_dt, end_dt, shop_ids, None, None, None
-                    )
-                    overview = UnifiedStatisticsService.calculate_order_statistics(db, filters)
-                    top_skus = UnifiedStatisticsService.get_sku_statistics(db, filters, limit=10)
-                    top_managers = UnifiedStatisticsService.get_manager_statistics(db, filters)[:10]
-                    profit_margin = (overview['total_profit'] / overview['total_gmv'] * 100) if overview['total_gmv'] > 0 else 0
+                    # 使用统一端点逻辑获取系统数据摘要（带缓存，性能更好）
+                    from app.api.statistics_unified import get_cached_or_compute, generate_cache_key
                     
+                    # 如果提供了shop_id，只获取该店铺的数据
+                    shop_ids = [request.shop_id] if request.shop_id else None
+                    
+                    # 构建缓存键
+                    params = {
+                        "shop_ids": sorted(shop_ids) if shop_ids else None,
+                        "days": request.data_summary_days,
+                    }
+                    cache_key = generate_cache_key("summary", params)
+                    
+                    def compute():
+                        # 解析日期范围
+                        start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
+                            None, None, request.data_summary_days
+                        )
+                        
+                        # 构建查询条件
+                        filters = UnifiedStatisticsService.build_base_filters(
+                            db, start_dt, end_dt, shop_ids, None, None, None
+                        )
+                        
+                        # 计算总览统计
+                        overview = UnifiedStatisticsService.calculate_order_statistics(db, filters)
+                        
+                        # 计算利润率
+                        profit_margin = (
+                            (overview['total_profit'] / overview['total_gmv'] * 100)
+                            if overview['total_gmv'] > 0 else 0
+                        )
+                        
+                        # 获取Top SKU（前10）
+                        top_skus = UnifiedStatisticsService.get_sku_statistics(db, filters, limit=10)
+                        
+                        # 获取Top负责人（前10）
+                        top_managers = UnifiedStatisticsService.get_manager_statistics(db, filters)[:10]
+                        
+                        return {
+                            "overview": {
+                                "total_orders": overview['order_count'],
+                                "total_quantity": overview['total_quantity'],
+                                "total_gmv": round(overview['total_gmv'], 2),
+                                "total_cost": round(overview['total_cost'], 2),
+                                "total_profit": round(overview['total_profit'], 2),
+                                "profit_margin": round(profit_margin, 2),
+                                "delay_rate": round(overview.get('delay_rate', 0), 2),
+                                "delay_count": overview.get('delay_count', 0),
+                            },
+                            "top_skus": top_skus,
+                            "top_managers": top_managers,
+                        }
+                    
+                    # 获取数据（带缓存）
+                    summary_data = get_cached_or_compute(
+                        cache_key,
+                        compute,
+                        ttl=300,  # 5分钟缓存
+                        use_redis=True
+                    )
+                    
+                    # 转换为AI模块需要的格式
                     data_summary = {
-                        "overview": {
-                            "total_orders": overview['order_count'],
-                            "total_quantity": overview['total_quantity'],
-                            "total_gmv": round(overview['total_gmv'], 2),
-                            "total_cost": round(overview['total_cost'], 2),
-                            "total_profit": round(overview['total_profit'], 2),
-                            "profit_margin": round(profit_margin, 2),
-                        },
-                        "top_skus": top_skus,
-                        "top_managers": top_managers,
+                        "overview": summary_data["overview"],
+                        "top_skus": summary_data["top_skus"],
+                        "top_managers": summary_data["top_managers"],
                     }
                     
                     system_context = frog_gpt_service.build_system_context(data_summary)
@@ -397,30 +482,70 @@ async def chat_with_files(
         # 如果需要包含系统数据上下文
         if include_system_data:
             try:
-                # 获取系统数据摘要
-                # 如果 data_summary_days 为 None，获取全部时间数据
-                start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
-                    None, None, data_summary_days
-                )
-                filters = UnifiedStatisticsService.build_base_filters(
-                    db, start_dt, end_dt, None, None, None, None
-                )
-                overview = UnifiedStatisticsService.calculate_order_statistics(db, filters)
-                top_skus = UnifiedStatisticsService.get_sku_statistics(db, filters, limit=10)
-                top_managers = UnifiedStatisticsService.get_manager_statistics(db, filters)[:10]
-                profit_margin = (overview['total_profit'] / overview['total_gmv'] * 100) if overview['total_gmv'] > 0 else 0
+                # 使用统一端点逻辑获取系统数据摘要（带缓存，性能更好）
+                from app.api.statistics_unified import get_cached_or_compute, generate_cache_key
                 
+                # 构建缓存键
+                params = {
+                    "shop_ids": None,
+                    "days": data_summary_days,
+                }
+                cache_key = generate_cache_key("summary", params)
+                
+                def compute():
+                    # 解析日期范围
+                    start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
+                        None, None, data_summary_days
+                    )
+                    
+                    # 构建查询条件
+                    filters = UnifiedStatisticsService.build_base_filters(
+                        db, start_dt, end_dt, None, None, None, None
+                    )
+                    
+                    # 计算总览统计
+                    overview = UnifiedStatisticsService.calculate_order_statistics(db, filters)
+                    
+                    # 计算利润率
+                    profit_margin = (
+                        (overview['total_profit'] / overview['total_gmv'] * 100)
+                        if overview['total_gmv'] > 0 else 0
+                    )
+                    
+                    # 获取Top SKU（前10）
+                    top_skus = UnifiedStatisticsService.get_sku_statistics(db, filters, limit=10)
+                    
+                    # 获取Top负责人（前10）
+                    top_managers = UnifiedStatisticsService.get_manager_statistics(db, filters)[:10]
+                    
+                    return {
+                        "overview": {
+                            "total_orders": overview['order_count'],
+                            "total_quantity": overview['total_quantity'],
+                            "total_gmv": round(overview['total_gmv'], 2),
+                            "total_cost": round(overview['total_cost'], 2),
+                            "total_profit": round(overview['total_profit'], 2),
+                            "profit_margin": round(profit_margin, 2),
+                            "delay_rate": round(overview.get('delay_rate', 0), 2),
+                            "delay_count": overview.get('delay_count', 0),
+                        },
+                        "top_skus": top_skus,
+                        "top_managers": top_managers,
+                    }
+                
+                # 获取数据（带缓存）
+                summary_data = get_cached_or_compute(
+                    cache_key,
+                    compute,
+                    ttl=300,  # 5分钟缓存
+                    use_redis=True
+                )
+                
+                # 转换为AI模块需要的格式
                 data_summary = {
-                    "overview": {
-                        "total_orders": overview['order_count'],
-                        "total_quantity": overview['total_quantity'],
-                        "total_gmv": round(overview['total_gmv'], 2),
-                        "total_cost": round(overview['total_cost'], 2),
-                        "total_profit": round(overview['total_profit'], 2),
-                        "profit_margin": round(profit_margin, 2),
-                    },
-                    "top_skus": top_skus,
-                    "top_managers": top_managers,
+                    "overview": summary_data["overview"],
+                    "top_skus": summary_data["top_skus"],
+                    "top_managers": summary_data["top_managers"],
                 }
                 
                 system_context = frog_gpt_service.build_system_context(data_summary)
@@ -521,42 +646,88 @@ async def get_models(
 
 @router.get("/data-summary")
 async def get_data_summary_for_ai(
-    days: int = 7,
+    days: Optional[int] = None,
+    shop_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     获取系统数据摘要（供AI使用）
+    
+    使用统一端点获取数据，带缓存优化
+    
+    Args:
+        days: 统计天数，如果为None则获取全部历史数据
+        shop_id: 店铺ID（可选，用于筛选数据）
     """
     try:
-        start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
-            None, None, days
-        )
-        filters = UnifiedStatisticsService.build_base_filters(
-            db, start_dt, end_dt, None, None, None, None
-        )
-        overview = UnifiedStatisticsService.calculate_order_statistics(db, filters)
-        top_skus = UnifiedStatisticsService.get_sku_statistics(db, filters, limit=10)
-        top_managers = UnifiedStatisticsService.get_manager_statistics(db, filters)[:10]
-        profit_margin = (overview['total_profit'] / overview['total_gmv'] * 100) if overview['total_gmv'] > 0 else 0
+        # 使用统一端点逻辑获取数据摘要（带缓存，性能更好）
+        from app.api.statistics_unified import get_cached_or_compute, generate_cache_key
         
-        return {
-            "overview": {
-                "total_orders": overview['order_count'],
-                "total_quantity": overview['total_quantity'],
-                "total_gmv": round(overview['total_gmv'], 2),
-                "total_cost": round(overview['total_cost'], 2),
-                "total_profit": round(overview['total_profit'], 2),
-                "profit_margin": round(profit_margin, 2),
-            },
-            "top_skus": top_skus,
-            "top_managers": top_managers,
-            "period": {
-                "start_date": start_dt.isoformat() if start_dt else None,
-                "end_date": end_dt.isoformat() if end_dt else None,
-            }
+        shop_ids = [shop_id] if shop_id else None
+        
+        # 构建缓存键
+        params = {
+            "shop_ids": sorted(shop_ids) if shop_ids else None,
+            "days": days,
         }
+        cache_key = generate_cache_key("summary", params)
+        
+        def compute():
+            # 解析日期范围
+            start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
+                None, None, days
+            )
+            
+            # 构建查询条件
+            filters = UnifiedStatisticsService.build_base_filters(
+                db, start_dt, end_dt, shop_ids, None, None, None
+            )
+            
+            # 计算总览统计
+            overview = UnifiedStatisticsService.calculate_order_statistics(db, filters)
+            
+            # 计算利润率
+            profit_margin = (
+                (overview['total_profit'] / overview['total_gmv'] * 100)
+                if overview['total_gmv'] > 0 else 0
+            )
+            
+            # 获取Top SKU（前10）
+            top_skus = UnifiedStatisticsService.get_sku_statistics(db, filters, limit=10)
+            
+            # 获取Top负责人（前10）
+            top_managers = UnifiedStatisticsService.get_manager_statistics(db, filters)[:10]
+            
+            return {
+                "overview": {
+                    "total_orders": overview['order_count'],
+                    "total_quantity": overview['total_quantity'],
+                    "total_gmv": round(overview['total_gmv'], 2),
+                    "total_cost": round(overview['total_cost'], 2),
+                    "total_profit": round(overview['total_profit'], 2),
+                    "profit_margin": round(profit_margin, 2),
+                    "delay_rate": round(overview.get('delay_rate', 0), 2),
+                    "delay_count": overview.get('delay_count', 0),
+                },
+                "top_skus": top_skus,
+                "top_managers": top_managers,
+                "period": {
+                    "start_date": start_dt.isoformat() if start_dt else None,
+                    "end_date": end_dt.isoformat() if end_dt else None,
+                }
+            }
+        
+        # 获取数据（带缓存）
+        return get_cached_or_compute(
+            cache_key,
+            compute,
+            ttl=300,  # 5分钟缓存
+            use_redis=True
+        )
     except Exception as e:
+        logger.error(f"获取数据摘要失败: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"获取数据摘要失败: {str(e)}")
 
 

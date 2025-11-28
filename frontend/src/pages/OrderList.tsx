@@ -497,6 +497,7 @@ function OrderList() {
       key: 'parent_order_sn',
       width: 150,
       fixed: 'left' as const,
+      align: 'left' as const,
       render: (parentSn: string, record: any) => {
         const displayValue = parentSn || record.order_sn || '-'
         
@@ -504,13 +505,13 @@ function OrderList() {
           return {
             children: (
               <div 
-                style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', cursor: 'pointer' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', cursor: 'pointer', justifyContent: 'flex-start' }}
                 onClick={() => {
                   setSelectedOrderId(record.id)
                   setDetailDrawerVisible(true)
                 }}
               >
-                <span style={{ fontFamily: 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {displayValue}
                 </span>
                 <Button
@@ -532,8 +533,8 @@ function OrderList() {
         if (record._isFirstInGroup && record._groupSize > 1) {
           return {
             children: (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
-                <span style={{ fontFamily: 'monospace', fontWeight: 'bold', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', justifyContent: 'flex-start' }}>
+                <span style={{ fontFamily: 'monospace', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {displayValue}
                 </span>
                 <Button
@@ -558,8 +559,8 @@ function OrderList() {
         }
         return {
           children: (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
-              <span style={{ fontFamily: 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', justifyContent: 'flex-start' }}>
+              <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {displayValue}
               </span>
               <Button
@@ -584,6 +585,7 @@ function OrderList() {
       key: 'order_sn',
       width: 150,
       fixed: 'left' as const,
+      align: 'left' as const,
       render: (sn: string, record: any) => {
         // 如果订单有父订单号，且不是第一行，不显示
         if (record._hasParent && record._groupSize > 1 && !record._isFirstInGroup) {
@@ -597,8 +599,8 @@ function OrderList() {
         
         return {
           children: (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
-              <span style={{ fontFamily: 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', justifyContent: 'flex-start' }}>
+              <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {displaySn}
               </span>
               {sn && (
@@ -627,6 +629,7 @@ function OrderList() {
       key: 'product_name',
       width: 250,
       ellipsis: true,
+      align: 'left' as const,
       render: (text: string) => {
         if (!text) return '-'
         const displayText = text.length > 20 ? text.substring(0, 20) + '...' : text
@@ -642,6 +645,7 @@ function OrderList() {
       dataIndex: 'product_sku',
       key: 'product_sku',
       width: 150,
+      align: 'left' as const,
       render: (sku: string) => sku || '-',
     },
     {
@@ -687,6 +691,7 @@ function OrderList() {
       dataIndex: 'order_time',
       key: 'order_time',
       width: 180,
+      align: 'left' as const,
       render: (time: string) => 
         time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-',
     },
@@ -695,6 +700,7 @@ function OrderList() {
       dataIndex: 'shipping_time',
       key: 'latest_shipping_time',
       width: 180,
+      align: 'left' as const,
       render: (time: string, record: any) => {
         const displayTime = record._latestShippingTime || time
         

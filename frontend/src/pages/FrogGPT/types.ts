@@ -9,6 +9,7 @@ export interface ChatMessage {
   timestamp?: number
   thinking?: string // AI思考过程
   sources?: Source[] // 来源引用
+  isLoading?: boolean // 是否正在加载中（用于流式响应）
 }
 
 export interface Source {
@@ -58,7 +59,7 @@ export interface TrendData {
   gmv: number
   orders: number
   profit: number
-  refundRate: number
+  delayRate: number
 }
 
 export interface SkuRankingItem {
@@ -68,7 +69,7 @@ export interface SkuRankingItem {
   orders: number
   gmv: number
   profit: number
-  refundRate: number
+  delayRate: number
   rank: number
 }
 

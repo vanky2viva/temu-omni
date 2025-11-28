@@ -162,17 +162,38 @@ function SalesStatistics() {
     enabled: activeTab === 'manager',
   })
 
+  // 处理并过滤SKU排行数据，排除无效数据
+  const filteredSkuRanking = useMemo(() => {
+    if (!skuRanking?.ranking || !Array.isArray(skuRanking.ranking)) {
+      return []
+    }
+    // 过滤掉无效的SKU（空值、'-'、'N/A'或数量为0）
+    return skuRanking.ranking.filter((item: any) => {
+      const sku = item.sku || item.product_sku
+      const quantity = item.quantity || item.total_quantity || item.sold_quantity || 0
+      // 过滤掉无效的SKU：空值、'-'、'N/A'，或数量为0
+      return sku && 
+             sku !== '-' && 
+             sku !== 'N/A' && 
+             sku !== '' && 
+             quantity > 0
+    }).map((item: any, index: number) => ({
+      ...item,
+      rank: index + 1, // 重新计算排名
+    }))
+  }, [skuRanking])
+
   // 获取负责人选项
   const managerOptions = useMemo(() => {
     const managers = new Set<string>()
-    if (!skuRanking?.ranking) return []
-    skuRanking.ranking.forEach((item: any) => {
+    if (!filteredSkuRanking || filteredSkuRanking.length === 0) return []
+    filteredSkuRanking.forEach((item: any) => {
       if (item.manager && item.manager !== '-') {
         managers.add(item.manager)
       }
     })
     return Array.from(managers).map(m => ({ label: m, value: m }))
-  }, [skuRanking])
+  }, [filteredSkuRanking])
 
   // 准备趋势图数据 - 使用与仪表盘相同的数据结构（订单量）
   const chartOption = useMemo(() => {
@@ -777,8 +798,7 @@ function SalesStatistics() {
     <div className="bulma-section bulma-grid-bg" style={{ 
       padding: isMobile ? '8px' : '12px',
       background: 'linear-gradient(135deg, #0d1117 0%, #161b22 100%)',
-      height: '100vh',
-      overflow: 'hidden',
+      minHeight: '100vh',
       display: 'flex',
       flexDirection: 'column',
     }}>
@@ -1254,9 +1274,6 @@ function SalesStatistics() {
         gridTemplateColumns: isMobile ? '1fr' : '0.8fr 1.2fr',
         gap: isMobile ? 6 : 8,
         marginBottom: isMobile ? 8 : 12,
-        flex: 1,
-        minHeight: 0,
-        overflow: 'hidden',
       }}>
         {/* 左侧：每日销量表格 */}
         <div className="bulma-card" style={{ 
@@ -1377,16 +1394,13 @@ function SalesStatistics() {
       {/* Tab切换 - Bulma Card 风格 */}
       <div className="bulma-card" style={{ 
         padding: isMobile ? '8px' : '12px',
-        flex: 1,
-        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden',
       }}>
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
-          style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+          style={{ display: 'flex', flexDirection: 'column' }}
           items={[
             {
               key: 'sku',
@@ -1397,23 +1411,32 @@ function SalesStatistics() {
                 </Space>
               ),
               children: (
-                <div style={{ padding: 0, flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: 0 }}>
                 <Table
                   columns={skuColumns}
-                  dataSource={skuRanking?.ranking || []}
+                  dataSource={filteredSkuRanking}
                   rowKey={(record, index) => record?.sku || record?.rank?.toString() || `sku-${index}`}
                   loading={skuLoading}
+                  size="small"
                   pagination={{
                     pageSize: 15,
+                    defaultPageSize: 15,
                     showSizeChanger: true,
-                    showTotal: (total) => (
+                    pageSizeOptions: ['10', '15', '20', '30', '50', '100'],
+                    showTotal: (total, range) => (
                       <span style={{ color: '#8b949e' }}>
-                          共 <strong style={{ color: '#00d1b2' }}>{total}</strong> 条记录
+                          共 <strong style={{ color: '#00d1b2' }}>{total}</strong> 条记录，显示 {range[0]}-{range[1]} 条
                       </span>
                     ),
                   }}
-                    style={{ background: 'transparent', flex: 1 }}
-                    scroll={{ y: 'calc(100vh - 750px)' }}
+                  style={{ background: 'transparent' }}
+                  components={{
+                    body: {
+                      row: (props: any) => (
+                        <tr {...props} style={{ ...props.style, height: '40px' }} />
+                      ),
+                    },
+                  }}
                 />
                 </div>
               ),
@@ -1427,23 +1450,32 @@ function SalesStatistics() {
                 </Space>
               ),
               children: (
-                <div style={{ padding: 0, flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: 0 }}>
                   <Table
                     columns={managerColumns}
                     dataSource={managerSales?.managers || []}
                     rowKey="manager"
                     loading={managerLoading}
+                    size="small"
                     pagination={{
                       pageSize: 15,
+                      defaultPageSize: 15,
                       showSizeChanger: true,
-                      showTotal: (total) => (
+                      pageSizeOptions: ['10', '15', '20', '30', '50', '100'],
+                      showTotal: (total, range) => (
                         <span style={{ color: '#8b949e' }}>
-                          共 <strong style={{ color: '#00d1b2' }}>{total}</strong> 条记录
+                          共 <strong style={{ color: '#00d1b2' }}>{total}</strong> 条记录，显示 {range[0]}-{range[1]} 条
                         </span>
                       ),
                     }}
-                    style={{ background: 'transparent', flex: 1 }}
-                    scroll={{ y: 'calc(100vh - 750px)' }}
+                    style={{ background: 'transparent' }}
+                    components={{
+                      body: {
+                        row: (props: any) => (
+                          <tr {...props} style={{ ...props.style, height: '40px' }} />
+                        ),
+                      },
+                    }}
                   />
                 </div>
               ),

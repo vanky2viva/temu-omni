@@ -117,12 +117,20 @@ export const productApi = {
 
 // 统计API
 export const statisticsApi = {
+  // 原有端点（保持兼容）
   getOverview: (params?: any) => api.get('/statistics/overview/', { params }),
   getDaily: (params?: any) => api.get('/statistics/daily/', { params }),
   getWeekly: (params?: any) => api.get('/statistics/weekly/', { params }),
   getMonthly: (params?: any) => api.get('/statistics/monthly/', { params }),
   getShopComparison: (params?: any) => api.get('/statistics/shops/comparison/', { params }),
   getTrend: (params?: any) => api.get('/statistics/trend/', { params }),
+  
+  // 统一端点（推荐使用）
+  getUnifiedOverview: (params?: any) => api.get('/statistics/unified/overview', { params }),
+  getUnifiedDaily: (params?: any) => api.get('/statistics/unified/daily', { params }),
+  getUnifiedSkuRanking: (params?: any) => api.get('/statistics/unified/sku-ranking', { params }),
+  getUnifiedManagerRanking: (params?: any) => api.get('/statistics/unified/manager-ranking', { params }),
+  getUnifiedSummary: (params?: any) => api.get('/statistics/unified/summary', { params }),
 }
 
 // 分析API
@@ -132,6 +140,12 @@ export const analyticsApi = {
   getSkuSalesRanking: (params?: any) => api.get('/analytics/sku-sales-ranking', { params }),
   getManagerSales: (params?: any) => api.get('/analytics/manager-sales', { params }),
   getDelayRate: (params?: any) => api.get('/analytics/delay-rate', { params }),
+}
+
+// 备货计划API
+export const inventoryPlanningApi = {
+  getStockPlan: (params?: any) => api.get('/inventory-planning/stock-plan', { params }),
+  getStockPlanBySku: (params?: any) => api.get('/inventory-planning/stock-plan-by-sku', { params }),
 }
 
 // 数据导入API

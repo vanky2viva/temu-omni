@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, Row, Col, Typography, Statistic } from 'antd'
+import { Card, Typography, Statistic } from 'antd'
 import { ArrowUpOutlined, ArrowDownOutlined, MinusOutlined } from '@ant-design/icons'
 import type { MetricData } from './types'
 
@@ -30,17 +30,40 @@ const MetricOverview: React.FC<MetricOverviewProps> = ({ metrics }) => {
         </span>
       }
       className="frog-gpt-section-card"
-      styles={{ body: { padding: '16px' }, header: { background: 'transparent', color: '#e2e8f0' } }}
+      styles={{ 
+        body: { padding: '6px' }, 
+        header: { 
+          background: 'transparent', 
+          color: '#e2e8f0',
+          borderBottom: '1px solid rgba(96, 165, 250, 0.2)',
+          padding: '4px 8px'
+        },
+        root: { width: '100%', maxWidth: '100%', position: 'relative', zIndex: 1 }
+      }}
     >
-      <Row gutter={[12, 12]}>
+      <div style={{ display: 'flex', gap: '6px', width: '100%' }}>
         {metrics.map((metric, index) => (
-          <Col span={12} key={index}>
+          <div key={index} style={{ flex: 1, minWidth: 0 }}>
             <Card
               className="frog-gpt-section-card"
               style={{
-                background: 'linear-gradient(135deg, rgba(96, 165, 250, 0.08), rgba(15, 23, 42, 0.9))',
+                background: 'linear-gradient(135deg, rgba(96, 165, 250, 0.12), rgba(15, 23, 42, 0.95))',
+                width: '100%',
+                maxWidth: '100%',
+                border: '1px solid rgba(96, 165, 250, 0.2)',
+                backdropFilter: 'blur(10px)',
+                height: '100%',
               }}
-              styles={{ body: { padding: '12px' } }}
+              styles={{ 
+                body: { padding: '4px' },
+                root: { 
+                  width: '100%', 
+                  maxWidth: '100%',
+                  position: 'relative',
+                  zIndex: 1,
+                  height: '100%',
+                }
+              }}
             >
               <Statistic
                 title={
@@ -49,7 +72,7 @@ const MetricOverview: React.FC<MetricOverviewProps> = ({ metrics }) => {
                   </Text>
                 }
                 value={metric.value}
-                valueStyle={{ color: '#fff', fontSize: '18px', fontWeight: 'bold' }}
+                valueStyle={{ color: '#fff', fontSize: '16px', fontWeight: 'bold' }}
                 prefix={getTrendIcon(metric.trend)}
                 suffix={
                   metric.trendValue ? (
@@ -66,9 +89,9 @@ const MetricOverview: React.FC<MetricOverviewProps> = ({ metrics }) => {
                 }
               />
             </Card>
-          </Col>
+          </div>
         ))}
-      </Row>
+      </div>
     </Card>
   )
 }

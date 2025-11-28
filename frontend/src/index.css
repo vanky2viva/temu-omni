@@ -121,6 +121,7 @@ body {
   opacity: 0.8 !important;
   padding: 16px !important;
   transition: all 0.2s ease !important;
+  text-align: inherit !important;
 }
 
 .order-list-table .ant-table-tbody > tr > td {
@@ -130,6 +131,35 @@ body {
   border-right: none !important;
   padding: 16px !important;
   transition: all 0.2s ease !important;
+  text-align: inherit !important;
+  vertical-align: middle !important;
+}
+
+/* 确保表格单元格内容对齐 - 使用 Ant Design 的类名 */
+.order-list-table .ant-table-thead > tr > th.ant-table-cell[style*="text-align: left"],
+.order-list-table .ant-table-tbody > tr > td.ant-table-cell[style*="text-align: left"] {
+  text-align: left !important;
+}
+
+.order-list-table .ant-table-thead > tr > th.ant-table-cell[style*="text-align: center"],
+.order-list-table .ant-table-tbody > tr > td.ant-table-cell[style*="text-align: center"] {
+  text-align: center !important;
+}
+
+.order-list-table .ant-table-thead > tr > th.ant-table-cell[style*="text-align: right"],
+.order-list-table .ant-table-tbody > tr > td.ant-table-cell[style*="text-align: right"] {
+  text-align: right !important;
+}
+
+/* 确保表格单元格内的 flex 容器不影响对齐 */
+.order-list-table .ant-table-cell > div[style*="display: flex"] {
+  width: 100%;
+}
+
+/* 确保表格单元格垂直对齐 */
+.order-list-table .ant-table-thead > tr > th,
+.order-list-table .ant-table-tbody > tr > td {
+  vertical-align: middle !important;
 }
 
 .order-list-table .ant-table-tbody > tr {

@@ -145,7 +145,7 @@ class StatisticsService:
         shop_ids: Optional[List[int]] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        days: int = 30
+        days: Optional[int] = 30
     ) -> List[Dict[str, Any]]:
         """
         获取每日统计数据
@@ -161,26 +161,23 @@ class StatisticsService:
             每日统计数据列表
         """
         # 确定日期范围
-        if not end_date:
-            end_date = datetime.now()
-        if not start_date:
-            start_date = end_date - timedelta(days=days)
+        # 如果days为None，不限制日期范围（获取全部历史数据）
+        if days is None:
+            start_date = None
+            end_date = None
+        else:
+            if not end_date:
+                end_date = datetime.now()
+            if not start_date:
+                start_date = end_date - timedelta(days=days)
         
-        # 构建查询条件
-        filters = [
-            Order.order_time >= start_date,
-            Order.order_time <= end_date
-        ]
+        # 构建查询条件 - 使用统一服务确保数据一致性
+        from app.services.unified_statistics import UnifiedStatisticsService
         
-        if shop_ids:
-            filters.append(Order.shop_id.in_(shop_ids))
-        
-        # 排除已取消和已退款的订单（这些订单不应计入销售统计）
-        filters.append(Order.status != OrderStatus.CANCELLED)
-        filters.append(Order.status != OrderStatus.REFUNDED)
-        
-        # 只统计有有效金额的订单（total_price > 0）
-        filters.append(Order.total_price > 0)
+        # 使用统一服务构建基础过滤条件
+        filters = UnifiedStatisticsService.build_base_filters(
+            db, start_date, end_date, shop_ids, None, None, None
+        )
         
         # 按日期分组统计
         # 注意：订单数按订单号去重统计（一个订单号可能对应多条记录，每个订单号为一单）
@@ -214,16 +211,37 @@ class StatisticsService:
             func.date(Order.order_time)
         ).order_by(func.date(Order.order_time)).all()
         
-        # 格式化结果
+        # 格式化结果，并计算每日延迟到货率
         daily_stats = []
         for row in results:
+            # 计算该日期的延迟到货率
+            # 延迟到货：发货时间 > 预期最晚发货时间
+            date_str = row.date.strftime("%Y-%m-%d")
+            date_start = datetime.strptime(date_str, "%Y-%m-%d")
+            date_end = date_start + timedelta(days=1)
+            
+            # 查询该日期下单的订单中，延迟发货的数量
+            delay_filters = filters + [
+                func.date(Order.order_time) == row.date,
+                Order.shipping_time.isnot(None),
+                Order.expect_ship_latest_time.isnot(None),
+                Order.shipping_time > Order.expect_ship_latest_time
+            ]
+            delay_count = db.query(
+                func.count(func.distinct(Order.order_sn))
+            ).filter(and_(*delay_filters)).scalar() or 0
+            
+            total_orders = row.orders or 0
+            delay_rate = (delay_count / total_orders * 100) if total_orders > 0 else 0.0
+            
             daily_stats.append({
-                "date": row.date.strftime("%Y-%m-%d"),
-                "order_count": row.orders or 0,  # 使用 order_count 保持一致性
-                "orders": row.orders or 0,  # 保留兼容性
+                "date": date_str,
+                "order_count": total_orders,  # 使用 order_count 保持一致性
+                "orders": total_orders,  # 保留兼容性
                 "gmv": float(row.gmv or 0),
                 "cost": float(row.cost or 0),
                 "profit": float(row.profit or 0),
+                "delay_rate": float(delay_rate),
             })
         
         return daily_stats

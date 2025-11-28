@@ -1,6 +1,6 @@
 /**
  * 运营图表区组件
- * 显示 GMV/订单/利润趋势、退款率趋势、SKU Top 表格
+ * 显示 GMV/订单/利润趋势、SKU Top 表格
  */
 import React, { useMemo } from 'react'
 import { Card, Table, Tag, Tooltip } from 'antd'
@@ -58,10 +58,14 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
       yAxis: [
         {
           type: 'value',
-          name: '金额（元）',
+          name: '金额（千元）',
           nameTextStyle: { color: '#8b949e', fontSize: 11 },
           axisLine: { lineStyle: { color: '#30363d' } },
-          axisLabel: { color: '#8b949e', fontSize: 11 },
+          axisLabel: { 
+            color: '#8b949e', 
+            fontSize: 11,
+            formatter: (value: number) => `${value}k` // 显示为千元单位
+          },
           splitLine: { lineStyle: { color: '#21262d', type: 'dashed' } },
         },
         {
@@ -77,7 +81,10 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
         {
           name: 'GMV',
           type: 'line',
-          data: trendData.map(item => (item.gmv / 1000).toFixed(1)),
+          data: trendData.map(item => {
+            const gmv = Number(item.gmv) || 0
+            return Number((gmv / 1000).toFixed(1)) // 转换为数字，单位：千元
+          }),
           smooth: true,
           lineStyle: { width: 3, color: '#ffdd57' },
           itemStyle: { color: '#ffdd57' },
@@ -96,7 +103,10 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
           name: '订单数',
           type: 'line',
           yAxisIndex: 1,
-          data: trendData.map(item => item.orders),
+          data: trendData.map(item => {
+            const orders = Number(item.orders) || Number(item.order_count) || 0
+            return orders // 直接使用订单数
+          }),
           smooth: true,
           lineStyle: { width: 3, color: '#3273dc' },
           itemStyle: { color: '#3273dc' },
@@ -114,7 +124,10 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
         {
           name: '利润',
           type: 'line',
-          data: trendData.map(item => (item.profit / 1000).toFixed(1)),
+          data: trendData.map(item => {
+            const profit = Number(item.profit) || 0
+            return Number((profit / 1000).toFixed(1)) // 转换为数字，单位：千元
+          }),
           smooth: true,
           lineStyle: { width: 3, color: '#48c774' },
           itemStyle: { color: '#48c774' },
@@ -133,17 +146,16 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
     }
   }, [trendData])
 
- // 退款率趋势图配置
   // SKU Top 表格列配置
   const skuColumns = [
     {
       title: '排名',
       dataIndex: 'rank',
       key: 'rank',
-      width: 60,
+      width: 40,
       align: 'center' as const,
       render: (rank: number) => (
-        <Tag color={rank <= 3 ? '#f14668' : '#00d1b2'} style={{ margin: 0 }}>
+        <Tag color={rank <= 3 ? '#f14668' : '#00d1b2'} style={{ margin: 0, fontSize: '11px', padding: '1px 3px' }}>
           {rank}
         </Tag>
       ),
@@ -152,7 +164,7 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
       title: 'SKU',
       dataIndex: 'sku',
       key: 'sku',
-      width: 120,
+      width: 100,
       render: (sku: string) => (
         <span style={{ fontFamily: 'monospace', fontSize: '11px', color: '#00d1b2' }}>
           {sku}
@@ -164,17 +176,21 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
       dataIndex: 'productName',
       key: 'productName',
       ellipsis: true,
-      render: (text: string) => (
-        <Tooltip title={text}>
-          <span style={{ color: '#c9d1d9', fontSize: '11px' }}>{text}</span>
-        </Tooltip>
-      ),
+      width: 100,
+      render: (text: string) => {
+        const displayText = text ? (text.length > 10 ? text.substring(0, 10) + '...' : text) : '未知'
+        return (
+          <Tooltip title={text}>
+            <span style={{ color: '#c9d1d9', fontSize: '11px' }}>{displayText}</span>
+          </Tooltip>
+        )
+      },
     },
     {
       title: '销量',
       dataIndex: 'quantity',
       key: 'quantity',
-      width: 80,
+      width: 55,
       align: 'right' as const,
       render: (qty: number) => (
         <span style={{ color: '#48c774', fontWeight: 600, fontSize: '11px' }}>
@@ -186,7 +202,7 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
       title: 'GMV',
       dataIndex: 'gmv',
       key: 'gmv',
-      width: 100,
+      width: 65,
       align: 'right' as const,
       render: (gmv: number) => (
         <span style={{ color: '#ffdd57', fontSize: '11px' }}>
@@ -198,7 +214,7 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
       title: '利润',
       dataIndex: 'profit',
       key: 'profit',
-      width: 100,
+      width: 65,
       align: 'right' as const,
       render: (profit: number) => (
         <span style={{ 
@@ -210,25 +226,10 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
         </span>
       ),
     },
-    {
-      title: '退款率',
-      dataIndex: 'refundRate',
-      key: 'refundRate',
-      width: 80,
-      align: 'right' as const,
-      render: (rate: number) => (
-        <span style={{ 
-          color: rate > 5 ? '#f14668' : rate > 3 ? '#faad14' : '#48c774',
-          fontSize: '11px',
-        }}>
-          {rate.toFixed(2)}%
-        </span>
-      ),
-    },
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', minWidth: 0 }}>
       {/* GMV/订单/利润趋势图 */}
       <Card
         className="frog-gpt-section-card"
@@ -243,15 +244,30 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
             background: 'transparent',
             borderBottom: '1px solid #1E293B',
             color: '#e2e8f0',
+            padding: '4px 8px',
           },
-          body: { padding: '12px' },
+          body: { padding: '6px' },
+          root: { width: '100%', maxWidth: '100%' },
         }}
       >
-        <LazyECharts
-          option={trendsChartOption}
-          style={{ height: '280px' }}
-          opts={{ renderer: 'svg' }}
-        />
+        {trendData && trendData.length > 0 ? (
+          <LazyECharts
+            option={trendsChartOption}
+            style={{ height: '200px' }}
+            opts={{ renderer: 'svg' }}
+          />
+        ) : (
+          <div style={{ 
+            height: '200px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            color: '#94a3b8',
+            fontSize: '14px'
+          }}>
+            暂无趋势数据
+          </div>
+        )}
       </Card>
 
       {/* SKU Top 表格 */}
@@ -268,19 +284,44 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
             background: 'transparent',
             borderBottom: '1px solid #1E293B',
             color: '#e2e8f0',
+            padding: '4px 8px',
           },
-          body: { padding: '12px' },
+          body: { padding: '6px' },
+          root: { width: '100%', maxWidth: '100%' },
         }}
       >
-        <Table
-          columns={skuColumns}
-          dataSource={skuRanking}
-          rowKey="sku"
-          pagination={false}
-          size="small"
-          scroll={{ y: 300 }}
-          style={{ background: 'transparent' }}
-        />
+        {skuRanking && skuRanking.length > 0 ? (
+          <Table
+            columns={skuColumns}
+            dataSource={skuRanking}
+            rowKey="sku"
+            pagination={false}
+            size="small"
+            style={{ 
+              background: 'transparent', 
+              width: '100%',
+            }}
+            className="frog-gpt-sku-table"
+            components={{
+              body: {
+                row: (props: any) => (
+                  <tr {...props} style={{ ...props.style, height: '28px' }} />
+                ),
+              },
+            }}
+          />
+        ) : (
+          <div style={{ 
+            height: '120px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            color: '#94a3b8',
+            fontSize: '14px'
+          }}>
+            暂无 SKU 排行数据
+          </div>
+        )}
       </Card>
     </div>
   )

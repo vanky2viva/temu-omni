@@ -1,39 +1,205 @@
+/* FrogGPT 页面主容器 - 赛博朋克风格 */
 .frog-gpt-page {
   position: relative;
-  background: radial-gradient(120% 160% at 10% 20%, rgba(96, 165, 250, 0.08), transparent 40%),
-    radial-gradient(120% 140% at 90% 10%, rgba(45, 212, 191, 0.08), transparent 45%),
-    #0a1224;
+  background: 
+    /* 网格背景 */
+    linear-gradient(rgba(139, 92, 246, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(139, 92, 246, 0.03) 1px, transparent 1px),
+    /* 霓虹渐变 */
+    radial-gradient(120% 160% at 10% 20%, rgba(139, 92, 246, 0.15), transparent 40%),
+    radial-gradient(120% 140% at 90% 10%, rgba(236, 72, 153, 0.15), transparent 45%),
+    radial-gradient(100% 120% at 50% 50%, rgba(59, 130, 246, 0.1), transparent 60%),
+    /* 深色背景 */
+    linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 25%, #0a0a1a 50%, #1a0a2e 75%, #0a0a1a 100%);
+  background-size: 50px 50px, 50px 50px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  /* 高度由内联样式控制，考虑 Header 高度 */
 }
 
+/* 扫描线效果 */
+.frog-gpt-page::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(139, 92, 246, 0.03) 2px,
+    rgba(139, 92, 246, 0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+  animation: frog-gpt-scan 8s linear infinite;
+}
+
+@keyframes frog-gpt-scan {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(100px);
+  }
+}
+
+/* 赛博朋克背景粒子效果 */
+.frog-gpt-page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: 
+    radial-gradient(circle at 20% 30%, rgba(139, 92, 246, 0.2) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(236, 72, 153, 0.2) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.15) 0%, transparent 60%);
+  animation: frog-gpt-particle-float 20s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(60px);
+}
+
+@keyframes frog-gpt-particle-float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translate(20px, -20px) scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+/* 控制卡片 - 赛博朋克霓虹效果 */
+.frog-gpt-control-card {
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  background: linear-gradient(135deg, 
+    rgba(10, 10, 26, 0.95) 0%, 
+    rgba(26, 10, 46, 0.9) 50%,
+    rgba(10, 10, 26, 0.95) 100%);
+  backdrop-filter: blur(20px);
+  padding: 10px 14px;
+  border-radius: 14px;
+  box-shadow: 
+    0 8px 32px rgba(139, 92, 246, 0.3),
+    0 0 0 1px rgba(139, 92, 246, 0.2),
+    0 0 20px rgba(139, 92, 246, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(139, 92, 246, 0.1);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.frog-gpt-control-card:hover {
+  border-color: rgba(236, 72, 153, 0.6);
+  box-shadow: 
+    0 8px 32px rgba(236, 72, 153, 0.4),
+    0 0 0 1px rgba(236, 72, 153, 0.3),
+    0 0 30px rgba(236, 72, 153, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.frog-gpt-control-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, 
+    transparent, 
+    rgba(96, 165, 250, 0.1), 
+    transparent);
+  animation: frog-gpt-shine 3s infinite;
+}
+
+@keyframes frog-gpt-shine {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+/* 芯片标签 */
+.frog-gpt-chip {
+  border-radius: 20px !important;
+  padding: 6px 12px !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  background: linear-gradient(135deg, 
+    rgba(15, 23, 42, 0.8) 0%, 
+    rgba(30, 41, 59, 0.6) 100%) !important;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.frog-gpt-chip:hover {
+  transform: translateY(-2px);
+  border-color: rgba(96, 165, 250, 0.6) !important;
+  box-shadow: 0 4px 16px rgba(96, 165, 250, 0.3);
+}
+
+/* 英雄卡片 - 赛博朋克风格 */
 .frog-gpt-hero-card {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(120deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.65)),
-    radial-gradient(120% 120% at 15% 30%, rgba(96, 165, 250, 0.15), transparent 50%),
-    radial-gradient(80% 120% at 85% 10%, rgba(45, 212, 191, 0.15), transparent 55%);
-  border: 1px solid #1e2a44;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-  animation: frog-gpt-gradient-shift 18s ease-in-out infinite alternate;
+  background: linear-gradient(135deg, 
+    rgba(10, 10, 26, 0.95) 0%, 
+    rgba(26, 10, 46, 0.85) 50%,
+    rgba(10, 10, 26, 0.95) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  box-shadow: 
+    0 20px 60px rgba(139, 92, 246, 0.4),
+    0 0 0 1px rgba(139, 92, 246, 0.2),
+    0 0 40px rgba(139, 92, 246, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(236, 72, 153, 0.1);
+  animation: frog-gpt-gradient-shift 18s ease-in-out infinite alternate, 
+             frog-gpt-neon-pulse 3s ease-in-out infinite;
+  margin-bottom: 0;
+}
+
+@keyframes frog-gpt-neon-pulse {
+  0%, 100% {
+    box-shadow: 
+      0 20px 60px rgba(139, 92, 246, 0.4),
+      0 0 0 1px rgba(139, 92, 246, 0.2),
+      0 0 40px rgba(139, 92, 246, 0.3);
+  }
+  50% {
+    box-shadow: 
+      0 20px 60px rgba(236, 72, 153, 0.5),
+      0 0 0 1px rgba(236, 72, 153, 0.3),
+      0 0 50px rgba(236, 72, 153, 0.4);
+  }
 }
 
 .frog-gpt-hero-card::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(40% 40% at 70% 20%, rgba(96, 165, 250, 0.12), transparent 60%);
-  filter: blur(40px);
-  opacity: 0.7;
+  background: radial-gradient(40% 40% at 70% 20%, rgba(96, 165, 250, 0.15), transparent 60%);
+  filter: blur(60px);
+  opacity: 0.6;
   animation: frog-gpt-orbit 24s linear infinite;
+  pointer-events: none;
 }
 
 .frog-gpt-hero-card::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(35% 35% at 20% 50%, rgba(16, 185, 129, 0.14), transparent 60%);
-  filter: blur(50px);
+  background: radial-gradient(35% 35% at 20% 50%, rgba(16, 185, 129, 0.15), transparent 60%);
+  filter: blur(60px);
   opacity: 0.5;
   animation: frog-gpt-orbit 20s linear infinite reverse;
+  pointer-events: none;
 }
 
 @keyframes frog-gpt-gradient-shift {
@@ -57,46 +223,224 @@
   }
 }
 
+/* 区域卡片 - 赛博朋克霓虹边框 */
 .frog-gpt-section-card {
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.3s ease;
-  border-color: #1e2a44 !important;
-  background: linear-gradient(160deg, #0c1426 0%, #0f172a 40%, #0b1224 100%) !important;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(139, 92, 246, 0.4) !important;
+  background: linear-gradient(135deg, 
+    rgba(10, 10, 26, 0.95) 0%, 
+    rgba(26, 10, 46, 0.9) 50%,
+    rgba(10, 10, 26, 0.95) 100%) !important;
+  backdrop-filter: blur(20px);
+  box-shadow: 
+    0 8px 32px rgba(139, 92, 246, 0.3),
+    0 0 0 1px rgba(139, 92, 246, 0.2),
+    0 0 20px rgba(139, 92, 246, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(236, 72, 153, 0.1);
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  position: relative !important;
+  z-index: 1 !important;
+  border-radius: 16px !important;
+}
+
+.frog-gpt-section-card::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 16px;
+  padding: 2px;
+  background: linear-gradient(45deg, 
+    rgba(139, 92, 246, 0.5),
+    rgba(236, 72, 153, 0.5),
+    rgba(59, 130, 246, 0.5),
+    rgba(139, 92, 246, 0.5));
+  background-size: 200% 200%;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: frog-gpt-border-glow 3s linear infinite;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.frog-gpt-section-card:hover::before {
+  opacity: 1;
 }
 
 .frog-gpt-section-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(236, 72, 153, 0.6) !important;
+  box-shadow: 
+    0 16px 48px rgba(236, 72, 153, 0.4),
+    0 0 0 1px rgba(236, 72, 153, 0.4),
+    0 0 30px rgba(236, 72, 153, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+@keyframes frog-gpt-border-glow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.frog-gpt-section-card .ant-actions-root {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.frog-gpt-section-card .ant-actions-root:hover {
   transform: translateY(-2px);
-  border-color: rgba(96, 165, 250, 0.6) !important;
-  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(96, 165, 250, 0.2);
 }
 
-.frog-gpt-prompt-item {
-  background: linear-gradient(160deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.75)) !important;
-  border: 1px solid rgba(96, 165, 250, 0.25) !important;
-  color: #e2e8f0 !important;
-  transition: all 0.25s ease !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+/* 左侧面板 */
+.frog-gpt-left-panel {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(96, 165, 250, 0.3) transparent;
 }
 
-.frog-gpt-prompt-item:hover {
-  transform: translateY(-3px) scale(1.01);
-  border-color: rgba(96, 165, 250, 0.6) !important;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+.frog-gpt-left-panel::-webkit-scrollbar {
+  width: 6px;
 }
 
+.frog-gpt-left-panel::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 10px;
+}
+
+.frog-gpt-left-panel::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, 
+    rgba(96, 165, 250, 0.4) 0%,
+    rgba(45, 212, 191, 0.4) 100%);
+  border-radius: 10px;
+  transition: background 0.3s;
+}
+
+.frog-gpt-left-panel::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, 
+    rgba(96, 165, 250, 0.6) 0%,
+    rgba(45, 212, 191, 0.6) 100%);
+}
+
+/* 右侧面板 */
+.frog-gpt-right-panel {
+  position: relative;
+}
+
+/* 聊天卡片 - 赛博朋克风格 */
 .frog-gpt-chat-card {
-  border-color: #1d2a44 !important;
-  background: radial-gradient(120% 120% at 30% 10%, rgba(96, 165, 250, 0.12), transparent 55%),
-    radial-gradient(120% 120% at 80% 0%, rgba(16, 185, 129, 0.12), transparent 55%),
-    #0b1120 !important;
-  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(139, 92, 246, 0.4) !important;
+  background: linear-gradient(135deg, 
+    rgba(10, 10, 26, 0.95) 0%,
+    rgba(26, 10, 46, 0.9) 50%,
+    rgba(10, 10, 26, 0.95) 100%) !important;
+  backdrop-filter: blur(20px);
+  box-shadow: 
+    0 16px 48px rgba(139, 92, 246, 0.4),
+    0 0 0 1px rgba(139, 92, 246, 0.2),
+    0 0 30px rgba(139, 92, 246, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(236, 72, 153, 0.1);
+  border-radius: 16px !important;
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.frog-gpt-chat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, 
+    transparent,
+    rgba(96, 165, 250, 0.5),
+    transparent);
+  animation: frog-gpt-scan-line 3s linear infinite;
+}
+
+@keyframes frog-gpt-scan-line {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .frog-gpt-chat-scroll {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.75));
+  background: linear-gradient(180deg, 
+    rgba(15, 23, 42, 0.95) 0%, 
+    rgba(15, 23, 42, 0.85) 100%);
+  position: relative;
+  z-index: 1;
 }
 
-/* 确保 Bubble 组件内容可见 */
+.frog-gpt-chat-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.5);
+  background: linear-gradient(90deg, 
+    rgba(96, 165, 250, 0.1) 0%, 
+    rgba(16, 185, 129, 0.08) 100%);
+  backdrop-filter: blur(10px);
+  position: relative;
+  min-height: 28px;
+  flex-shrink: 0;
+}
+
+.frog-gpt-chat-meta::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, 
+    transparent,
+    rgba(96, 165, 250, 0.3),
+    transparent);
+}
+
+.frog-gpt-chat-led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #34d399 0%, #16a34a 50%, rgba(22, 163, 74, 0) 80%);
+  box-shadow: 
+    0 0 0 4px rgba(52, 211, 153, 0.15),
+    0 0 8px rgba(52, 211, 153, 0.5),
+    0 0 16px rgba(52, 211, 153, 0.3),
+    0 0 24px rgba(52, 211, 153, 0.2);
+  animation: frog-gpt-led 2.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.8));
+}
+
+@keyframes frog-gpt-led {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+/* 确保所有内容可见 */
 .frog-gpt-chat-scroll .ant-bubble,
 .frog-gpt-chat-scroll .ant-bubble-content,
 .frog-gpt-chat-scroll .ant-bubble-content-filled,
@@ -106,7 +450,6 @@
   display: block !important;
 }
 
-/* 确保助手消息容器可见 */
 .frog-gpt-assistant-message,
 .frog-gpt-assistant-bubble,
 .frog-gpt-message-content,
@@ -116,13 +459,11 @@
   display: block !important;
 }
 
-/* 确保消息容器可见 */
 .frog-gpt-chat-scroll > div > div {
   opacity: 1 !important;
   visibility: visible !important;
 }
 
-/* 确保 ReactMarkdown 渲染的内容可见 */
 .frog-gpt-message-content p,
 .frog-gpt-message-content div,
 .frog-gpt-message-content span,
@@ -136,35 +477,55 @@
   visibility: visible !important;
 }
 
-/* 确保所有嵌套的元素都可见 */
 .frog-gpt-assistant-message * {
   opacity: 1 !important;
   visibility: visible !important;
 }
 
+/* 徽章 - 赛博朋克霓虹效果 */
 .frog-gpt-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  color: #93c5fd;
-  background: rgba(96, 165, 250, 0.12);
-  border: 1px solid rgba(96, 165, 250, 0.35);
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  color: #c084fc;
+  background: linear-gradient(135deg, 
+    rgba(139, 92, 246, 0.2) 0%,
+    rgba(139, 92, 246, 0.1) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.5);
   font-size: 11px;
-  animation: frog-gpt-pulse 8s ease-in-out infinite;
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+  animation: frog-gpt-pulse 6s ease-in-out infinite;
+  box-shadow: 
+    0 2px 8px rgba(139, 92, 246, 0.3),
+    0 0 10px rgba(139, 92, 246, 0.2);
+  text-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
 }
 
 .frog-gpt-badge.success {
-  color: #6ee7b7;
-  border-color: rgba(52, 211, 153, 0.35);
-  background: rgba(52, 211, 153, 0.08);
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.6);
+  background: linear-gradient(135deg, 
+    rgba(52, 211, 153, 0.2) 0%,
+    rgba(52, 211, 153, 0.1) 100%);
+  box-shadow: 
+    0 2px 8px rgba(52, 211, 153, 0.3),
+    0 0 10px rgba(52, 211, 153, 0.2);
+  text-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
 }
 
 .frog-gpt-badge.warn {
   color: #fbbf24;
-  border-color: rgba(251, 191, 36, 0.4);
-  background: rgba(251, 191, 36, 0.08);
+  border-color: rgba(251, 191, 36, 0.6);
+  background: linear-gradient(135deg, 
+    rgba(251, 191, 36, 0.2) 0%,
+    rgba(251, 191, 36, 0.1) 100%);
+  box-shadow: 
+    0 2px 8px rgba(251, 191, 36, 0.3),
+    0 0 10px rgba(251, 191, 36, 0.2);
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
 }
 
 .frog-gpt-soft-text {
@@ -179,56 +540,86 @@
 .frog-gpt-floating::after {
   content: '';
   position: absolute;
-  width: 140px;
-  height: 140px;
-  background: radial-gradient(circle, rgba(94, 234, 212, 0.15), transparent 60%);
-  top: -30px;
-  right: -30px;
-  filter: blur(24px);
-  animation: frog-gpt-float 12s ease-in-out infinite alternate;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(94, 234, 212, 0.2), transparent 70%);
+  top: -50px;
+  right: -50px;
+  filter: blur(40px);
+  animation: frog-gpt-float 15s ease-in-out infinite alternate;
+  pointer-events: none;
 }
 
 @keyframes frog-gpt-float {
   from {
-    transform: translateY(0);
-    opacity: 0.6;
+    transform: translate(0, 0) scale(1);
+    opacity: 0.5;
   }
   to {
-    transform: translateY(10px);
-    opacity: 0.9;
+    transform: translate(20px, 20px) scale(1.2);
+    opacity: 0.8;
   }
 }
 
 @keyframes frog-gpt-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.2);
+  0%, 100% {
+    box-shadow: 
+      0 2px 8px rgba(139, 92, 246, 0.3),
+      0 0 10px rgba(139, 92, 246, 0.2);
   }
   50% {
-    box-shadow: 0 0 0 12px rgba(96, 165, 250, 0);
+    box-shadow: 
+      0 2px 8px rgba(139, 92, 246, 0.5),
+      0 0 20px rgba(139, 92, 246, 0.4),
+      0 0 30px rgba(139, 92, 246, 0.2);
   }
 }
 
+/* 思考链 - 赛博朋克风格 */
 .frog-gpt-thought {
-  border: 1px dashed rgba(96, 165, 250, 0.4);
-  border-radius: 12px;
-  padding: 12px;
-  background: rgba(15, 23, 42, 0.6);
+  border: 1px dashed rgba(139, 92, 246, 0.5);
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, 
+    rgba(10, 10, 26, 0.7) 0%,
+    rgba(26, 10, 46, 0.5) 100%);
+  backdrop-filter: blur(10px);
+  position: relative;
+  z-index: 1;
+  box-shadow: 
+    inset 0 0 20px rgba(139, 92, 246, 0.2),
+    0 4px 16px rgba(139, 92, 246, 0.3),
+    0 0 20px rgba(139, 92, 246, 0.2);
+  animation: frog-gpt-thought-glow 2s ease-in-out infinite alternate;
 }
 
-.frog-gpt-suggestion-trigger {
-  color: #93c5fd !important;
+@keyframes frog-gpt-thought-glow {
+  0% {
+    box-shadow: 
+      inset 0 0 20px rgba(139, 92, 246, 0.2),
+      0 4px 16px rgba(139, 92, 246, 0.3),
+      0 0 20px rgba(139, 92, 246, 0.2);
+  }
+  100% {
+    box-shadow: 
+      inset 0 0 20px rgba(236, 72, 153, 0.3),
+      0 4px 16px rgba(236, 72, 153, 0.4),
+      0 0 30px rgba(236, 72, 153, 0.3);
+  }
 }
 
+/* 建议提示行 */
 .frog-gpt-suggestion-row {
   display: flex;
   flex-wrap: nowrap;
-  gap: 6px;
+  gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(96, 165, 250, 0.3) transparent;
-  padding-bottom: 4px;
+  padding-bottom: 6px;
+  position: relative;
+  z-index: 1;
 }
 
 .frog-gpt-suggestion-row::-webkit-scrollbar {
@@ -237,44 +628,81 @@
 
 .frog-gpt-suggestion-row::-webkit-scrollbar-track {
   background: transparent;
+  border-radius: 2px;
 }
 
 .frog-gpt-suggestion-row::-webkit-scrollbar-thumb {
-  background: rgba(96, 165, 250, 0.3);
+  background: linear-gradient(90deg, 
+    rgba(96, 165, 250, 0.4) 0%,
+    rgba(45, 212, 191, 0.4) 100%);
   border-radius: 2px;
 }
 
 .frog-gpt-suggestion-row::-webkit-scrollbar-thumb:hover {
-  background: rgba(96, 165, 250, 0.5);
+  background: linear-gradient(90deg, 
+    rgba(96, 165, 250, 0.6) 0%,
+    rgba(45, 212, 191, 0.6) 100%);
 }
 
+/* 建议芯片 - 赛博朋克霓虹效果 */
 .frog-gpt-suggestion-chip {
-  background: #0f172a;
-  border: 1px solid #1E293B;
-  border-radius: 8px;
-  padding: 6px 10px;
+  background: linear-gradient(135deg, 
+    rgba(10, 10, 26, 0.9) 0%,
+    rgba(26, 10, 46, 0.7) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  border-radius: 12px;
+  padding: 8px 12px;
   color: #e2e8f0;
-  width: 140px;
+  width: 150px;
   flex: 0 0 auto;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 4px 12px rgba(139, 92, 246, 0.3),
+    0 0 0 1px rgba(139, 92, 246, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   display: flex;
   flex-direction: column;
   justify-content: center;
+  backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
+  text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+}
+
+.frog-gpt-suggestion-chip::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, 
+    transparent, 
+    rgba(96, 165, 250, 0.2), 
+    transparent);
+  transition: left 0.5s;
 }
 
 .frog-gpt-suggestion-chip:hover {
-  transform: translateY(-2px);
-  border-color: rgba(96, 165, 250, 0.6);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  transform: translateY(-3px);
+  border-color: rgba(236, 72, 153, 0.6);
+  box-shadow: 
+    0 8px 24px rgba(236, 72, 153, 0.4),
+    0 0 20px rgba(236, 72, 153, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  text-shadow: 0 0 15px rgba(236, 72, 153, 0.8);
+}
+
+.frog-gpt-suggestion-chip:hover::before {
+  left: 100%;
 }
 
 .frog-gpt-suggestion-chip-title {
   font-weight: 600;
   font-size: 12px;
-  margin-bottom: 2px;
-  line-height: 1.3;
+  margin-bottom: 4px;
+  line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -285,7 +713,7 @@
 .frog-gpt-suggestion-chip-desc {
   font-size: 10px;
   color: #94a3b8;
-  line-height: 1.3;
+  line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -294,7 +722,268 @@
 }
 
 .frog-gpt-tag {
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: linear-gradient(135deg, 
+    rgba(148, 163, 184, 0.1) 0%,
+    rgba(148, 163, 184, 0.05) 100%);
   color: #e2e8f0;
+  backdrop-filter: blur(10px);
+}
+
+/* 文件卡片样式 - 赛博朋克 */
+.frog-gpt-file-card {
+  background: rgba(10, 10, 26, 0.8) !important;
+  border: 1px solid rgba(139, 92, 246, 0.4) !important;
+  border-radius: 8px !important;
+  padding: 8px 12px !important;
+  transition: all 0.2s !important;
+  box-shadow: 
+    0 2px 8px rgba(139, 92, 246, 0.2),
+    0 0 10px rgba(139, 92, 246, 0.1) !important;
+}
+
+.frog-gpt-file-card:hover {
+  border-color: rgba(236, 72, 153, 0.6) !important;
+  background: rgba(26, 10, 46, 0.9) !important;
+  box-shadow: 
+    0 4px 16px rgba(236, 72, 153, 0.3),
+    0 0 20px rgba(236, 72, 153, 0.2) !important;
+}
+
+/* 拖拽区域样式 */
+.frog-gpt-drag-area {
+  position: relative;
+}
+
+.frog-gpt-drag-area::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 2px dashed rgba(96, 165, 250, 0.3);
+  border-radius: 20px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.frog-gpt-drag-area.drag-over::before {
+  opacity: 1;
+  border-color: rgba(236, 72, 153, 0.8);
+  background: rgba(236, 72, 153, 0.1);
+  box-shadow: 
+    0 0 20px rgba(236, 72, 153, 0.4),
+    inset 0 0 20px rgba(236, 72, 153, 0.1);
+  animation: frog-gpt-drag-pulse 1s ease-in-out infinite;
+}
+
+@keyframes frog-gpt-drag-pulse {
+  0%, 100% {
+    border-color: rgba(236, 72, 153, 0.8);
+    box-shadow: 
+      0 0 20px rgba(236, 72, 153, 0.4),
+      inset 0 0 20px rgba(236, 72, 153, 0.1);
+  }
+  50% {
+    border-color: rgba(139, 92, 246, 0.8);
+    box-shadow: 
+      0 0 30px rgba(139, 92, 246, 0.5),
+      inset 0 0 30px rgba(139, 92, 246, 0.15);
+  }
+}
+
+/* Welcome 组件紧凑样式 - 赛博朋克 */
+.frog-gpt-hero-card .ant-welcome {
+  margin: 0;
+  padding: 0;
+}
+
+.frog-gpt-hero-card .ant-welcome-header {
+  margin-bottom: 0 !important;
+  padding: 0 !important;
+}
+
+.frog-gpt-hero-card .ant-welcome-title {
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.2 !important;
+  text-shadow: 0 0 10px rgba(139, 92, 246, 0.6), 0 0 20px rgba(139, 92, 246, 0.4);
+  color: #e2e8f0 !important;
+}
+
+.frog-gpt-hero-card .ant-welcome-extra {
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.2 !important;
+}
+
+/* 赛博朋克文字效果 */
+.frog-gpt-cyber-text {
+  color: #e2e8f0;
+  text-shadow: 
+    0 0 10px rgba(139, 92, 246, 0.6),
+    0 0 20px rgba(139, 92, 246, 0.4),
+    0 0 30px rgba(139, 92, 246, 0.2);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* 赛博朋克按钮效果 */
+.frog-gpt-cyber-button {
+  background: linear-gradient(135deg, 
+    rgba(139, 92, 246, 0.2) 0%,
+    rgba(236, 72, 153, 0.15) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  color: #e2e8f0;
+  text-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
+  box-shadow: 
+    0 4px 12px rgba(139, 92, 246, 0.3),
+    0 0 10px rgba(139, 92, 246, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.frog-gpt-cyber-button:hover {
+  border-color: rgba(236, 72, 153, 0.7);
+  box-shadow: 
+    0 6px 20px rgba(236, 72, 153, 0.4),
+    0 0 20px rgba(236, 72, 153, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  text-shadow: 0 0 12px rgba(236, 72, 153, 0.8);
+  transform: translateY(-2px);
+}
+
+/* 赛博朋克输入框 */
+.frog-gpt-cyber-input {
+  background: rgba(10, 10, 26, 0.8) !important;
+  border: 1px solid rgba(139, 92, 246, 0.4) !important;
+  color: #e2e8f0 !important;
+  box-shadow: 
+    0 0 0 1px rgba(139, 92, 246, 0.2),
+    inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+}
+
+.frog-gpt-cyber-input:focus {
+  border-color: rgba(236, 72, 153, 0.6) !important;
+  box-shadow: 
+    0 0 0 1px rgba(236, 72, 153, 0.4),
+    0 0 15px rgba(236, 72, 153, 0.3),
+    inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* 故障艺术效果（可选） */
+.frog-gpt-glitch {
+  position: relative;
+  animation: frog-gpt-glitch-anim 0.3s infinite;
+}
+
+@keyframes frog-gpt-glitch-anim {
+  0%, 100% {
+    transform: translate(0);
+    filter: hue-rotate(0deg);
+  }
+  20% {
+    transform: translate(-2px, 2px);
+    filter: hue-rotate(90deg);
+  }
+  40% {
+    transform: translate(-2px, -2px);
+    filter: hue-rotate(180deg);
+  }
+  60% {
+    transform: translate(2px, 2px);
+    filter: hue-rotate(270deg);
+  }
+  80% {
+    transform: translate(2px, -2px);
+    filter: hue-rotate(360deg);
+  }
+}
+
+/* 优化布局对齐 */
+.frog-gpt-page .ant-row {
+  margin: 0 !important;
+  gap: 16px;
+}
+
+.frog-gpt-page .ant-col {
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 统一卡片间距 */
+.frog-gpt-section-card + .frog-gpt-section-card {
+  margin-top: 16px;
+}
+
+/* 优化消息对齐 */
+/* 移除重复的 .frog-gpt-chat-scroll 定义，已在上面定义 */
+
+/* 响应式优化 */
+@media (max-width: 1400px) {
+  .frog-gpt-left-panel {
+    width: 40% !important;
+    max-width: 40% !important;
+  }
+  
+  .frog-gpt-right-panel {
+    width: 60% !important;
+    max-width: 60% !important;
+  }
+}
+
+/* SKU表格紧凑样式 */
+.frog-gpt-sku-table .ant-table-thead > tr > th {
+  padding: 4px 4px !important;
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+  height: 24px !important;
+  background: rgba(15, 23, 42, 0.8) !important;
+  border-bottom: 1px solid rgba(96, 165, 250, 0.2) !important;
+}
+
+.frog-gpt-sku-table .ant-table-tbody > tr > td {
+  padding: 2px 4px !important;
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+  height: 24px !important;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.3) !important;
+}
+
+.frog-gpt-sku-table .ant-table-tbody > tr:last-child > td {
+  border-bottom: none !important;
+}
+
+.frog-gpt-sku-table .ant-table-tbody > tr:hover > td {
+  background: rgba(96, 165, 250, 0.1) !important;
+}
+
+.frog-gpt-sku-table .ant-table {
+  font-size: 10px !important;
+}
+
+.frog-gpt-sku-table .ant-table-container {
+  border: none !important;
+}
+
+.frog-gpt-sku-table .ant-table-body {
+  max-height: 140px !important;
+}
+
+@media (max-width: 1200px) {
+  .frog-gpt-page {
+    padding: 16px;
+    gap: 12px;
+  }
+  
+  .frog-gpt-left-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  .frog-gpt-right-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 }

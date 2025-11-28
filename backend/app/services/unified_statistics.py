@@ -143,12 +143,28 @@ class UnifiedStatisticsService:
             func.sum(parent_order_stats.c.parent_profit).label("total_profit"),
         ).first()
         
+        # 计算延迟到货率：发货时间 > 预期最晚发货时间的订单数 / 总订单数
+        # 需要从原始订单表查询，因为延迟判断需要比较 shipping_time 和 expect_ship_latest_time
+        delay_count = db.query(
+            func.count(func.distinct(parent_order_key))
+        ).filter(
+            and_(*filters),
+            Order.shipping_time.isnot(None),
+            Order.expect_ship_latest_time.isnot(None),
+            Order.shipping_time > Order.expect_ship_latest_time
+        ).scalar() or 0
+        
+        total_orders = int(result.order_count or 0)
+        delay_rate = (delay_count / total_orders * 100) if total_orders > 0 else 0.0
+        
         return {
-            "order_count": int(result.order_count or 0),
+            "order_count": total_orders,
             "total_quantity": int(result.total_quantity or 0),
             "total_gmv": float(result.total_gmv or 0),
             "total_cost": float(result.total_cost or 0),
             "total_profit": float(result.total_profit or 0),
+            "delay_rate": float(delay_rate),
+            "delay_count": int(delay_count),
         }
     
     @staticmethod
@@ -159,6 +175,9 @@ class UnifiedStatisticsService:
     ) -> List[Dict[str, Any]]:
         """
         获取SKU统计数据（统一规则）
+        
+        注意：此方法按SKU ID（Product.product_id）统计，用于销量排行等场景
+        如果需要按SKU货号（Order.product_sku）统计，请使用备货计划API
         
         Args:
             db: 数据库会话
