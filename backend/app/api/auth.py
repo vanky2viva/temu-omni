@@ -108,19 +108,22 @@ def login(
         try:
             from sqlalchemy import text
             db.execute(text("SELECT 1"))
+            logger.debug("数据库连接检查通过")
         except Exception as db_error:
             logger.error(f"数据库连接失败: {db_error}")
             logger.error(traceback.format_exc())
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="数据库连接失败，请检查数据库配置"
+                detail=f"数据库连接失败: {str(db_error)}"
             )
         
         # 查找用户（支持用户名或邮箱登录）
         try:
+            logger.debug(f"开始查询用户: {form_data.username}")
             user = db.query(User).filter(
                 (User.username == form_data.username) | (User.email == form_data.username)
             ).first()
+            logger.debug(f"用户查询结果: {'找到用户' if user else '未找到用户'}")
         except Exception as query_error:
             logger.error(f"查询用户失败: {query_error}")
             logger.error(traceback.format_exc())
@@ -136,6 +139,8 @@ def login(
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        
+        logger.debug(f"找到用户: id={user.id}, username={user.username}, is_active={user.is_active}")
         
         # 验证密码
         try:
@@ -165,11 +170,13 @@ def login(
         
         # 创建访问令牌
         try:
+            logger.debug("开始创建访问令牌")
             access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
             access_token = create_access_token(
                 data={"sub": user.username},
                 expires_delta=access_token_expires
             )
+            logger.debug("访问令牌创建成功")
         except Exception as token_error:
             logger.error(f"创建令牌失败: {token_error}")
             logger.error(traceback.format_exc())
@@ -180,16 +187,34 @@ def login(
         
         # 将 User 对象转换为 UserResponse
         try:
-            user_response = UserResponse.model_validate(user)
+            logger.debug("开始转换用户数据")
+            # 使用 from_attributes=True 来从 SQLAlchemy 模型创建 Pydantic 模型
+            user_response = UserResponse.model_validate(user, from_attributes=True)
+            logger.debug(f"用户数据转换成功: {user_response}")
         except Exception as validate_error:
             logger.error(f"用户数据验证失败: {validate_error}")
+            logger.error(f"用户对象信息: id={user.id}, username={user.username}, email={user.email}")
             logger.error(traceback.format_exc())
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"用户数据验证失败: {str(validate_error)}"
-            )
+            # 如果验证失败，尝试手动构建响应
+            try:
+                logger.debug("尝试手动构建用户响应")
+                user_response = UserResponse(
+                    id=user.id,
+                    username=user.username,
+                    email=user.email,
+                    is_active=user.is_active,
+                    is_superuser=user.is_superuser,
+                )
+                logger.debug("手动构建用户响应成功")
+            except Exception as fallback_error:
+                logger.error(f"手动构建用户响应也失败: {fallback_error}")
+                logger.error(traceback.format_exc())
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"用户数据验证失败: {str(validate_error)}"
+                )
         
-        logger.info(f"登录成功: username={form_data.username}")
+        logger.info(f"登录成功: username={form_data.username}, user_id={user.id}")
         return {
             "access_token": access_token,
             "token_type": "bearer",

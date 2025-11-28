@@ -124,6 +124,13 @@ class Settings(BaseSettings):
     # AI服务配置（已移除环境变量支持，改为从数据库配置页面读取）
     # 以下仅作为代码中的默认值，实际配置应从数据库 system_configs 表读取
     
+    # OpenRouter API配置（FrogGPT）
+    OPENROUTER_API_KEY: Optional[str] = Field(default=None, description="OpenRouter API密钥")
+    OPENROUTER_MODEL: str = "openai/gpt-4o-mini"  # 默认模型
+    OPENROUTER_TIMEOUT: float = 60.0  # 请求超时时间（秒）
+    OPENROUTER_HTTP_REFERER: Optional[str] = Field(default=None, description="HTTP Referer（用于免费使用）")
+    OPENROUTER_X_TITLE: str = "Temu Omni"  # X-Title头
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

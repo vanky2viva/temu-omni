@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone, date
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from loguru import logger
+import pytz
 
 from app.models.shop import Shop
 from app.models.order import Order, OrderStatus
@@ -14,6 +15,10 @@ from app.models.temu_products_raw import TemuProductsRaw
 from app.services.temu_service import TemuService, get_temu_service
 from app.services.data_mapping_service import DataMappingService, DataMappingError
 from app.core.redis_client import RedisClient
+from app.core.config import settings
+
+# 北京时间时区（UTC+8）
+BEIJING_TIMEZONE = pytz.timezone(getattr(settings, 'TIMEZONE', 'Asia/Shanghai'))
 
 
 class SyncService:
@@ -187,24 +192,36 @@ class SyncService:
             total_items = 0  # 总订单数
             
             while True:
-                # 获取订单列表
-                result = await self.temu_service.get_orders(
-                    begin_time=begin_time,
-                    end_time=end_time,
-                    page_number=page_number,
-                    page_size=page_size
-                )
-                
-                total_items = result.get('totalItemNum', 0)
-                page_items = result.get('pageItems', [])
-                
-                # 首次获取到总数时更新进度
-                if page_number == 1 and total_items > 0 and progress_callback:
-                    progress_callback(20, f"发现 {total_items} 个订单，开始同步...", None)
-                    logger.info(f"发现 {total_items} 个订单，开始同步...")
-                
-                if not page_items:
-                    break
+                try:
+                    # 获取订单列表（添加超时保护）
+                    result = await self.temu_service.get_orders(
+                        begin_time=begin_time,
+                        end_time=end_time,
+                        page_number=page_number,
+                        page_size=page_size
+                    )
+                    
+                    total_items = result.get('totalItemNum', 0)
+                    page_items = result.get('pageItems', [])
+                    
+                    # 首次获取到总数时更新进度
+                    if page_number == 1 and total_items > 0 and progress_callback:
+                        progress_callback(20, f"发现 {total_items} 个订单，开始同步...", None)
+                        logger.info(f"发现 {total_items} 个订单，开始同步...")
+                    
+                    if not page_items:
+                        break
+                except Exception as e:
+                    logger.error(f"获取订单列表失败 (页码: {page_number}): {e}")
+                    # 如果获取订单列表失败，尝试跳过当前页继续
+                    if page_number == 1:
+                        # 第一页失败，无法继续
+                        raise
+                    else:
+                        # 非第一页失败，记录错误但继续尝试下一页
+                        logger.warning(f"跳过第 {page_number} 页，继续同步...")
+                        page_number += 1
+                        continue
                 
                 # 性能优化：批量预加载当前页的订单ID，减少数据库查询
                 order_sns = [item.get('orderSn') or item.get('order_sn') for item in page_items if item.get('orderSn') or item.get('order_sn')]
@@ -233,7 +250,12 @@ class SyncService:
                         
                         # 批量提交：每100个订单提交一次，或处理完当前页时提交
                         if batch_count >= batch_size or item == page_items[-1]:
-                            self.db.commit()
+                            try:
+                                self.db.commit()
+                            except Exception as commit_error:
+                                logger.error(f"提交数据库事务失败: {commit_error}")
+                                self.db.rollback()
+                                # 继续处理下一个订单，不中断整个同步过程
                             batch_count = 0
                         
                         # 优化进度更新频率：每50个订单更新一次（减少回调开销）
@@ -292,9 +314,21 @@ class SyncService:
                             
                     except Exception as e:
                         logger.error(f"处理订单失败: {e}, 订单数据: {item}")
-                        self.db.rollback()  # 回滚失败的订单
+                        try:
+                            self.db.rollback()  # 回滚失败的订单
+                        except Exception as rollback_error:
+                            logger.error(f"回滚事务失败: {rollback_error}")
+                            # 尝试重新创建数据库会话
+                            try:
+                                self.db.close()
+                                from app.core.database import SessionLocal
+                                self.db = SessionLocal()
+                                logger.info("已重新创建数据库会话")
+                            except Exception as reconnect_error:
+                                logger.error(f"重新创建数据库会话失败: {reconnect_error}")
                         stats["failed"] += 1
                         batch_count = 0  # 重置批量计数
+                        # 继续处理下一个订单，不中断整个同步过程
                 
                 # 确保当前页的所有订单都已提交
                 if batch_count > 0:
@@ -346,6 +380,8 @@ class SyncService:
         parent_order_sn = parent_order.get('parentOrderSn')
         
         # 处理父订单下的每个子订单
+        # 注意：无论订单的履约类型（fulfillmentType）是什么（fulfillBySeller 或 fulfillByCooperativeWarehouse），
+        # 所有订单都会被同步到数据库，不根据履约类型过滤
         for order_item in order_list:
             order_sn = order_item.get('orderSn')
             if not order_sn:
@@ -1068,11 +1104,15 @@ class SyncService:
         """
         解析时间戳（支持秒和毫秒），并转换为北京时间（UTC+8）
         
+        重要：时间戳通常是从 UTC 时间计算的，所以需要转换为北京时间。
+        返回的 datetime 是 naive datetime（不带时区信息），但表示的是北京时间，
+        可以直接存储到数据库。
+        
         Args:
             timestamp: 时间戳（秒或毫秒）
             
         Returns:
-            datetime对象（北京时间，UTC+8）或None
+            datetime对象（naive，表示北京时间），如果解析失败返回None
         """
         if timestamp is None:
             return None

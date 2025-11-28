@@ -12,12 +12,22 @@ from decimal import Decimal
 from app.models.order import Order, OrderStatus
 from app.models.product import Product
 from app.models.shop import Shop
-from app.api.analytics import build_sales_filters, HK_TIMEZONE
+from app.api.analytics import build_sales_filters, BEIJING_TIMEZONE, get_beijing_now
 from datetime import timezone, timedelta
+import pytz
+from app.core.config import settings
 
-def get_hk_now():
-    """获取香港时区的当前时间"""
-    return datetime.now(HK_TIMEZONE)
+# 北京时间时区
+BEIJING_TIMEZONE = pytz.timezone(getattr(settings, 'TIMEZONE', 'Asia/Shanghai'))
+# 保留 HK_TIMEZONE 作为别名以保持兼容性
+HK_TIMEZONE = BEIJING_TIMEZONE
+
+def get_beijing_now():
+    """获取北京时区的当前时间"""
+    return datetime.now(BEIJING_TIMEZONE)
+
+# 保留 get_hk_now 作为别名以保持兼容性
+get_hk_now = get_beijing_now
 
 
 class UnifiedStatisticsService:
@@ -311,9 +321,11 @@ class UnifiedStatisticsService:
             except ValueError:
                 start_dt = datetime.strptime(start_date, '%Y-%m-%d')
             if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=HK_TIMEZONE)
+                # 如果没有时区信息，假设是北京时间
+                start_dt = BEIJING_TIMEZONE.localize(start_dt)
             else:
-                start_dt = start_dt.astimezone(HK_TIMEZONE)
+                # 如果有时区信息，转换为北京时间
+                start_dt = start_dt.astimezone(BEIJING_TIMEZONE)
         
         if end_date:
             try:
@@ -322,9 +334,11 @@ class UnifiedStatisticsService:
                 end_dt = datetime.strptime(end_date, '%Y-%m-%d')
                 end_dt = end_dt.replace(hour=23, minute=59, second=59)
             if end_dt.tzinfo is None:
-                end_dt = end_dt.replace(tzinfo=HK_TIMEZONE)
+                # 如果没有时区信息，假设是北京时间
+                end_dt = BEIJING_TIMEZONE.localize(end_dt)
             else:
-                end_dt = end_dt.astimezone(HK_TIMEZONE)
+                # 如果有时区信息，转换为北京时间
+                end_dt = end_dt.astimezone(BEIJING_TIMEZONE)
         
         # 如果提供了日期范围，直接返回
         if start_dt and end_dt:
@@ -332,7 +346,7 @@ class UnifiedStatisticsService:
         
         # 如果没有提供日期范围，根据days参数决定
         if days:
-            end_dt = get_hk_now()
+            end_dt = get_beijing_now()
             start_dt = end_dt - timedelta(days=days)
             return start_dt, end_dt
         

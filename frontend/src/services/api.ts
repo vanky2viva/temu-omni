@@ -222,5 +222,34 @@ export const userViewsApi = {
   getDefaultView: (viewType: string) => api.get(`/user-views/default/${viewType}`),
 }
 
+// FrogGPT AI API
+export const frogGptApi = {
+  // 发送聊天消息
+  chat: (data: {
+    messages: Array<{ role: string; content: string }>
+    model?: string
+    temperature?: number
+    max_tokens?: number
+    include_system_data?: boolean
+    data_summary_days?: number
+  }) => api.post('/frog-gpt/chat', data),
+  
+  // 发送带文件的聊天消息
+  chatWithFiles: (formData: FormData) => 
+    api.post('/frog-gpt/chat/with-files', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 120000, // 2分钟超时
+    }),
+  
+  // 获取可用模型列表
+  getModels: () => api.get('/frog-gpt/models'),
+  
+  // 获取数据摘要
+  getDataSummary: (days?: number) => 
+    api.get('/frog-gpt/data-summary', { params: { days } }),
+}
+
 export default api
 

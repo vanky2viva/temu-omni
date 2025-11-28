@@ -67,9 +67,12 @@ function SalesStatistics() {
     queryFn: shopApi.getShops,
   })
 
+  // 刷新时间戳（用于强制刷新并传递 refresh_cache 参数）
+  const [refreshTimestamp, setRefreshTimestamp] = useState<number>(0)
+  
   // 获取销量总览数据 - 使用与仪表盘相同的数据源
   const { data: salesOverview, isLoading: overviewLoading, refetch: refetchOverview } = useQuery({
-    queryKey: ['sales-overview', dateRange, shopIds, manager, region],
+    queryKey: ['sales-overview', dateRange, shopIds, manager, region, refreshTimestamp],
     queryFn: async () => {
       try {
         const params: any = {}
@@ -82,6 +85,10 @@ function SalesStatistics() {
         if (shopIds.length > 0) params.shop_ids = shopIds
         if (manager) params.manager = manager
         if (region) params.region = region
+        // 如果 refreshTimestamp > 0，说明是手动刷新，传递 refresh_cache 参数
+        if (refreshTimestamp > 0) {
+          params.refresh_cache = true
+        }
         return await analyticsApi.getSalesOverview(params)
       } catch (error: any) {
         console.error('Failed to fetch sales overview:', error)
@@ -100,7 +107,7 @@ function SalesStatistics() {
 
   // 获取SKU销量排行
   const { data: skuRanking, isLoading: skuLoading, refetch: refetchSku } = useQuery({
-    queryKey: ['sku-sales-ranking', dateRange, shopIds, manager, region],
+    queryKey: ['sku-sales-ranking', dateRange, shopIds, manager, region, refreshTimestamp],
     queryFn: async () => {
       try {
         const params: any = { limit: 100 }
@@ -113,6 +120,10 @@ function SalesStatistics() {
       if (shopIds.length > 0) params.shop_ids = shopIds
       if (manager) params.manager = manager
       if (region) params.region = region
+        // 如果 refreshTimestamp > 0，说明是手动刷新，传递 refresh_cache 参数
+        if (refreshTimestamp > 0) {
+          params.refresh_cache = true
+        }
         return await analyticsApi.getSkuSalesRanking(params)
       } catch (error: any) {
         console.error('Failed to fetch SKU ranking:', error)
@@ -126,7 +137,7 @@ function SalesStatistics() {
 
   // 获取负责人销量统计
   const { data: managerSales, isLoading: managerLoading, refetch: refetchManager } = useQuery({
-    queryKey: ['manager-sales', dateRange, shopIds, region],
+    queryKey: ['manager-sales', dateRange, shopIds, region, refreshTimestamp],
     queryFn: async () => {
       try {
         const params: any = {}
@@ -136,6 +147,10 @@ function SalesStatistics() {
         }
       if (shopIds.length > 0) params.shop_ids = shopIds
       if (region) params.region = region
+        // 如果 refreshTimestamp > 0，说明是手动刷新，传递 refresh_cache 参数
+        if (refreshTimestamp > 0) {
+          params.refresh_cache = true
+        }
       return await analyticsApi.getManagerSales(params)
       } catch (error: any) {
         console.error('Failed to fetch manager sales:', error)
@@ -670,22 +685,34 @@ function SalesStatistics() {
   const [countdown, setCountdown] = useState(300) // 5分钟 = 300秒
   const AUTO_REFRESH_INTERVAL = 300 // 5分钟（秒）
 
-  // 刷新所有数据 - 立即重新获取并计算
+  // 刷新所有数据 - 立即重新获取并计算（清除缓存）
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true)
     try {
-      // 清除相关查询的缓存，确保获取最新数据
-      queryClient.invalidateQueries({ queryKey: ['shops'] })
-      queryClient.invalidateQueries({ queryKey: ['sales-overview'] })
-      queryClient.invalidateQueries({ queryKey: ['sku-sales-ranking'] })
-      queryClient.invalidateQueries({ queryKey: ['manager-sales'] })
+      // 设置刷新时间戳，这会触发新的查询（queryKey 变化，包含 refreshTimestamp）
+      // 新的查询会传递 refresh_cache=true 参数给后端
+      const newTimestamp = Date.now()
+      setRefreshTimestamp(newTimestamp)
       
-      // 并行刷新所有数据
+      // 清除相关查询的缓存，强制重新获取
       await Promise.all([
-        refetchShops(),
-        refetchOverview(),
-        activeTab === 'sku' ? refetchSku() : Promise.resolve(),
-        activeTab === 'manager' ? refetchManager() : Promise.resolve(),
+        queryClient.invalidateQueries({ queryKey: ['shops'] }),
+        queryClient.invalidateQueries({ queryKey: ['sales-overview'] }),
+        queryClient.invalidateQueries({ queryKey: ['sku-sales-ranking'] }),
+        queryClient.invalidateQueries({ queryKey: ['manager-sales'] }),
+      ])
+      
+      // 立即重新获取所有数据（使用新的 queryKey，会传递 refresh_cache=true）
+      // 使用 refetchQueries 匹配所有相关查询，确保立即执行
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['shops'] }),
+        queryClient.refetchQueries({ queryKey: ['sales-overview'] }),
+        activeTab === 'sku' 
+          ? queryClient.refetchQueries({ queryKey: ['sku-sales-ranking'] })
+          : Promise.resolve(),
+        activeTab === 'manager' 
+          ? queryClient.refetchQueries({ queryKey: ['manager-sales'] })
+          : Promise.resolve(),
       ])
       
       // 刷新成功后重置倒计时
@@ -693,9 +720,10 @@ function SalesStatistics() {
     } catch (error) {
       console.error('刷新数据失败:', error)
     } finally {
+      // 重置刷新状态
       setIsRefreshing(false)
     }
-  }, [queryClient, refetchShops, refetchOverview, refetchSku, refetchManager, activeTab, AUTO_REFRESH_INTERVAL])
+  }, [queryClient, activeTab, AUTO_REFRESH_INTERVAL])
 
   // 自动刷新和倒计时：使用同一个定时器管理
   useEffect(() => {

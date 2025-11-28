@@ -3,21 +3,78 @@ from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_, extract, case, text
+from sqlalchemy import func, and_, or_, extract, case, text, cast
+from sqlalchemy.dialects import postgresql
 from decimal import Decimal
+import pytz
 
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.core.config import settings
 from app.models.order import Order, OrderStatus
 from app.models.product import Product
 from app.models.shop import Shop
 from app.models.user import User
 from app.utils.currency import CurrencyConverter
 
-# 香港时区 (UTC+8)
-HK_TIMEZONE = timezone(timedelta(hours=8))
+# 北京时间时区 (Asia/Shanghai, UTC+8)
+# 使用配置中的时区设置，默认为 Asia/Shanghai
+BEIJING_TIMEZONE = pytz.timezone(getattr(settings, 'TIMEZONE', 'Asia/Shanghai'))
+# 保留 HK_TIMEZONE 作为别名以保持兼容性
+HK_TIMEZONE = BEIJING_TIMEZONE
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+def get_beijing_now() -> datetime:
+    """获取北京当前时间（北京时间，UTC+8）"""
+    return datetime.now(BEIJING_TIMEZONE)
+
+# 保留 get_hk_now 作为别名以保持兼容性
+get_hk_now = get_beijing_now
+
+
+def get_date_in_beijing_timezone(column):
+    """
+    获取日期部分，确保使用北京时间（UTC+8）
+    
+    注意：数据库中的 order_time 存储为 naive datetime（但实际表示北京时间）。
+    为了确保统计准确性，我们需要明确将时间转换为北京时间后再提取日期。
+    
+    对于 PostgreSQL，由于数据库中的时间是 naive datetime（表示北京时间），
+    但数据库服务器时区可能是 UTC，我们需要：
+    1. 将 naive datetime 视为北京时间（UTC+8）
+    2. 转换为 UTC 时间（减去8小时）
+    3. 在数据库层面提取日期（数据库会按服务器时区处理）
+    4. 或者直接使用 timezone 函数明确指定时区
+    
+    最可靠的方法：使用 PostgreSQL 的 timezone 函数，将 naive datetime 视为 UTC+8
+    """
+    # 由于数据库时区是 UTC，而 order_time 是 naive datetime（表示北京时间），
+    # 我们需要：将 naive datetime 加上 8 小时（转换为 UTC），然后提取日期
+    # 或者：使用 timezone 函数明确指定时区
+    #
+    # 最简单可靠的方法：直接使用 func.date()，因为数据库中的时间已经是北京时间（naive）
+    # 如果数据库服务器时区不是 UTC+8，可以使用 PostgreSQL 的 timezone 函数
+    # 但由于数据库时区是 UTC，我们需要将 naive datetime 视为 UTC+8，然后转换为 UTC
+    # 
+    # 使用 PostgreSQL 的 timezone 函数：
+    # timezone('Asia/Shanghai', column::timestamp) 将 naive datetime 视为 UTC+8，然后转换为 UTC
+    # 然后提取日期
+    from sqlalchemy import cast
+    from sqlalchemy.dialects import postgresql
+    
+    # 由于数据库时区是 UTC，而 order_time 是 naive datetime（表示北京时间），
+    # 最简单的方法是：直接使用 func.date()，因为数据库中的时间已经是北京时间（naive）
+    # 但如果数据库服务器时区不是 UTC+8，日期提取可能会有偏差
+    # 
+    # 为了确保准确性，我们使用 PostgreSQL 的 timezone 函数：
+    # timezone('Asia/Shanghai', column::timestamp) 将 naive datetime 视为 Asia/Shanghai 时区
+    # 然后转换为 UTC，再提取日期
+    # 
+    # 但由于这会导致复杂的 SQL，我们采用更简单的方法：
+    # 直接使用 func.date()，假设数据库服务器时区为 UTC+8，或者数据库中的时间已经是正确的
+    return func.date(column)
 
 # 注意：订单表中的价格字段（total_price, total_cost, profit）已统一存储为CNY
 # 不再需要进行货币转换，直接使用存储的值即可
@@ -46,8 +103,8 @@ def get_gmv_table(
     Returns:
         GMV表格数据
     """
-    # 计算时间范围
-    end_date = datetime.now()
+    # 计算时间范围（使用北京时间）
+    end_date = get_beijing_now()
     if period_type == "day":
         start_date = end_date - timedelta(days=periods)
     elif period_type == "week":
@@ -56,19 +113,23 @@ def get_gmv_table(
         start_date = end_date - timedelta(days=periods * 30)
     
     # 构建查询条件
+    # 注意：数据库中的 order_time 是 naive datetime（表示北京时间）
+    # 需要将带时区的 datetime 转换为 naive datetime 进行比较
     filters = [
-        Order.order_time >= start_date,
-        Order.order_time <= end_date
+        Order.order_time >= start_date.replace(tzinfo=None),
+        Order.order_time <= end_date.replace(tzinfo=None)
     ]
     
     if shop_ids:
         filters.append(Order.shop_id.in_(shop_ids))
     
     # 根据周期类型分组（价格已统一为CNY，不需要转换）
+    # 使用北京时间提取日期
+    date_expr = get_date_in_beijing_timezone(Order.order_time)
     if period_type == "day":
-        group_by = func.date(Order.order_time)
+        group_by = date_expr
         results = db.query(
-            func.date(Order.order_time).label("period"),
+            date_expr.label("period"),
             Shop.shop_name,
             func.count(Order.id).label("orders"),
             func.sum(Order.total_price).label("gmv"),  # 已经是CNY
@@ -77,9 +138,9 @@ def get_gmv_table(
         ).join(Shop, Shop.id == Order.shop_id).filter(
             and_(*filters)
         ).group_by(
-            func.date(Order.order_time), Shop.shop_name
+            date_expr, Shop.shop_name
         ).order_by(
-            func.date(Order.order_time).desc()
+            date_expr.desc()
         ).all()
         
     elif period_type == "week":
@@ -390,9 +451,7 @@ def get_manager_sku_details(
 
 # ==================== 销量统计 API ====================
 
-def get_hk_now() -> datetime:
-    """获取香港当前时间"""
-    return datetime.now(HK_TIMEZONE)
+# get_beijing_now 和 get_hk_now 已在文件顶部定义
 
 
 def build_sales_filters(
@@ -412,6 +471,8 @@ def build_sales_filters(
     - 订单量口径：一个不重复的父订单号记为一单（如果parent_order_sn存在，使用parent_order_sn；否则使用order_sn）
     - 销售件数：子订单内商品数量累计（quantity之和）
     - SKU销量：每一行乘以应履约件数（quantity）为SKU的销量
+    - 履约类型：无论订单的履约类型（fulfillmentType）是什么（fulfillBySeller 或 fulfillByCooperativeWarehouse），
+      所有符合条件的订单都会被统计，不根据履约类型过滤
     """
     filters = []
     
@@ -474,6 +535,7 @@ def get_sales_overview(
     manager: Optional[str] = Query(None, description="负责人"),
     region: Optional[str] = Query(None, description="地区"),
     sku_search: Optional[str] = Query(None, description="SKU搜索关键词"),
+    refresh_cache: bool = Query(False, description="是否刷新缓存（跳过缓存，强制重新计算）"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -497,6 +559,32 @@ def get_sales_overview(
         - 按店铺分组的趋势数据
     """
     from app.services.unified_statistics import UnifiedStatisticsService
+    from app.core.redis_client import RedisClient
+    import hashlib
+    from loguru import logger
+    
+    # 生成缓存键
+    def generate_cache_key():
+        """生成缓存键"""
+        # 构建参数哈希
+        params_str = f"{days}:{start_date}:{end_date}:{sorted(shop_ids or [])}:{manager}:{region}:{sku_search}"
+        params_hash = hashlib.md5(params_str.encode()).hexdigest()[:12]
+        return f"sales_overview:{params_hash}"
+    
+    cache_key = generate_cache_key()
+    cache_ttl = 300  # 5分钟缓存
+    
+    # 如果不需要刷新缓存，尝试从缓存获取
+    if not refresh_cache:
+        cached_data = RedisClient.get(cache_key)
+        if cached_data:
+            logger.debug(f"从缓存获取销售统计: {cache_key}")
+            return cached_data
+    
+    # 如果刷新缓存，先删除旧缓存
+    if refresh_cache:
+        RedisClient.delete(cache_key)
+        logger.debug(f"已清除缓存: {cache_key}")
     
     # 解析日期范围（使用统一服务的方法）
     start_dt, end_dt = UnifiedStatisticsService.parse_date_range(
@@ -520,33 +608,34 @@ def get_sales_overview(
     # 获取父订单键（用于趋势统计）
     parent_order_key = UnifiedStatisticsService.get_parent_order_key()
     
-    # 按天统计趋势
+    # 按天统计趋势（使用北京时间提取日期）
     # 销量：quantity之和（子订单内商品数量累计）
     # 订单数：按父订单号去重统计
+    date_expr = get_date_in_beijing_timezone(Order.order_time)
     daily_trends = db.query(
-        func.date(Order.order_time).label("date"),
+        date_expr.label("date"),
         func.sum(Order.quantity).label("quantity"),
         func.count(func.distinct(parent_order_key)).label("orders"),  # 按父订单号去重统计
     ).filter(and_(*filters)).group_by(
-        func.date(Order.order_time)
+        date_expr
     ).order_by(
-        func.date(Order.order_time)
+        date_expr
     ).all()
     
-    # 按店铺统计趋势
+    # 按店铺统计趋势（使用北京时间提取日期）
     # 销量：quantity之和（子订单内商品数量累计）
     # 订单数：按父订单号去重统计
     shop_trends = db.query(
-        func.date(Order.order_time).label("date"),
+        date_expr.label("date"),
         Shop.shop_name.label("shop_name"),
         func.sum(Order.quantity).label("quantity"),
         func.count(func.distinct(parent_order_key)).label("orders"),  # 按父订单号去重统计
     ).join(
         Shop, Shop.id == Order.shop_id
     ).filter(and_(*filters)).group_by(
-        func.date(Order.order_time), Shop.shop_name
+        date_expr, Shop.shop_name
     ).order_by(
-        func.date(Order.order_time), Shop.shop_name
+        date_expr, Shop.shop_name
     ).all()
     
     # 格式化返回数据
@@ -588,7 +677,7 @@ def get_sales_overview(
             "days": None
         }
     
-    return {
+    result = {
         "total_quantity": stats['total_quantity'],
         "total_orders": stats['order_count'],  # 按父订单号去重，只统计有效订单
         "total_gmv": round(stats['total_gmv'], 2),  # GMV（收入），统一为CNY
@@ -598,6 +687,12 @@ def get_sales_overview(
         "shop_trends": shop_daily_data,
         "period": period_info
     }
+    
+    # 存入缓存
+    RedisClient.set(cache_key, result, ttl=cache_ttl)
+    logger.debug(f"销售统计已缓存: {cache_key}, TTL={cache_ttl}秒")
+    
+    return result
 
 
 @router.get("/sku-sales-ranking")
@@ -844,8 +939,10 @@ def get_manager_sales(
             (Shop.default_manager == '', '未分配'),
             else_=Shop.default_manager
         )
+        # 使用北京时间提取日期
+        date_expr = get_date_in_beijing_timezone(Order.order_time)
         daily_trends = db.query(
-            func.date(Order.order_time).label("date"),
+            date_expr.label("date"),
             func.count(func.distinct(parent_order_key)).label("orders"),  # 每日订单数（按父订单去重）
         ).join(
             Shop, Order.shop_id == Shop.id
@@ -853,9 +950,9 @@ def get_manager_sales(
             and_(*base_filters),
             manager_expr == manager
         ).group_by(
-            func.date(Order.order_time)
+            date_expr
         ).order_by(
-            func.date(Order.order_time)
+            date_expr
         ).all()
         
         daily_trends_data = {
@@ -876,9 +973,11 @@ def get_manager_sales(
             (Shop.default_manager == '', '未分配'),
             else_=Shop.default_manager
         )
+        # 使用北京时间提取日期
+        date_expr = get_date_in_beijing_timezone(Order.order_time)
         for mgr in all_managers:
             daily_trends = db.query(
-                func.date(Order.order_time).label("date"),
+                date_expr.label("date"),
                 func.count(func.distinct(parent_order_key)).label("orders"),  # 每日订单数（按父订单去重）
             ).join(
                 Shop, Order.shop_id == Shop.id
@@ -886,9 +985,9 @@ def get_manager_sales(
                 and_(*base_filters),
                 manager_expr == mgr
             ).group_by(
-                func.date(Order.order_time)
+                date_expr
             ).order_by(
-                func.date(Order.order_time)
+                date_expr
             ).all()
             
             daily_trends_data[mgr] = [

@@ -13,6 +13,7 @@ import {
   UserOutlined,
   MenuOutlined,
   GlobalOutlined,
+  RobotOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 
@@ -53,6 +54,11 @@ const menuItems = [
     key: '/finance',
     icon: <WalletOutlined />,
     label: '财务管理',
+  },
+  {
+    key: '/frog-gpt',
+    icon: <RobotOutlined />,
+    label: 'FrogGPT',
   },
 ]
 
@@ -199,7 +205,7 @@ function MainLayout() {
           closable={true}
           onClose={() => setMobileMenuOpen(false)}
           open={mobileMenuOpen}
-          bodyStyle={{ padding: 0 }}
+          styles={{ body: { padding: 0 } }}
           width={250}
         >
           {menuComponent}

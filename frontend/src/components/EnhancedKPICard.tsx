@@ -151,16 +151,18 @@ export default function EnhancedKPICard({ data, isMobile = false }: EnhancedKPIC
         backdropFilter: 'blur(10px)',
         overflow: 'hidden',
       }}
-      bodyStyle={{
-        padding: trend && trend.length > 0 ? '0.875rem' : '1rem', // 有趋势图时减少padding
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: trend && trend.length > 0 ? 'space-between' : 'center', // 有趋势图时两端对齐
-        alignItems: 'center',
-        textAlign: 'center',
-        boxSizing: 'border-box',
-        overflow: 'hidden',
+      styles={{
+        body: {
+          padding: trend && trend.length > 0 ? '0.875rem' : '1rem', // 有趋势图时减少padding
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: trend && trend.length > 0 ? 'space-between' : 'center', // 有趋势图时两端对齐
+          alignItems: 'center',
+          textAlign: 'center',
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+        },
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = 'translateY(-4px)'

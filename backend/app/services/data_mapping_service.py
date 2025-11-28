@@ -9,6 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from loguru import logger
+import pytz
 
 from app.models.temu_orders_raw import TemuOrdersRaw
 from app.models.temu_products_raw import TemuProductsRaw
@@ -16,6 +17,10 @@ from app.models.order import Order, OrderStatus
 from app.models.order_item import OrderItem
 from app.models.product import Product
 from app.utils.currency import CurrencyConverter
+from app.core.config import settings
+
+# 北京时间时区（UTC+8）
+BEIJING_TIMEZONE = pytz.timezone(getattr(settings, 'TIMEZONE', 'Asia/Shanghai'))
 
 
 class DataMappingError(Exception):
@@ -362,14 +367,27 @@ class DataMappingService:
         return bool(value)
     
     def _parse_datetime(self, value: Any) -> Optional[datetime]:
-        """解析为datetime类型"""
+        """
+        解析为datetime类型
+        
+        重要：如果解析出的datetime没有时区信息（naive datetime），
+        默认视为北京时间（UTC+8）。最终返回的datetime是naive datetime，
+        表示北京时间，可以直接存储到数据库。
+        
+        Args:
+            value: 要解析的值（字符串、datetime对象、时间戳等）
+            
+        Returns:
+            datetime对象（naive，表示北京时间），如果解析失败返回None
+        """
         if value is None:
             return None
         
-        if isinstance(value, datetime):
-            return value
+        parsed_dt = None
         
-        if isinstance(value, str):
+        if isinstance(value, datetime):
+            parsed_dt = value
+        elif isinstance(value, str):
             # 尝试多种日期格式
             formats = [
                 '%Y-%m-%d %H:%M:%S',
@@ -381,17 +399,41 @@ class DataMappingService:
             ]
             for fmt in formats:
                 try:
-                    return datetime.strptime(value, fmt)
+                    parsed_dt = datetime.strptime(value, fmt)
+                    break
                 except ValueError:
                     continue
-        
-        try:
+            
+            # 如果字符串解析失败，尝试时间戳
+            if parsed_dt is None:
+                try:
+                    parsed_dt = datetime.fromtimestamp(int(value))
+                except (ValueError, TypeError):
+                    pass
+        else:
             # 尝试时间戳
-            return datetime.fromtimestamp(int(value))
-        except (ValueError, TypeError):
-            pass
+            try:
+                parsed_dt = datetime.fromtimestamp(int(value))
+            except (ValueError, TypeError):
+                pass
         
-        return None
+        if parsed_dt is None:
+            return None
+        
+        # 处理时区信息
+        if parsed_dt.tzinfo is None:
+            # 如果没有时区信息，视为北京时间（UTC+8）
+            # 将naive datetime视为北京时间，然后转换为UTC再转回naive（保持时间值不变）
+            # 实际上，我们直接使用naive datetime，因为数据库存储的就是naive datetime（表示北京时间）
+            # 所以这里不需要转换，直接返回即可
+            return parsed_dt
+        else:
+            # 如果有时区信息，转换为北京时间，然后返回naive datetime
+            # 先转换为UTC，再转换为北京时间
+            utc_dt = parsed_dt.astimezone(pytz.UTC)
+            beijing_dt = utc_dt.astimezone(BEIJING_TIMEZONE)
+            # 返回naive datetime（表示北京时间）
+            return beijing_dt.replace(tzinfo=None)
     
     def _map_order_status(self, status_str: str) -> OrderStatus:
         """

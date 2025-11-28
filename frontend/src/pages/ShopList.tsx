@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Table, Button, Space, Modal, Form, Input, Switch, message, Tag, Tooltip, Select, Progress, Descriptions, Card, Typography } from 'antd'
+import { Table, Button, Space, Modal, Form, Input, Switch, message, Tag, Tooltip, Select, Progress, Descriptions, Card, Typography, App } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ApiOutlined, CheckCircleOutlined, WarningOutlined, SyncOutlined, UploadOutlined } from '@ant-design/icons'
 import { shopApi, syncApi } from '@/services/api'
 import ImportDataModal from '@/components/ImportDataModal'
@@ -8,6 +8,7 @@ import ImportDataModal from '@/components/ImportDataModal'
 const { Text } = Typography
 
 function ShopList() {
+  const { modal } = App.useApp()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingShop, setEditingShop] = useState<any>(null)
   const [form] = Form.useForm()
@@ -103,7 +104,7 @@ function ShopList() {
       console.error('同步错误:', error)
       const errorMsg = error?.response?.data?.detail || error?.message || '数据同步失败'
       message.error(errorMsg)
-      Modal.error({
+      modal.error({
         title: '❌ 同步失败',
         content: errorMsg,
       })
@@ -397,7 +398,7 @@ function ShopList() {
   }
 
   const handleDelete = (id: number) => {
-    Modal.confirm({
+    modal.confirm({
       title: '确认删除',
       content: '确定要删除这个店铺吗？此操作将同时删除相关的所有订单和商品数据。',
       okText: '删除',
@@ -416,7 +417,7 @@ function ShopList() {
     // 检查是否有历史数据，决定同步模式
     const hasHistoryData = shop.last_sync_at
     
-    Modal.confirm({
+    modal.confirm({
       title: '同步店铺数据',
       content: (
         <div>
@@ -480,7 +481,7 @@ function ShopList() {
     }
     
     if (syncProgress?.status === 'running') {
-      Modal.confirm({
+      modal.confirm({
         title: '确认关闭',
         content: '同步仍在进行中，关闭后仍可在后台继续。是否确认关闭？',
         onOk: cleanup,
@@ -780,7 +781,7 @@ function ShopList() {
         closable={syncProgress?.status !== 'running'}
         maskClosable={syncProgress?.status !== 'running'}
         mask={true}
-        destroyOnClose={true}
+        destroyOnHidden={true}
         forceRender={false}
         getContainer={false}
         afterClose={() => {
@@ -859,7 +860,7 @@ function ShopList() {
                   title={`同步日志 ${syncProgress.status === 'completed' ? '(已完成)' : syncProgress.status === 'error' ? '(失败)' : '(进行中)'}`}
                   size="small" 
                   style={{ marginTop: 16 }}
-                  bodyStyle={{ padding: 12, maxHeight: '400px', overflow: 'auto' }}
+                  styles={{ body: { padding: 12, maxHeight: '400px', overflow: 'auto' } }}
                 >
                   <div 
                     ref={logScrollRef}

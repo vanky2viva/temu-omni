@@ -8,7 +8,7 @@ import traceback
 from app.core.config import settings
 from app.core.database import engine, Base, check_database_connection
 from app.core.middleware import ExceptionHandlerMiddleware, RequestLoggingMiddleware, TimeoutMiddleware
-from app.api import shops, orders, products, statistics, sync, analytics, system, import_data, auth, order_costs, raw_data, payouts, reports, user_views, ai_data
+from app.api import shops, orders, products, statistics, sync, analytics, system, import_data, auth, order_costs, raw_data, payouts, reports, user_views, ai_data, frog_gpt
 
 # 创建数据库表
 try:
@@ -69,6 +69,7 @@ app.include_router(payouts.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(user_views.router, prefix="/api")
 app.include_router(ai_data.router, prefix="/api")
+app.include_router(frog_gpt.router, prefix="/api")
 
 
 @app.get("/")

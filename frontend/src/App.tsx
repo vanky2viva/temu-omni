@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { App as AntdApp } from 'antd'
 import MainLayout from './layouts/MainLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import Login from './pages/Login'
@@ -9,31 +10,35 @@ import ProductList from './pages/ProductList'
 import Logistics from './pages/Logistics'
 import Finance from './pages/Finance'
 import SalesStatistics from './pages/SalesStatistics'
+import FrogGPT from './pages/FrogGPT/index'
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <MainLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="shops" element={<ShopList />} />
-          <Route path="orders" element={<OrderList />} />
-          <Route path="products" element={<ProductList />} />
-          <Route path="logistics" element={<Logistics />} />
-          <Route path="finance" element={<Finance />} />
-          <Route path="statistics" element={<SalesStatistics />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <AntdApp>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <MainLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="shops" element={<ShopList />} />
+            <Route path="orders" element={<OrderList />} />
+            <Route path="products" element={<ProductList />} />
+            <Route path="logistics" element={<Logistics />} />
+            <Route path="finance" element={<Finance />} />
+            <Route path="statistics" element={<SalesStatistics />} />
+            <Route path="frog-gpt" element={<FrogGPT />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AntdApp>
   )
 }
 
