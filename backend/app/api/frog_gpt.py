@@ -113,7 +113,6 @@ async def chat(
             except Exception as e:
                 # 如果获取数据失败，记录错误但继续执行（不包含系统上下文）
                 logger.warning(f"获取系统数据摘要失败，将不包含系统上下文: {e}")
-                import traceback
                 logger.debug(traceback.format_exc())
         
         # 检查是否有 API Key
@@ -432,6 +431,14 @@ async def chat_with_files(
             except Exception as e:
                 pass
         
+        # 检查是否有 API Key
+        api_key = frog_gpt_service.get_api_key(db)
+        if not api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="未配置 OpenRouter API Key，请在高级设置中配置 API Key"
+            )
+        
         # 调用OpenRouter API（传递db以从数据库读取API key）
         response = await frog_gpt_service.chat_completion(
             messages=message_list,
@@ -440,7 +447,42 @@ async def chat_with_files(
             db=db
         )
         
-        return response
+        # 标准化响应格式，与 /chat 端点保持一致
+        # 格式: {"id": "...", "model": "...", "choices": [{"message": {"role": "assistant", "content": "..."}}]}
+        if isinstance(response, dict):
+            if "choices" in response and len(response.get("choices", [])) > 0:
+                message = response["choices"][0].get("message", {})
+                content = message.get("content", "")
+                
+                if not content:
+                    logger.warning(f"响应内容为空: response={response}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail="OpenRouter API 返回的内容为空"
+                    )
+                
+                # 返回标准化的响应格式（与 /chat 端点一致）
+                return {
+                    "id": response.get("id", ""),
+                    "model": response.get("model", model or "unknown"),
+                    "content": content,
+                    "choices": response.get("choices", []),
+                    "usage": response.get("usage"),
+                }
+            else:
+                # 如果没有 choices，尝试直接返回响应或提取错误信息
+                error_message = response.get("error", {}).get("message", "OpenRouter API 返回了无效的响应格式")
+                logger.error(f"OpenRouter API 响应格式错误: response={response}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"OpenRouter API 响应格式错误: {error_message}"
+                )
+        else:
+            logger.error(f"OpenRouter API 返回了无效的响应类型: type={type(response)}, value={response}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"OpenRouter API 返回了无效的响应类型: {type(response)}"
+            )
     
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="消息格式错误")
@@ -655,7 +697,6 @@ async def verify_api_key(
     current_user: User = Depends(get_current_user)
 ):
     """验证API Key是否有效"""
-    from loguru import logger
     
     try:
         if provider == "openrouter":
@@ -686,7 +727,6 @@ async def verify_api_key(
             }
     except Exception as e:
         logger.error(f"验证 API Key 失败: {e}")
-        import traceback
         logger.error(traceback.format_exc())
         return {
             "valid": False,
@@ -702,7 +742,6 @@ async def update_all_providers_api_keys(
 ):
     """更新所有供应商的API Key配置"""
     from app.models.system_config import SystemConfig
-    from loguru import logger
     
     def update_or_create_key(key: str, value: Optional[str], description: str):
         """更新或创建API Key配置"""
@@ -779,7 +818,6 @@ async def test_connection(
     """
     测试 OpenRouter API 连接，发送一个简单的测试消息验证是否能获得回复
     """
-    from loguru import logger
     
     try:
         # 使用默认模型或指定的模型（如果没有指定，使用 auto）
