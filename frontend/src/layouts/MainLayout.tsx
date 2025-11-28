@@ -12,7 +12,6 @@ import {
   LogoutOutlined,
   UserOutlined,
   MenuOutlined,
-  GlobalOutlined,
   RobotOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
@@ -74,10 +73,6 @@ function MainLayout() {
   })
   const navigate = useNavigate()
   const location = useLocation()
-  const {
-    token: { colorBgContainer, borderRadiusLG },
-  } = theme.useToken()
-
   // 检测是否为移动设备
   useEffect(() => {
     const checkMobile = () => {
@@ -315,4 +310,3 @@ function MainLayout() {
 }
 
 export default MainLayout
-

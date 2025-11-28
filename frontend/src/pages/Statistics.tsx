@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, Row, Col, Select, Tabs } from 'antd'
-import ReactECharts from 'echarts-for-react'
+import LazyECharts from '@/components/LazyECharts'
 import { statisticsApi, shopApi } from '@/services/api'
 
 function Statistics() {
@@ -226,7 +226,7 @@ function Statistics() {
       <Row gutter={16}>
         <Col span={24}>
           <Card>
-            <ReactECharts option={gmvProfitChartOption} style={{ height: isMobile ? 300 : 400 }} />
+            <LazyECharts option={gmvProfitChartOption} style={{ height: isMobile ? 300 : 400 }} />
           </Card>
         </Col>
       </Row>
@@ -234,7 +234,7 @@ function Statistics() {
       <Row gutter={16} style={{ marginTop: 16 }}>
         <Col span={24}>
           <Card>
-            <ReactECharts option={orderTrendChartOption} style={{ height: isMobile ? 300 : 400 }} />
+            <LazyECharts option={orderTrendChartOption} style={{ height: isMobile ? 300 : 400 }} />
             <div style={{ marginTop: 16, textAlign: 'center' }}>
               <span style={{ fontSize: isMobile ? '14px' : '16px' }}>
                 增长率：
@@ -257,4 +257,3 @@ function Statistics() {
 }
 
 export default Statistics
-

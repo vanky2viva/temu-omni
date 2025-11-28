@@ -1,11 +1,11 @@
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { Table, Card, Row, Col, Statistic, Spin, Tabs, Button, message, DatePicker, Space } from 'antd'
-import { DollarOutlined, RiseOutlined, CalculatorOutlined, SyncOutlined, ShoppingOutlined, FundOutlined } from '@ant-design/icons'
+import { useQuery } from '@tanstack/react-query'
+import { Table, Card, Row, Col, Spin, Tabs, Button, DatePicker, Space } from 'antd'
+import { DollarOutlined, RiseOutlined, ShoppingOutlined, FundOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
-import ReactECharts from 'echarts-for-react'
-import { analyticsApi, orderApi } from '@/services/api'
-import { calculateOrderCosts, getDailyCollectionForecast } from '@/services/orderCostApi'
+import LazyECharts from '@/components/LazyECharts'
+import { analyticsApi } from '@/services/api'
+import { getDailyCollectionForecast } from '@/services/orderCostApi'
 import { statisticsApi } from '@/services/statisticsApi'
 import dayjs from 'dayjs'
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore'
@@ -113,7 +113,7 @@ function Finance() {
   })
 
   // 获取每日预估回款数据
-  const { data: dailyForecastData, isLoading: forecastLoading, refetch: refetchForecast } = useQuery({
+  const { isLoading: forecastLoading } = useQuery({
     queryKey: ['daily-collection-forecast'],
     queryFn: () => getDailyCollectionForecast(),
     staleTime: 0,
@@ -144,13 +144,6 @@ function Finance() {
     staleTime: 0,
   })
 
-  // 获取订单状态统计数据
-  const { data: orderStatusStats, isLoading: orderStatusStatsLoading } = useQuery({
-    queryKey: ['order-status-statistics'],
-    queryFn: () => orderApi.getStatusStatistics(),
-    staleTime: 0,
-  })
-  
   // 从统计数据中获取签收订单信息（只统计DELIVERED状态）
   const deliveredOrderCount = deliveredOrdersStats?.order_count || 0
   const deliveredOrderTotalAmount = deliveredOrdersStats?.total_amount || 0
@@ -159,35 +152,15 @@ function Finance() {
   // 使用 collectionData，它已经按回款日期分组
   const today = dayjs().startOf('day')
   const tableData = collectionData?.table_data || []
-  const collectedAmount = tableData.filter(item => {
+  const collectedAmount = tableData.filter((item: any) => {
     const collectionDate = dayjs(item.date).startOf('day')
     return collectionDate.isSameOrBefore(today, 'day')
   }).reduce((sum: number, item: any) => sum + (item.total || 0), 0)
   
-  const pendingAmount = tableData.filter(item => {
+  const pendingAmount = tableData.filter((item: any) => {
     const collectionDate = dayjs(item.date).startOf('day')
     return collectionDate.isAfter(today, 'day')
   }).reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-
-  // 计算订单成本
-  const calculateCostsMutation = useMutation({
-    mutationFn: calculateOrderCosts,
-    onSuccess: (data) => {
-      message.success(data.message)
-      // 刷新每日预估回款数据
-      refetchForecast()
-    },
-    onError: (error: any) => {
-      message.error(`计算失败: ${error.response?.data?.detail || error.message}`)
-    },
-  })
-
-  // 处理计算成本按钮点击
-  const handleCalculateCosts = () => {
-    calculateCostsMutation.mutate({
-      force_recalculate: false
-    })
-  }
 
   // 回款统计表格列
   const collectionColumns: ColumnsType<any> = [
@@ -310,7 +283,7 @@ function Finance() {
         },
       },
     },
-    series: collectionData.chart_data.series.map((series: any, index: number) => ({
+    series: collectionData.chart_data.series.map((series: any) => ({
       name: series.name,
       type: 'line',
       data: series.data,
@@ -944,7 +917,7 @@ function Finance() {
           {/* 回款趋势折线图 - 移到表格上方 */}
           {collectionChartOption && (
             <Card className="chart-card" style={{ marginBottom: 32 }}>
-              <ReactECharts 
+              <LazyECharts 
                 option={collectionChartOption} 
                 style={{ height: isMobile ? 300 : 450 }} 
               />

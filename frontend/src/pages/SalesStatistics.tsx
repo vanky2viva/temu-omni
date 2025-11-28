@@ -32,7 +32,7 @@ import {
   GlobalOutlined,
   PercentageOutlined,
 } from '@ant-design/icons'
-import ReactECharts from 'echarts-for-react'
+import LazyECharts from '@/components/LazyECharts'
 import { shopApi, analyticsApi } from '@/services/api'
 import dayjs from 'dayjs'
 
@@ -62,7 +62,7 @@ function SalesStatistics() {
   const queryClient = useQueryClient()
 
   // 获取店铺列表
-  const { data: shops, refetch: refetchShops } = useQuery({
+  const { data: shops } = useQuery({
     queryKey: ['shops'],
     queryFn: shopApi.getShops,
   })
@@ -71,7 +71,7 @@ function SalesStatistics() {
   const [refreshTimestamp, setRefreshTimestamp] = useState<number>(0)
   
   // 获取销量总览数据 - 使用与仪表盘相同的数据源
-  const { data: salesOverview, isLoading: overviewLoading, refetch: refetchOverview } = useQuery({
+  const { data: salesOverview } = useQuery({
     queryKey: ['sales-overview', dateRange, shopIds, manager, region, refreshTimestamp],
     queryFn: async () => {
       try {
@@ -106,7 +106,7 @@ function SalesStatistics() {
   })
 
   // 获取SKU销量排行
-  const { data: skuRanking, isLoading: skuLoading, refetch: refetchSku } = useQuery({
+  const { data: skuRanking, isLoading: skuLoading } = useQuery({
     queryKey: ['sku-sales-ranking', dateRange, shopIds, manager, region, refreshTimestamp],
     queryFn: async () => {
       try {
@@ -136,7 +136,7 @@ function SalesStatistics() {
   })
 
   // 获取负责人销量统计
-  const { data: managerSales, isLoading: managerLoading, refetch: refetchManager } = useQuery({
+  const { data: managerSales, isLoading: managerLoading } = useQuery({
     queryKey: ['manager-sales', dateRange, shopIds, region, refreshTimestamp],
     queryFn: async () => {
       try {
@@ -335,7 +335,6 @@ function SalesStatistics() {
     const dateWidth = isMobile ? 60 : 65
     const subColWidth = isMobile ? 65 : 70
     const fontSize = isMobile ? '12px' : '13px'
-    const headerFontSize = isMobile ? '11px' : '13px'
 
     const columns: any[] = [
       {
@@ -1365,7 +1364,7 @@ function SalesStatistics() {
               </span>
             </header>
             <div style={{ flex: 1, minHeight: 0, marginTop: '-4px' }}>
-          <ReactECharts 
+          <LazyECharts 
             option={chartOption} 
                 style={{ height: '100%', minHeight: '200px' }}
             opts={{ renderer: 'svg' }}

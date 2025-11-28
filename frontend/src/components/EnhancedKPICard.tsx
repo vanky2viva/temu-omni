@@ -1,5 +1,5 @@
 import { Card } from 'antd'
-import ReactECharts from 'echarts-for-react'
+import LazyECharts from './LazyECharts'
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 
@@ -176,7 +176,7 @@ export default function EnhancedKPICard({ data, isMobile = false }: EnhancedKPIC
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = 'translateY(0)'
-        e.currentTarget.style.boxShadow = getGradientStyle.boxShadow
+        e.currentTarget.style.boxShadow = getGradientStyle.boxShadow || ''
       }}
     >
       {/* 图标和标题行 */}
@@ -242,6 +242,7 @@ export default function EnhancedKPICard({ data, isMobile = false }: EnhancedKPIC
         overflowWrap: 'break-word',
         padding: '0 4px',
         boxSizing: 'border-box',
+        ...valueStyle,
       }}>
         {formatNumber(value, precision)}{suffix || ''}
       </div>
@@ -280,7 +281,7 @@ export default function EnhancedKPICard({ data, isMobile = false }: EnhancedKPIC
           overflow: 'hidden',
           paddingTop: '0.25rem',
         }}>
-          <ReactECharts 
+          <LazyECharts 
             option={miniChartOption}
             style={{ height: '100%', width: '100%' }}
             opts={{ renderer: 'svg' }}

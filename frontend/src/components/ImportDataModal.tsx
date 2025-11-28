@@ -303,7 +303,7 @@ const ImportDataModal: React.FC<ImportDataModalProps> = ({
     multiple: true,  // 支持多文件上传
     fileList,
     accept: '.xlsx,.xls',
-    beforeUpload: (file, fileList) => {
+    beforeUpload: (file) => {
       const isExcel = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
         file.type === 'application/vnd.ms-excel' ||
         file.name.endsWith('.xlsx') ||

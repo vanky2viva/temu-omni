@@ -781,7 +781,7 @@ function ShopList() {
         closable={syncProgress?.status !== 'running'}
         maskClosable={syncProgress?.status !== 'running'}
         mask={true}
-        destroyOnHidden={true}
+        destroyOnClose
         forceRender={false}
         getContainer={false}
         afterClose={() => {
@@ -1006,4 +1006,3 @@ function ShopList() {
 }
 
 export default ShopList
-

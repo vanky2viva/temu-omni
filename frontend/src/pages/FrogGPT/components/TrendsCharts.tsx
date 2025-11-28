@@ -4,7 +4,7 @@
  */
 import React, { useMemo } from 'react'
 import { Card, Table, Tag, Tooltip } from 'antd'
-import ReactECharts from 'echarts-for-react'
+import LazyECharts from '@/components/LazyECharts'
 import { LineChartOutlined, BarChartOutlined } from '@ant-design/icons'
 import type { TrendData, SkuRankingItem } from '../types'
 import dayjs from 'dayjs'
@@ -12,13 +12,11 @@ import dayjs from 'dayjs'
 interface TrendsChartsProps {
   trendData?: TrendData[]
   skuRanking?: SkuRankingItem[]
-  dateRange?: [string, string]
 }
 
 const TrendsCharts: React.FC<TrendsChartsProps> = ({ 
   trendData = [], 
-  skuRanking = [],
-  dateRange 
+  skuRanking = []
 }) => {
   // GMV/订单/利润趋势图配置
   const trendsChartOption = useMemo(() => {
@@ -249,7 +247,7 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
           body: { padding: '12px' },
         }}
       >
-        <ReactECharts
+        <LazyECharts
           option={trendsChartOption}
           style={{ height: '280px' }}
           opts={{ renderer: 'svg' }}

@@ -106,7 +106,7 @@ const DecisionSummary: React.FC<DecisionSummaryProps> = ({ decisionData }) => {
             </Text>
             <List
               dataSource={decisionData.actions}
-              renderItem={(action, index) => (
+              renderItem={(action) => (
                 <List.Item style={{ padding: '8px 0', border: 'none' }}>
                   <Card
                     size="small"
@@ -152,4 +152,3 @@ const DecisionSummary: React.FC<DecisionSummaryProps> = ({ decisionData }) => {
 }
 
 export default DecisionSummary
-

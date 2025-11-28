@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Card, Row, Col, Statistic, Spin, Button } from 'antd'
+import { Card, Row, Col, Spin, Button } from 'antd'
 import {
   ShoppingOutlined,
   DollarOutlined,
@@ -7,7 +7,7 @@ import {
   FallOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
-import ReactECharts from 'echarts-for-react'
+import LazyECharts from '@/components/LazyECharts'
 import { statisticsApi, analyticsApi } from '@/services/api'
 import dayjs from 'dayjs'
 import { useEffect, useState } from 'react'
@@ -36,11 +36,6 @@ function Dashboard() {
   
   // 统一使用30天作为趋势统计时间范围
   const days = 30
-  
-  // 计算时间范围（最近30天，用于订单量和趋势图表）
-  const endDate = new Date()
-  const startDate = new Date()
-  startDate.setDate(startDate.getDate() - days)
   
   // 自动刷新间隔（秒）- 默认5分钟刷新一次
   const REFRESH_INTERVAL = 5 * 60 * 1000 // 5分钟
@@ -417,7 +412,7 @@ function Dashboard() {
             icon={<ReloadOutlined />}
             onClick={handleRefresh}
             loading={overviewLoading || dailyLoading || salesLoading}
-            size={isMobile ? 'small' : 'default'}
+            size={isMobile ? 'small' : 'middle'}
             style={{
               borderColor: '#30363d',
               color: '#c9d1d9',
@@ -706,7 +701,7 @@ function Dashboard() {
       <Row gutter={[16, 16]}>
         <Col xs={24}>
           <Card className="chart-card" loading={dailyLoading} bordered={false}>
-            <ReactECharts 
+            <LazyECharts 
               option={trendChartOption} 
               style={{ height: isMobile ? 300 : 450 }} 
             />
@@ -731,7 +726,7 @@ function Dashboard() {
       <Row gutter={[16, 16]}>
         <Col xs={24}>
           <Card className="chart-card" loading={salesLoading} bordered={false}>
-            <ReactECharts 
+            <LazyECharts 
               option={salesChartOption} 
               style={{ height: isMobile ? 300 : 450 }} 
             />
@@ -743,4 +738,3 @@ function Dashboard() {
 }
 
 export default Dashboard
-

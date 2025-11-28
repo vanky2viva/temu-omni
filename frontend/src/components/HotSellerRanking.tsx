@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, Select, Space, List, Avatar, Statistic, Row, Col, Badge } from 'antd'
-import { CrownOutlined, TrophyOutlined, DollarOutlined } from '@ant-design/icons'
+import { CrownOutlined, TrophyOutlined } from '@ant-design/icons'
 import { shopApi } from '@/services/api'
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -170,4 +170,3 @@ function HotSellerRanking() {
 }
 
 export default HotSellerRanking
-

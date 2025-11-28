@@ -93,7 +93,7 @@ export default function PercentagePieIcon({
           cx={center}
           cy={center}
           r={radius}
-          fill="rgba(0, 0, 0, 0.4)"
+          fill={backgroundColor}
           stroke="rgba(255, 255, 255, 0.08)"
           strokeWidth="1"
         />

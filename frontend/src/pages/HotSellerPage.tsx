@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, Select, Space, Table, Modal, Row, Col, Statistic, Tag, Avatar, Badge } from 'antd'
-import { CrownOutlined, TrophyOutlined, ShoppingOutlined, DollarOutlined } from '@ant-design/icons'
-import ReactECharts from 'echarts-for-react'
+import { CrownOutlined, ShoppingOutlined } from '@ant-design/icons'
+import LazyECharts from '@/components/LazyECharts'
 import { shopApi } from '@/services/api'
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -332,7 +332,7 @@ function HotSellerPage() {
       {/* 前三名卡片展示 */}
       {rankingData?.ranking && rankingData.ranking.length > 0 && (
         <Row gutter={16} style={{ marginBottom: 16 }}>
-          {rankingData.ranking.slice(0, 3).map((item: any, index: number) => (
+          {rankingData.ranking.slice(0, 3).map((item: any) => (
             <Col xs={24} sm={12} md={8} lg={8} key={item.rank}>
               <Card
                 hoverable
@@ -378,7 +378,7 @@ function HotSellerPage() {
 
       {/* GMV图表 */}
       <Card style={{ marginBottom: 16 }}>
-        <ReactECharts option={gmvChartOption} style={{ height: isMobile ? 300 : 400 }} />
+        <LazyECharts option={gmvChartOption} style={{ height: isMobile ? 300 : 400 }} />
       </Card>
 
       {/* 完整排行榜表格 */}
@@ -424,7 +424,7 @@ function HotSellerPage() {
                 title="总GMV"
                 value={selectedManager?.gmv || 0}
                 precision={2}
-                prefix={<DollarOutlined />}
+                prefix={<ShoppingOutlined />}
                 suffix="CNY"
               />
             </Card>
@@ -478,4 +478,3 @@ function HotSellerPage() {
 }
 
 export default HotSellerPage
-

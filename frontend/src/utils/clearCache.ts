@@ -1,4 +1,10 @@
 /**清理前端缓存工具*/
+declare global {
+  interface Window {
+    queryClient?: { clear: () => void }
+  }
+}
+
 export function clearAllCache() {
   // 清理 localStorage
   localStorage.clear()
@@ -38,7 +44,6 @@ if (typeof window !== 'undefined') {
     localStorage.setItem('lastCacheClear', now.toString())
   }
 }
-
 
 
 

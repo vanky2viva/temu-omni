@@ -11,7 +11,7 @@ import {
   RocketOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
-import { ThoughtChain, type ThoughtChainItem } from '@ant-design/x'
+import { ThoughtChain, type ThoughtChainItemType } from '@ant-design/x'
 import type { DecisionData } from '../types'
 
 const { Text, Paragraph } = Typography
@@ -71,19 +71,19 @@ const DecisionPanel: React.FC<DecisionPanelProps> = ({ decisionData }) => {
     }
   }
 
-  const thoughtChainItems = useMemo<ThoughtChainItem[]>(() => {
+  const thoughtChainItems = useMemo<ThoughtChainItemType[]>(() => {
     if (!decisionData) {
       return [
         {
           key: 'pending-data',
           title: '等待 AI 推理',
           description: '在右侧对话中发起问题，FrogGPT 将自动生成决策链路',
-          status: 'pending',
+          status: 'loading',
         },
       ]
     }
 
-    const items: ThoughtChainItem[] = []
+    const items: ThoughtChainItemType[] = []
 
     if (decisionData.decisionSummary) {
       items.push({
@@ -99,7 +99,7 @@ const DecisionPanel: React.FC<DecisionPanelProps> = ({ decisionData }) => {
         key: `action-${index}`,
         title: action.type,
         description: action.reason || action.target,
-        extra: action.delta,
+        footer: action.delta,
         status: 'success',
       })
     })
@@ -167,7 +167,6 @@ const DecisionPanel: React.FC<DecisionPanelProps> = ({ decisionData }) => {
       >
         <ThoughtChain
           items={thoughtChainItems}
-          size="small"
           className="frog-gpt-thought"
           styles={{
             item: { color: '#e2e8f0' },
@@ -278,7 +277,7 @@ const DecisionPanel: React.FC<DecisionPanelProps> = ({ decisionData }) => {
         >
           <List
             dataSource={decisionData.actions}
-            renderItem={(action, index) => (
+            renderItem={(action) => (
               <List.Item style={{ padding: '12px 0', border: 'none' }}>
                 <Card
                   size="small"

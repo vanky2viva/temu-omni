@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import ReactECharts from 'echarts-for-react'
-import * as echarts from 'echarts'
+import LazyECharts from './LazyECharts'
 
 interface StateOrderData {
   state: string  // 州名称或州代码
@@ -47,8 +46,19 @@ const stateCodeToName: Record<string, string> = {
 }
 
 function StateHeatmap({ data, height = 500 }: StateHeatmapProps) {
+  const [echartsLib, setEchartsLib] = useState<any>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [mapLoadFailed, setMapLoadFailed] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    import('echarts').then((lib) => {
+      if (mounted) setEchartsLib(lib)
+    })
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   // 规范化州代码，将名称或代码统一为代码
   const normalizedData = useMemo(() => {
@@ -82,7 +92,9 @@ function StateHeatmap({ data, height = 500 }: StateHeatmapProps) {
 
   // 加载并注册美国地图数据
   useEffect(() => {
-    if (echarts.getMap('USA')) {
+    if (!echartsLib) return
+
+    if (echartsLib.getMap('USA')) {
       setMapLoaded(true)
       return
     }
@@ -99,18 +111,19 @@ function StateHeatmap({ data, height = 500 }: StateHeatmapProps) {
         // 处理 GeoJSON，确保州名称映射正确
         if (geoJson.features) {
           geoJson.features = geoJson.features.map((feature: any) => {
-            const stateName = feature.properties?.name || 
-                            feature.properties?.NAME || 
-                            feature.properties?.NAME_1 ||
-                            feature.properties?.state ||
-                            feature.properties?.STATE
+            const stateName = feature.properties?.name ?? 
+                            feature.properties?.NAME ?? 
+                            feature.properties?.NAME_1 ??
+                            feature.properties?.state ??
+                            feature.properties?.STATE ??
+                            ''
             
-            let stateCode = stateNameToCode[stateName]
+            let stateCode = stateName ? stateNameToCode[stateName] : ''
             
             if (!stateCode && stateName) {
               stateCode = Object.keys(stateCodeToName).find(
                 code => stateCodeToName[code].toLowerCase() === stateName.toLowerCase()
-              )
+              ) || ''
             }
             
             if (stateCode) {
@@ -139,7 +152,7 @@ function StateHeatmap({ data, height = 500 }: StateHeatmapProps) {
           })
         }
         
-        echarts.registerMap('USA', geoJson)
+        echartsLib.registerMap('USA', geoJson)
         setMapLoaded(true)
       })
       .catch(() => {
@@ -275,7 +288,7 @@ function StateHeatmap({ data, height = 500 }: StateHeatmapProps) {
   }), [normalizedData, maxValue])
 
   // 如果地图数据还未加载，显示加载中
-  if (!mapLoaded && !mapLoadFailed) {
+  if (!echartsLib || (!mapLoaded && !mapLoadFailed)) {
     return (
       <div style={{ 
         height: `${height}px`, 
@@ -290,9 +303,9 @@ function StateHeatmap({ data, height = 500 }: StateHeatmapProps) {
   }
 
   // 如果地图已加载，显示地图
-  if (mapLoaded && echarts.getMap('USA')) {
+  if (mapLoaded && echartsLib?.getMap('USA')) {
     return (
-      <ReactECharts
+      <LazyECharts
         option={option}
         style={{ height: `${height}px`, width: '100%' }}
         notMerge={true}
@@ -302,7 +315,7 @@ function StateHeatmap({ data, height = 500 }: StateHeatmapProps) {
 
   // 如果地图加载失败或无法使用地图，使用柱状图作为备选方案
   return (
-    <ReactECharts
+    <LazyECharts
       option={barOption}
       style={{ height: `${height}px`, width: '100%' }}
       notMerge={true}
@@ -311,4 +324,3 @@ function StateHeatmap({ data, height = 500 }: StateHeatmapProps) {
 }
 
 export default StateHeatmap
-

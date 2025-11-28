@@ -5,6 +5,7 @@ import { ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
+import 'antd/dist/reset.css'
 import App from './App'
 import './index.css'
 import './utils/clearCacheHelper'
@@ -19,7 +20,7 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       retry: 1,
       staleTime: 0, // 默认禁用缓存，总是获取最新数据
-      cacheTime: 0, // 禁用缓存时间
+      gcTime: 0, // 禁用缓存时间
     },
   },
 })
@@ -38,4 +39,3 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </React.StrictMode>,
 )
-

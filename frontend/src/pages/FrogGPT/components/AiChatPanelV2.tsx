@@ -3,9 +3,9 @@
  * 使用 Ant Design X 组件：Bubble, Sender, XMarkdown
  */
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Card, Button, Space, Typography, Avatar, Spin } from 'antd'
-import { ClearOutlined, RobotOutlined, UserOutlined, ThunderboltOutlined } from '@ant-design/icons'
-import { Bubble, Sender, ThoughtChain } from '@ant-design/x'
+import { Card, Space, Typography, Avatar, Spin } from 'antd'
+import { RobotOutlined, UserOutlined } from '@ant-design/icons'
+import { Bubble, Sender, ThoughtChain, type SenderProps } from '@ant-design/x'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -50,7 +50,6 @@ const extractDecisionFromMarkdown = (content: string): DecisionData | null => {
 
 const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
   shopId,
-  shopName,
   model = 'auto',
   temperature = 0.7,
   includeSystemData = true,
@@ -276,20 +275,14 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
     }
   }, [externalMessage, handleSend, onExternalMessageSent])
 
-  /**
-   * 清空对话
-   */
-  const handleClear = () => {
-    setMessages([
-      {
-        id: 'welcome',
-        role: 'assistant',
-        content: '👋 欢迎使用 FrogGPT 2.0！我是您的 AI 运营助手。\n\n我可以帮您：\n- 📊 分析销售数据和趋势\n- 🚀 提供运营决策建议\n- 💡 回答关于店铺和商品的问题\n\n请随时向我提问！',
-        timestamp: Date.now(),
-      },
-    ])
-    setInputValue('')
-    onDecisionParsed?.(null)
+  const renderSenderSuffix: NonNullable<SenderProps['suffix']> = (ori, { components }) => {
+    const { ClearButton } = components
+    return (
+      <Space size="small">
+        <ClearButton />
+        {ori}
+      </Space>
+    )
   }
 
   return (
@@ -325,11 +318,10 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
           {loading && (
             <ThoughtChain
               className="frog-gpt-thought"
-              size="small"
               items={[
                 { key: 'sync', title: '收集数据', description: '同步运营指标与店铺画像', status: 'success' },
-                { key: 'analyze', title: '分析趋势', description: '识别 GMV/利润/退款率波动', status: 'pending' },
-                { key: 'compose', title: '生成答案', description: '编排决策卡片与建议', status: 'pending' },
+                { key: 'analyze', title: '分析趋势', description: '识别 GMV/利润/退款率波动', status: 'loading' },
+                { key: 'compose', title: '生成答案', description: '编排决策卡片与建议', status: 'loading' },
               ]}
             />
           )}
@@ -511,12 +503,15 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
                 icon={<RobotOutlined />}
                 style={{ backgroundColor: '#00d1b2', flexShrink: 0 }}
               />
-              <Bubble placement="start">
-                <Space>
-                  <Spin size="small" />
-                  <Text style={{ color: '#94a3b8' }}>正在思考...</Text>
-                </Space>
-              </Bubble>
+              <Bubble
+                placement="start"
+                content={
+                  <Space>
+                    <Spin size="small" />
+                    <Text style={{ color: '#94a3b8' }}>正在思考...</Text>
+                  </Space>
+                }
+              />
             </div>
           )}
           <div ref={messagesEndRef} />
@@ -573,19 +568,11 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
             loading={loading}
             disabled={loading}
             placeholder="向 FrogGPT 提问，例如：分析最近7天 GMV 变化原因"
-            actions={(ori, { components }) => {
-              const { ClearButton } = components
-              return (
-                <Space size="small">
-                  <ClearButton />
-                  {ori}
-                </Space>
-              )
-            }}
+            suffix={renderSenderSuffix}
             footer={() => null}
             styles={{
               content: { background: '#0f172a', borderRadius: 12, border: '1px solid #1E293B' },
-              actions: { paddingRight: 4 },
+              suffix: { paddingRight: 4 },
             }}
           />
         </div>

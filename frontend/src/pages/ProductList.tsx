@@ -13,7 +13,7 @@ import {
   Tag,
   Tooltip,
 } from 'antd'
-import { PlusOutlined, DollarOutlined, SearchOutlined, DeleteOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
+import { SearchOutlined, DeleteOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { productApi, shopApi } from '@/services/api'
 import dayjs from 'dayjs'
 
@@ -141,16 +141,6 @@ function ProductList() {
   const handleUpdateManager = (productId: number, newManager: string) => {
     if (newManager === '-' || newManager === '__custom__') return
     updateManagerMutation.mutate({ id: productId, manager: newManager })
-  }
-
-  const handleOpenCostModal = (product: any) => {
-    setSelectedProduct(product)
-    costForm.setFieldsValue({
-      product_id: product.id,
-      effective_from: dayjs(),
-      currency: 'CNY',
-    })
-    setIsCostModalOpen(true)
   }
 
   const handleCloseCostModal = () => {
@@ -632,4 +622,3 @@ function ProductList() {
 }
 
 export default ProductList
-

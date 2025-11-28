@@ -1,12 +1,14 @@
-import axios from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
 
-const api = axios.create({
+type RequestConfig<D = any> = AxiosRequestConfig<D>
+
+const rawApi = axios.create({
   baseURL: '/api',
   timeout: 30000,
 })
 
 // 请求拦截器
-api.interceptors.request.use(
+rawApi.interceptors.request.use(
   (config) => {
     // 添加token到请求头
     const token = localStorage.getItem('token')
@@ -21,9 +23,9 @@ api.interceptors.request.use(
 )
 
 // 响应拦截器
-api.interceptors.response.use(
+rawApi.interceptors.response.use(
   (response) => {
-    return response.data
+    return response
   },
   (error) => {
     if (error.response) {
@@ -39,6 +41,17 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+const api = {
+  get: <T = any, D = any>(url: string, config?: RequestConfig<D>) =>
+    rawApi.get<T>(url, config).then((res) => res.data),
+  post: <T = any, D = any>(url: string, data?: D, config?: RequestConfig<D>) =>
+    rawApi.post<T>(url, data, config).then((res) => res.data),
+  put: <T = any, D = any>(url: string, data?: D, config?: RequestConfig<D>) =>
+    rawApi.put<T>(url, data, config).then((res) => res.data),
+  delete: <T = any, D = any>(url: string, config?: RequestConfig<D>) =>
+    rawApi.delete<T>(url, config).then((res) => res.data),
+}
 
 // 店铺API
 export const shopApi = {
@@ -246,7 +259,7 @@ export const frogGptApi = {
     shop_id?: number
   }) {
     const token = localStorage.getItem('token')
-    const response = await fetch(`${api.defaults.baseURL}/frog-gpt/chat/stream`, {
+    const response = await fetch(`${rawApi.defaults.baseURL || ''}/frog-gpt/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -351,4 +364,3 @@ export const systemApi = {
 }
 
 export default api
-

@@ -163,7 +163,7 @@ export default function OrderDetailDrawer({ visible, orderId, onClose }: OrderDe
       extra={
         <Button type="text" icon={<CloseOutlined />} onClick={onClose} />
       }
-      destroyOnHidden
+      destroyOnClose
     >
       {isLoading ? (
         <div style={{ textAlign: 'center', padding: '50px 0' }}>
@@ -351,4 +351,3 @@ export default function OrderDetailDrawer({ visible, orderId, onClose }: OrderDe
     </Drawer>
   )
 }
-

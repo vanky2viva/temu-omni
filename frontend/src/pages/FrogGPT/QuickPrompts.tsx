@@ -3,7 +3,7 @@
  * 支持推荐问题、标准模板问题、自定义问题库
  */
 import React from 'react'
-import { Card, Button, Space, Typography, Tag, Divider } from 'antd'
+import { Card, Button, Space, Typography, Divider } from 'antd'
 import {
   ThunderboltOutlined,
   BarChartOutlined,
@@ -181,4 +181,3 @@ const QuickPrompts: React.FC<QuickPromptsProps> = ({ prompts, onPromptClick }) =
 }
 
 export default QuickPrompts
-

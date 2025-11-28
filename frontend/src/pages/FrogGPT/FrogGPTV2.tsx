@@ -19,7 +19,6 @@ import {
   Tooltip,
   Row,
   Col,
-  Divider,
   Segmented,
   Radio,
 } from 'antd'
@@ -105,12 +104,6 @@ const FrogGPTV2: React.FC = () => {
     enabled: includeSystemData,
   })
 
-  // 获取OpenRouter API配置并验证
-  const { data: apiConfig } = useQuery({
-    queryKey: ['frog-gpt-api-config'],
-    queryFn: frogGptApi.getApiConfig,
-  })
-  
   // 验证 API Key 配置状态
   const [apiKeyStatus, setApiKeyStatus] = useState<{
     configured: boolean
@@ -210,7 +203,7 @@ const FrogGPTV2: React.FC = () => {
           modelId,
           description,
           ...idParts, // 添加 ID 的各个部分
-          ...idParts.flatMap(part => part.split('-')), // 将 "gpt-4" 拆分为 ["gpt", "4"]
+          ...idParts.flatMap((part: string) => part.split('-')), // 将 "gpt-4" 拆分为 ["gpt", "4"]
         ].filter(Boolean).join(' ').toLowerCase()
         
         options.push({
@@ -357,19 +350,13 @@ const FrogGPTV2: React.FC = () => {
   // 当前店铺名称
   const currentShopName = useMemo(() => {
     if (!selectedShopId) return '全部店铺'
-    const shop = shops?.find(s => s.id === selectedShopId)
+    const shop = shops?.find((s: any) => s.id === selectedShopId)
     return shop?.name || '未知店铺'
   }, [selectedShopId, shops])
 
   // 处理决策数据更新
   const handleDecisionParsed = (data: DecisionData | null) => {
     setDecisionData(data)
-  }
-
-  // 处理快捷问题点击
-  const handleQuickPromptClick = (prompt: string) => {
-    // 直接发送到聊天面板
-    setExternalMessage(prompt)
   }
 
   // 处理外部消息发送完成
@@ -897,12 +884,10 @@ const FrogGPTV2: React.FC = () => {
                 }
               }}
               notFoundContent="未找到匹配的模型"
-              styles={{
-                popup: {
-                  background: '#1e293b',
-                  borderColor: '#334155',
-                  maxHeight: '400px',
-                }
+              dropdownStyle={{
+                background: '#1e293b',
+                border: '1px solid #334155',
+                maxHeight: 400,
               }}
               allowClear
               onClear={() => {

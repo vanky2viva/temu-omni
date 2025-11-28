@@ -10,6 +10,20 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        // 粗粒度拆包，降低单包体积
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          antd: ['antd', '@ant-design/icons', '@ant-design/x'],
+          echarts: ['echarts', 'echarts-for-react'],
+          vendor: ['@tanstack/react-query', 'axios', 'dayjs'],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     host: '0.0.0.0',
@@ -23,4 +37,3 @@ export default defineConfig({
     },
   },
 })
-
