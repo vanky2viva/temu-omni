@@ -17,7 +17,8 @@ numpy==1.26.2
 openpyxl==3.1.2
 
 # HTTP客户端
-httpx==0.25.1
+httpx==0.28.1
+openrouter
 requests==2.31.0
 
 # 认证和安全

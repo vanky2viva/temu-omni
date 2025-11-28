@@ -119,10 +119,15 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
 
   useEffect(() => {
     messagesRef.current = messages
+    console.log('messages状态更新:', {
+      count: messages.length,
+      lastMessage: messages[messages.length - 1],
+      allMessages: messages,
+    })
   }, [messages])
 
   /**
-   * 处理发送消息
+   * 处理发送消息（使用流式响应）
    */
   const handleSend = useCallback(async (value: string) => {
     const content = value.trim()
@@ -135,12 +140,45 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
       timestamp: Date.now(),
     }
 
-    setMessages(prev => [...prev, userMessage])
+    // 使用函数式更新确保状态正确更新
+    setMessages(prev => {
+      const newMessages = [...prev, userMessage]
+      console.log('添加用户消息:', {
+        previousCount: prev.length,
+        newCount: newMessages.length,
+        message: userMessage,
+      })
+      return newMessages
+    })
     setLoading(true)
 
+    // 创建助手消息 ID（用于流式更新）
+    const assistantMessageId = uuidv4()
+    let assistantMessageContent = ''
+    let messageModel: string | undefined = undefined
+
     try {
-      // 调用 API
-      const response = await frogGptApi.chat({
+      // 记录请求信息（用于调试）
+      console.log('发送流式聊天请求:', {
+        model,
+        temperature,
+        includeSystemData,
+        messagesCount: messagesRef.current.length + 1,
+        shopId: shopId ? parseInt(shopId) : undefined,
+      })
+      
+      // 创建初始助手消息
+      const initialAssistantMessage: ChatMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+      }
+      
+      setMessages(prev => [...prev, initialAssistantMessage])
+      
+      // 调用流式 API
+      const stream = frogGptApi.chatStream({
         messages: [
           ...messagesRef.current.map(msg => ({
             role: msg.role,
@@ -154,35 +192,73 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
         model,
         temperature,
         include_system_data: includeSystemData,
-        data_summary_days: dataSummaryDays,
+        data_summary_days: dataSummaryDays ?? undefined,
         shop_id: shopId ? parseInt(shopId) : undefined,
       })
 
-      const assistantMessage: ChatMessage = {
-        id: uuidv4(),
-        role: 'assistant',
-        content: response.content || response.message || '抱歉，我无法处理您的请求。',
-        timestamp: Date.now(),
-        thinking: response.thinking,
-        sources: response.sources,
-      }
-
-      setMessages(prev => [...prev, assistantMessage])
-
-      // 提取决策数据
-      const decisionData = extractDecisionFromMarkdown(assistantMessage.content)
-      if (decisionData) {
-        onDecisionParsed?.(decisionData)
+      // 处理流式响应
+      for await (const chunk of stream) {
+        if (chunk.type === 'error') {
+          throw new Error(chunk.error || '未知错误')
+        } else if (chunk.type === 'content') {
+          // 累积内容
+          assistantMessageContent += chunk.content
+          messageModel = chunk.model || messageModel
+          
+          // 实时更新消息内容
+          setMessages(prev => {
+            return prev.map(msg => {
+              if (msg.id === assistantMessageId) {
+                return {
+                  ...msg,
+                  content: assistantMessageContent,
+                }
+              }
+              return msg
+            })
+          })
+        } else if (chunk.type === 'done') {
+          // 流式响应完成
+          console.log('流式响应完成:', {
+            contentLength: assistantMessageContent.length,
+            finishReason: chunk.finish_reason,
+          })
+          
+          // 提取决策数据
+          const decisionData = extractDecisionFromMarkdown(assistantMessageContent)
+          if (decisionData) {
+            onDecisionParsed?.(decisionData)
+          }
+        } else if (chunk.type === 'usage') {
+          // 使用统计（可选）
+          console.log('Token 使用统计:', chunk.usage)
+        }
       }
     } catch (error: any) {
       console.error('发送消息失败:', error)
-      const errorMessage: ChatMessage = {
-        id: uuidv4(),
-        role: 'assistant',
-        content: `❌ 抱歉，发生了错误：${error.response?.data?.detail || error.message || '未知错误'}`,
-        timestamp: Date.now(),
+      console.error('错误详情:', {
+        message: error.message,
+        stack: error.stack,
+      })
+      
+      // 提取错误信息
+      let errorMessage = '未知错误'
+      if (error.message) {
+        errorMessage = error.message
       }
-      setMessages(prev => [...prev, errorMessage])
+      
+      // 更新助手消息为错误消息
+      setMessages(prev => {
+        return prev.map(msg => {
+          if (msg.id === assistantMessageId) {
+            return {
+              ...msg,
+              content: `❌ 抱歉，发生了错误：${errorMessage}`,
+            }
+          }
+          return msg
+        })
+      })
     } finally {
       setLoading(false)
     }
@@ -218,34 +294,6 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
 
   return (
     <Card
-      title={
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <Space align="center">
-            <RobotOutlined style={{ fontSize: 18, color: '#60a5fa' }} />
-            <div>
-              <Text strong style={{ color: '#e2e8f0', fontSize: '16px' }}>
-                FrogGPT 对话
-              </Text>
-              <Text style={{ color: '#64748b', fontSize: '12px', marginLeft: '12px' }}>
-                实时推理 · 动效升级 · 决策更直观
-              </Text>
-            </div>
-          </Space>
-          <Space wrap size="small" style={{ justifyContent: 'flex-end' }}>
-            <span className="frog-gpt-badge">模型 {model || 'AUTO'}</span>
-            <span className="frog-gpt-badge">温度 {temperature}</span>
-            {shopName && <span className="frog-gpt-badge success">店铺 {shopName}</span>}
-            <Button
-              type="text"
-              icon={<ClearOutlined />}
-              onClick={handleClear}
-              style={{ color: '#93c5fd' }}
-            >
-              新对话
-            </Button>
-          </Space>
-        </div>
-      }
       className="frog-gpt-chat-card frog-gpt-section-card"
       style={{
         height: '100%',
@@ -253,11 +301,6 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
         flexDirection: 'column',
       }}
       styles={{
-        header: {
-          background: 'transparent',
-          borderBottom: '1px solid #1E293B',
-          padding: '12px 16px',
-        },
         body: {
           flex: 1,
           display: 'flex',
@@ -278,7 +321,7 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
           borderRadius: 12,
         }}
       >
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', minHeight: '100%' }}>
           {loading && (
             <ThoughtChain
               className="frog-gpt-thought"
@@ -290,82 +333,144 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
               ]}
             />
           )}
-          {messages.map((message) => (
-            <div key={message.id} style={{ display: 'flex', gap: '12px' }}>
+          {(() => {
+            console.log('准备渲染消息列表，消息数量:', messages.length, '消息:', messages)
+            return null
+          })()}
+          {messages.length > 0 ? messages.map((message) => {
+            console.log('渲染消息:', {
+              id: message.id,
+              role: message.role,
+              contentLength: message.content.length,
+              contentPreview: message.content.substring(0, 50),
+              hasContent: !!message.content,
+              fullContent: message.content,
+            })
+            
+            // 如果是助手消息，添加额外的调试信息
+            if (message.role === 'assistant') {
+              console.log('助手消息详情:', {
+                id: message.id,
+                content: message.content,
+                contentLength: message.content.length,
+                willRender: true,
+              })
+            }
+            
+            return (
+            <div 
+              key={message.id} 
+              style={{ 
+                display: 'flex', 
+                gap: '12px', 
+                width: '100%',
+                minHeight: '40px',
+                marginBottom: '16px',
+              }}
+            >
               {message.role === 'user' ? (
-                <div style={{ display: 'flex', gap: '12px', width: '100%', justifyContent: 'flex-end' }}>
-                  <Bubble
-                    placement="right"
+                <div 
+                  className="frog-gpt-user-message"
+                  data-message-id={message.id}
+                  data-role="user"
+                  style={{ display: 'flex', gap: '12px', width: '100%', justifyContent: 'flex-end', alignItems: 'flex-start' }}
+                >
+                  <div
+                    className="frog-gpt-user-message-content"
+                    data-content-length={message.content.length}
                     style={{
                       maxWidth: '70%',
+                      flex: '0 1 auto',
+                      background: 'rgba(96, 165, 250, 0.2)',
+                      borderRadius: '12px',
+                      padding: '12px 16px',
+                      color: '#e2e8f0',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      lineHeight: '1.6',
+                      fontSize: '14px',
+                      minHeight: '20px',
                     }}
                   >
-                    <div style={{ color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>
-                      {message.content}
-                    </div>
-                  </Bubble>
+                    {message.content}
+                  </div>
                   <Avatar
                     icon={<UserOutlined />}
                     style={{ backgroundColor: '#60a5fa', flexShrink: 0 }}
                   />
                 </div>
               ) : (
-                <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
+                <div 
+                  className="frog-gpt-assistant-message"
+                  data-message-id={message.id}
+                  data-role="assistant"
+                  style={{ display: 'flex', gap: '12px', width: '100%', alignItems: 'flex-start' }}
+                >
                   <Avatar
                     icon={<RobotOutlined />}
                     style={{ backgroundColor: '#00d1b2', flexShrink: 0 }}
                   />
-                  <Bubble
-                    placement="left"
+                  <div
+                    className="frog-gpt-message-content"
+                    data-content-length={message.content.length}
                     style={{
                       maxWidth: '70%',
+                      flex: '0 1 auto',
+                      background: 'rgba(255, 255, 255, 0.12)',
+                      borderRadius: '12px',
+                      padding: '12px 16px',
+                      color: '#e2e8f0',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      lineHeight: '1.6',
+                      fontSize: '14px',
+                      minHeight: '20px',
                     }}
                   >
-                    {/* 使用 react-markdown 渲染 markdown 内容 */}
-                    <div style={{ color: '#e2e8f0' }}>
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeRaw, rehypeSanitize]}
-                        components={{
-                          code: ({ node, inline, className, children, ...props }: any) => {
-                            const match = /language-(\w+)/.exec(className || '')
-                            const isJson = match && match[1] === 'json'
-                            return !inline && isJson ? (
-                              <div style={{ 
-                                background: '#0f172a', 
-                                padding: '12px', 
-                                borderRadius: '6px',
-                                marginTop: '8px',
-                                overflow: 'auto',
-                              }}>
-                                <pre style={{ margin: 0, color: '#e2e8f0' }}>
-                                  <code {...props} className={className}>
-                                    {children}
-                                  </code>
-                                </pre>
-                              </div>
-                            ) : (
-                              <code className={className} {...props} style={{ 
-                                background: '#1e293b', 
-                                padding: '2px 6px', 
-                                borderRadius: '3px',
-                                color: '#60a5fa',
-                              }}>
-                                {children}
-                              </code>
-                            )
-                          },
-                          p: ({ children }: any) => <p style={{ margin: '4px 0' }}>{children}</p>,
-                          h1: ({ children }: any) => <h1 style={{ color: '#e2e8f0', fontSize: '18px', margin: '8px 0' }}>{children}</h1>,
-                          h2: ({ children }: any) => <h2 style={{ color: '#e2e8f0', fontSize: '16px', margin: '6px 0' }}>{children}</h2>,
-                          h3: ({ children }: any) => <h3 style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0' }}>{children}</h3>,
-                          ul: ({ children }: any) => <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>{children}</ul>,
-                          li: ({ children }: any) => <li style={{ margin: '2px 0', color: '#e2e8f0' }}>{children}</li>,
-                        }}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
-                    </div>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeRaw, rehypeSanitize]}
+                      components={{
+                        code: ({ node, inline, className, children, ...props }: any) => {
+                          const match = /language-(\w+)/.exec(className || '')
+                          const isJson = match && match[1] === 'json'
+                          return !inline && isJson ? (
+                            <div style={{ 
+                              background: '#0f172a', 
+                              padding: '12px', 
+                              borderRadius: '6px',
+                              marginTop: '8px',
+                              overflow: 'auto',
+                            }}>
+                              <pre style={{ margin: 0, color: '#e2e8f0' }}>
+                                <code {...props} className={className}>
+                                  {children}
+                                </code>
+                              </pre>
+                            </div>
+                          ) : (
+                            <code className={className} {...props} style={{ 
+                              background: '#1e293b', 
+                              padding: '2px 6px', 
+                              borderRadius: '3px',
+                              color: '#60a5fa',
+                            }}>
+                              {children}
+                            </code>
+                          )
+                        },
+                        p: ({ children }: any) => <p style={{ margin: '4px 0', color: '#e2e8f0' }}>{children}</p>,
+                        h1: ({ children }: any) => <h1 style={{ color: '#e2e8f0', fontSize: '18px', margin: '8px 0' }}>{children}</h1>,
+                        h2: ({ children }: any) => <h2 style={{ color: '#e2e8f0', fontSize: '16px', margin: '6px 0' }}>{children}</h2>,
+                        h3: ({ children }: any) => <h3 style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0' }}>{children}</h3>,
+                        ul: ({ children }: any) => <ul style={{ margin: '4px 0', paddingLeft: '20px', color: '#e2e8f0' }}>{children}</ul>,
+                        li: ({ children }: any) => <li style={{ margin: '2px 0', color: '#e2e8f0' }}>{children}</li>,
+                        div: ({ children, ...props }: any) => <div style={{ color: '#e2e8f0' }} {...props}>{children}</div>,
+                        span: ({ children, ...props }: any) => <span style={{ color: '#e2e8f0' }} {...props}>{children}</span>,
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
                     {message.thinking && (
                       <div style={{ marginTop: '8px', padding: '8px', background: '#1e293b', borderRadius: '4px' }}>
                         <Text style={{ color: '#94a3b8', fontSize: '12px' }}>
@@ -390,25 +495,32 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
                         ))}
                       </div>
                     )}
-                  </Bubble>
+                  </div>
                 </div>
               )}
             </div>
-          ))}
+            )
+          }) : (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+              暂无消息
+            </div>
+          )}
           {loading && (
             <div style={{ display: 'flex', gap: '12px' }}>
               <Avatar
                 icon={<RobotOutlined />}
                 style={{ backgroundColor: '#00d1b2', flexShrink: 0 }}
               />
-              <Bubble placement="left">
-                <Spin size="small" />
-                <Text style={{ color: '#94a3b8', marginLeft: '8px' }}>正在思考...</Text>
+              <Bubble placement="start">
+                <Space>
+                  <Spin size="small" />
+                  <Text style={{ color: '#94a3b8' }}>正在思考...</Text>
+                </Space>
               </Bubble>
             </div>
           )}
           <div ref={messagesEndRef} />
-        </Space>
+        </div>
       </div>
 
       {/* 底部提示词 + 输入区域 */}

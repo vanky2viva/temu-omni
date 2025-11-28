@@ -232,7 +232,73 @@ export const frogGptApi = {
     max_tokens?: number
     include_system_data?: boolean
     data_summary_days?: number
+    shop_id?: number
   }) => api.post('/frog-gpt/chat', data),
+  
+  // 发送流式聊天消息
+  chatStream: async function* (data: {
+    messages: Array<{ role: string; content: string }>
+    model?: string
+    temperature?: number
+    max_tokens?: number
+    include_system_data?: boolean
+    data_summary_days?: number
+    shop_id?: number
+  }) {
+    const token = localStorage.getItem('token')
+    const response = await fetch(`${api.defaults.baseURL}/frog-gpt/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : '',
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: '请求失败' }))
+      throw new Error(error.detail || '请求失败')
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('响应体不可读')
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        while (true) {
+          const lineEnd = buffer.indexOf('\n')
+          if (lineEnd === -1) break
+
+          const line = buffer.slice(0, lineEnd).trim()
+          buffer = buffer.slice(lineEnd + 1)
+
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') return
+
+            try {
+              const parsed = JSON.parse(data)
+              yield parsed
+            } catch (e) {
+              // 忽略无效的 JSON
+            }
+          }
+        }
+      }
+    } finally {
+      reader.cancel()
+    }
+  },
   
   // 发送带文件的聊天消息
   chatWithFiles: (formData: FormData) => 
@@ -262,6 +328,17 @@ export const frogGptApi = {
   // 更新OpenRouter API配置
   updateApiConfig: (apiKey: string) => 
     api.put('/frog-gpt/api-config', { api_key: apiKey }),
+  
+  // 更新所有供应商的API Key
+  updateAllProvidersApiKeys: (keys: { openrouter?: string; openai?: string; anthropic?: string; gemini?: string }) =>
+    api.put('/frog-gpt/api-config/all-providers', keys),
+  
+  // 验证API Key是否有效
+  verifyApiKey: (provider: string = 'openrouter') =>
+    api.get('/frog-gpt/api-config/verify', { params: { provider } }),
+  // 测试连接，验证是否能正确获得回复
+  testConnection: (model?: string) =>
+    api.post('/frog-gpt/test-connection', { model }),
 }
 
 // 系统AI配置API

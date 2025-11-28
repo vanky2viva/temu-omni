@@ -21,6 +21,7 @@ import {
   Col,
   Divider,
   Segmented,
+  Radio,
 } from 'antd'
 import {
   SaveOutlined,
@@ -44,12 +45,13 @@ const FrogGPTV2: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState<string>('auto')
   const [temperature, setTemperature] = useState(0.7)
   const [includeSystemData, setIncludeSystemData] = useState(true)
-  const [dataSummaryDays, setDataSummaryDays] = useState(7)
   const [selectedShopId, setSelectedShopId] = useState<number | undefined>()
   const [decisionData, setDecisionData] = useState<DecisionData | null>(null)
   const [configModalVisible, setConfigModalVisible] = useState(false)
   const [modelSearchValue, setModelSearchValue] = useState<string | null>(null)
   const [externalMessage, setExternalMessage] = useState<string | null>(null)
+  const [connectionType, setConnectionType] = useState<'openrouter' | 'direct'>('openrouter')
+  const [directProvider, setDirectProvider] = useState<string>('openai')
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({
     openrouter: '',
     openai: '',
@@ -57,11 +59,12 @@ const FrogGPTV2: React.FC = () => {
     gemini: '',
   })
 
-  // 获取可用模型列表
+  // 获取可用模型列表（仅当使用 OpenRouter 时）
   const { data: modelsData } = useQuery({
-    queryKey: ['frog-gpt-models'],
+    queryKey: ['frog-gpt-models', connectionType],
     queryFn: frogGptApi.getModels,
-    staleTime: 5 * 60 * 1000,
+    enabled: connectionType === 'openrouter', // 只在选择 OpenRouter 时获取模型列表
+    staleTime: 5 * 60 * 1000, // 5分钟缓存
   })
 
   // 获取店铺列表
@@ -70,55 +73,102 @@ const FrogGPTV2: React.FC = () => {
     queryFn: shopApi.getShops,
   })
 
-  // 获取数据摘要（用于指标展示）
+  // 获取数据摘要（用于指标展示）- 全部时间数据
   const { data: dataSummary } = useQuery({
-    queryKey: ['frog-gpt-data-summary', dataSummaryDays],
-    queryFn: () => frogGptApi.getDataSummary(dataSummaryDays),
+    queryKey: ['frog-gpt-data-summary', selectedShopId],
+    queryFn: () => frogGptApi.getDataSummary(undefined), // 不传days参数，获取全部数据
     enabled: includeSystemData,
   })
 
-  // 获取每日趋势数据
+  // 获取每日趋势数据 - 全部时间数据
   const { data: dailyStats } = useQuery({
-    queryKey: ['daily-statistics', dataSummaryDays, selectedShopId],
+    queryKey: ['daily-statistics', selectedShopId],
     queryFn: () => {
-      const endDate = new Date()
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - dataSummaryDays)
-      
       return statisticsApi.getDaily({
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
         shop_ids: selectedShopId ? [selectedShopId] : undefined,
+        // 不传 start_date 和 end_date，获取全部数据
       })
     },
     enabled: includeSystemData,
   })
 
-  // 获取SKU销售排行
+  // 获取SKU销售排行 - 全部时间数据
   const { data: skuRankingData } = useQuery({
-    queryKey: ['sku-sales-ranking', dataSummaryDays, selectedShopId],
+    queryKey: ['sku-sales-ranking', selectedShopId],
     queryFn: () => {
-      const endDate = new Date()
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - dataSummaryDays)
-      
       return analyticsApi.getSkuSalesRanking({
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
         shop_ids: selectedShopId ? [selectedShopId] : undefined,
         limit: 10,
+        // 不传 start_date 和 end_date，获取全部数据
       })
     },
     enabled: includeSystemData,
   })
 
-  // 获取OpenRouter API配置
+  // 获取OpenRouter API配置并验证
   const { data: apiConfig } = useQuery({
     queryKey: ['frog-gpt-api-config'],
     queryFn: frogGptApi.getApiConfig,
   })
+  
+  // 验证 API Key 配置状态
+  const [apiKeyStatus, setApiKeyStatus] = useState<{
+    configured: boolean
+    valid: boolean
+    message: string
+  }>({ configured: false, valid: false, message: '' })
+  
+  // 检查 API Key 配置状态
+  useEffect(() => {
+    const checkApiKeyStatus = async () => {
+      try {
+        const backendKeys = await frogGptApi.getAllProvidersApiKeys() as any
+        const hasOpenRouterKey = backendKeys?.openrouter?.has_api_key || backendKeys?.openrouter?.api_key
+        
+        if (hasOpenRouterKey) {
+          try {
+            const verifyResult = await frogGptApi.verifyApiKey('openrouter') as any
+            if (verifyResult?.valid) {
+              setApiKeyStatus({
+                configured: true,
+                valid: true,
+                message: `✅ API Key 已配置并验证成功${verifyResult.models_count ? `，可访问 ${verifyResult.models_count} 个模型` : ''}`
+              })
+            } else {
+              setApiKeyStatus({
+                configured: true,
+                valid: false,
+                message: `⚠️ API Key 已配置但验证失败: ${verifyResult?.message || '未知错误'}`
+              })
+            }
+          } catch (error: any) {
+            setApiKeyStatus({
+              configured: true,
+              valid: false,
+              message: `⚠️ API Key 验证失败: ${error.response?.data?.detail || error.message || '未知错误'}`
+            })
+          }
+        } else {
+          setApiKeyStatus({
+            configured: false,
+            valid: false,
+            message: '❌ 未配置 OpenRouter API Key，请在高级设置中配置'
+          })
+        }
+      } catch (error) {
+        console.error('检查 API Key 状态失败:', error)
+        setApiKeyStatus({
+          configured: false,
+          valid: false,
+          message: '无法检查 API Key 状态'
+        })
+      }
+    }
+    
+    checkApiKeyStatus()
+  }, [])
 
-  // 处理模型选项
+  // 处理模型选项（从 OpenRouter API 获取）
   const modelOptions = useMemo(() => {
     const options: any[] = [
       {
@@ -133,7 +183,8 @@ const FrogGPTV2: React.FC = () => {
       },
     ]
 
-    if (modelsData?.models) {
+    // 从 OpenRouter API 获取的模型列表
+    if (modelsData?.models && Array.isArray(modelsData.models)) {
       modelsData.models.forEach((model: any) => {
         const modelName = model.name || model.id || ''
         const modelId = model.id || ''
@@ -142,6 +193,7 @@ const FrogGPTV2: React.FC = () => {
           ? description.substring(0, 80) + '...' 
           : description
         
+        // 格式化价格信息
         let priceText = ''
         if (model.pricing?.prompt) {
           const pricePerM = model.pricing.prompt * 1000000
@@ -150,10 +202,15 @@ const FrogGPTV2: React.FC = () => {
             : `$${pricePerM.toFixed(2)}/1M`
         }
         
+        // 构建搜索关键词（支持模糊匹配）
+        // 包括：模型名称、ID、描述、ID的各个部分（如 openai/gpt-4 可以匹配 "openai"、"gpt-4"、"gpt"、"4"）
+        const idParts = modelId.split('/').filter(Boolean)
         const searchKeywords = [
-          modelName, modelId, description,
-          modelId.split('/').pop(),
-          modelId.split('/')[0],
+          modelName,
+          modelId,
+          description,
+          ...idParts, // 添加 ID 的各个部分
+          ...idParts.flatMap(part => part.split('-')), // 将 "gpt-4" 拆分为 ["gpt", "4"]
         ].filter(Boolean).join(' ').toLowerCase()
         
         options.push({
@@ -167,6 +224,11 @@ const FrogGPTV2: React.FC = () => {
                   {model.context_length && (
                     <div style={{ marginTop: '4px', fontSize: '12px', color: '#94a3b8' }}>
                       上下文长度: {model.context_length.toLocaleString()} tokens
+                    </div>
+                  )}
+                  {model.pricing && (
+                    <div style={{ marginTop: '4px', fontSize: '12px', color: '#94a3b8' }}>
+                      价格: {priceText || '免费'}
                     </div>
                   )}
                 </div>
@@ -199,6 +261,7 @@ const FrogGPTV2: React.FC = () => {
     return options
   }, [modelsData])
 
+  // 模糊匹配过滤模型选项
   const filteredModelOptions = useMemo(() => {
     if (modelSearchValue === null || !modelSearchValue) {
       return modelOptions
@@ -207,10 +270,15 @@ const FrogGPTV2: React.FC = () => {
     if (!searchText) {
       return modelOptions
     }
+    
+    // 支持多关键词搜索，每个关键词都要匹配
     const searchWords = searchText.split(/\s+/).filter(word => word.length > 0)
-    return modelOptions.filter(option => 
-      searchWords.every(word => option?.searchText?.includes(word) || false)
-    )
+    
+    return modelOptions.filter(option => {
+      if (!option?.searchText) return false
+      // 所有搜索词都必须出现在 searchText 中
+      return searchWords.every(word => option.searchText.includes(word))
+    })
   }, [modelOptions, modelSearchValue])
 
   const selectedModelDisplay = useMemo(() => {
@@ -229,13 +297,13 @@ const FrogGPTV2: React.FC = () => {
     
     return [
       {
-        label: `${dataSummaryDays}日 GMV`,
+        label: `累计 GMV`,
         value: `¥${((dataSummary.overview?.total_gmv || 0) / 1000).toFixed(1)}k`,
         trend: 'up',
         trendValue: '+12.3%',
       },
       {
-        label: `${dataSummaryDays}日订单数`,
+        label: `累计订单数`,
         value: (dataSummary.overview?.total_orders || 0).toLocaleString(),
         trend: 'up',
         trendValue: '+8.5%',
@@ -251,7 +319,7 @@ const FrogGPTV2: React.FC = () => {
         value: `¥${((dataSummary.overview?.total_gmv || 0) / (dataSummary.overview?.total_orders || 1)).toFixed(2)}`,
       },
     ]
-  }, [dataSummary, dataSummaryDays])
+  }, [dataSummary])
 
   // 处理趋势数据（从API获取）
   const trendData: TrendData[] = useMemo(() => {
@@ -325,7 +393,6 @@ const FrogGPTV2: React.FC = () => {
         }
         if (config.temperature !== undefined) setTemperature(config.temperature)
         if (config.includeSystemData !== undefined) setIncludeSystemData(config.includeSystemData)
-        if (config.dataSummaryDays) setDataSummaryDays(config.dataSummaryDays)
         if (config.shopId) setSelectedShopId(config.shopId)
       } catch (error) {
         console.error('加载配置失败:', error)
@@ -345,24 +412,112 @@ const FrogGPTV2: React.FC = () => {
           anthropic: parsed.anthropic || '',
           gemini: parsed.gemini || '',
         })
+        // 恢复连接类型和直接接入的供应商
+        if (parsed.connectionType) {
+          setConnectionType(parsed.connectionType)
+        }
+        if (parsed.directProvider) {
+          setDirectProvider(parsed.directProvider)
+        }
       } catch (error) {
         console.error('加载API Key失败:', error)
       }
     }
+    
+    // 从后端加载已保存的API Key（如果本地没有）
+    const loadApiKeysFromBackend = async () => {
+      try {
+        const backendKeys = await frogGptApi.getAllProvidersApiKeys()
+        setApiKeys(prev => ({
+          openrouter: prev.openrouter || (backendKeys?.openrouter?.api_key || ''),
+          openai: prev.openai || (backendKeys?.openai?.api_key || ''),
+          anthropic: prev.anthropic || (backendKeys?.anthropic?.api_key || ''),
+          gemini: prev.gemini || (backendKeys?.gemini?.api_key || ''),
+        }))
+        
+        // 如果后端有 OpenRouter API Key，验证其有效性
+        const openrouterKey = backendKeys?.openrouter?.api_key
+        if (openrouterKey) {
+          try {
+            const verifyResult = await frogGptApi.verifyApiKey('openrouter')
+            if (verifyResult?.valid) {
+              console.log(`✅ API Key 验证成功！${verifyResult.models_count ? `可访问 ${verifyResult.models_count} 个模型` : ''}`)
+            } else {
+              console.warn(`⚠️ API Key 验证失败: ${verifyResult?.message || '未知错误'}`)
+            }
+          } catch (error) {
+            console.error('验证 API Key 失败:', error)
+          }
+        }
+      } catch (error) {
+        console.error('从后端加载API Key失败:', error)
+      }
+    }
+    loadApiKeysFromBackend()
   }, [])
 
   // 保存配置（包括模型选择）
-  const handleSaveConfig = () => {
+  const handleSaveConfig = async () => {
+    try {
+      // 保存到本地存储
     const config = {
       model: selectedModel,
       temperature,
       includeSystemData,
-      dataSummaryDays,
       shopId: selectedShopId,
     }
     localStorage.setItem('frog-gpt-config', JSON.stringify(config))
-    localStorage.setItem('frog-gpt-api-keys', JSON.stringify(apiKeys))
-    message.success('配置已保存')
+      localStorage.setItem('frog-gpt-api-keys', JSON.stringify({
+        ...apiKeys,
+        connectionType,
+        directProvider,
+      }))
+      
+      // 保存API Key到后端数据库
+      const keysToSave: any = {}
+      if (connectionType === 'openrouter' && apiKeys.openrouter) {
+        keysToSave.openrouter = apiKeys.openrouter
+      } else if (connectionType === 'direct') {
+        if (directProvider === 'openai' && apiKeys.openai) {
+          keysToSave.openai = apiKeys.openai
+        } else if (directProvider === 'anthropic' && apiKeys.anthropic) {
+          keysToSave.anthropic = apiKeys.anthropic
+        } else if (directProvider === 'gemini' && apiKeys.gemini) {
+          keysToSave.gemini = apiKeys.gemini
+        }
+      }
+      
+      // 如果有API Key需要保存，调用后端API
+      if (Object.keys(keysToSave).length > 0) {
+        const result = await frogGptApi.updateAllProvidersApiKeys(keysToSave)
+        if (result?.verified) {
+          message.success(`✅ API Key 已保存并验证成功！${result.models_count ? `可访问 ${result.models_count} 个模型` : ''}`)
+        } else if (result?.message) {
+          message.warning(`⚠️ ${result.message}`)
+        } else {
+          message.success('配置已保存')
+        }
+        
+        // 额外验证 API Key（如果保存的是 OpenRouter）
+        if (keysToSave.openrouter) {
+          try {
+            const verifyResult = await frogGptApi.verifyApiKey('openrouter')
+            if (verifyResult?.valid) {
+              console.log(`✅ API Key 验证成功：${verifyResult.message || 'API Key 有效'}`)
+            } else {
+              console.warn(`⚠️ API Key 验证失败：${verifyResult?.message || '未知错误'}`)
+            }
+          } catch (error) {
+            console.error('验证 API Key 失败:', error)
+          }
+        }
+      } else {
+        message.success('配置已保存')
+      }
+    } catch (error: any) {
+      console.error('保存配置失败:', error)
+      message.error(`保存配置失败: ${error.response?.data?.detail || error.message || '未知错误'}`)
+    }
   }
 
   // 重置默认配置
@@ -370,9 +525,10 @@ const FrogGPTV2: React.FC = () => {
     setSelectedModel('auto')
     setTemperature(0.7)
     setIncludeSystemData(true)
-    setDataSummaryDays(7)
     setSelectedShopId(undefined)
     setModelSearchValue(null)
+    setConnectionType('openrouter')
+    setDirectProvider('openai')
     setApiKeys({
       openrouter: '',
       openai: '',
@@ -407,38 +563,38 @@ const FrogGPTV2: React.FC = () => {
       {/* 顶部英雄区 */}
       <Card
         className="frog-gpt-hero-card frog-gpt-floating"
-        styles={{ body: { padding: '18px 20px', position: 'relative' } }}
+        styles={{ body: { padding: '10px 16px', position: 'relative' } }}
         variant="borderless"
       >
-        <Row gutter={[16, 12]} align="middle" wrap>
+        <Row gutter={[12, 8]} align="middle" wrap>
           <Col flex="auto">
             <Welcome
-              icon={<RobotOutlined style={{ color: '#60a5fa', fontSize: '22px' }} />}
+              icon={<RobotOutlined style={{ color: '#60a5fa', fontSize: '18px' }} />}
               title={
-                <Space size="middle">
-                  <Text style={{ color: '#e2e8f0', fontSize: '18px', fontWeight: 600 }}>
+                <Space size="small">
+                  <Text style={{ color: '#e2e8f0', fontSize: '16px', fontWeight: 600 }}>
                     FrogGPT 2.0 · 智能运营驾驶舱
                   </Text>
-                  <Tag color="blue" className="frog-gpt-tag" style={{ margin: 0 }}>
+                  <Tag color="blue" className="frog-gpt-tag" style={{ margin: 0, fontSize: '12px', padding: '2px 8px' }}>
                     OpenRouter Ready
                   </Tag>
                 </Space>
               }
-              description={
-                <Space size="small" wrap>
-                  <Text className="frog-gpt-soft-text">更灵动的动画、更友好的互动体验</Text>
-                  <Divider type="vertical" style={{ borderColor: '#1f2937' }} />
-                  <Text className="frog-gpt-soft-text">左侧数据洞察 · 右侧实时对话</Text>
-                </Space>
-              }
+              description={null}
               extra={
                 <Space size="small" wrap>
-                  <span className="frog-gpt-badge success">✅ 已接入 OpenRouter API Key</span>
-                  <span className="frog-gpt-badge warn">📅 数据窗口 {dataSummaryDays} 天</span>
+                  <span className={`frog-gpt-badge ${apiKeyStatus.valid ? 'success' : apiKeyStatus.configured ? 'warn' : ''}`}>
+                    {apiKeyStatus.configured 
+                      ? (apiKeyStatus.valid ? '✅ OpenRouter API Key 已配置并验证' : '⚠️ OpenRouter API Key 配置异常')
+                      : '❌ 未配置 OpenRouter API Key'}
+                  </span>
+                  <span className="frog-gpt-badge warn">📅 数据范围: 全部时间</span>
                 </Space>
               }
             />
-            <Space wrap size="small" style={{ marginTop: 12 }}>
+          </Col>
+          <Col xs={24} md="auto">
+            <Space size="small" align="center" style={{ flexWrap: 'nowrap' }}>
               <span className="frog-gpt-badge">
                 🤖 模型: {selectedModelDisplay || selectedModel || 'AUTO'}
               </span>
@@ -448,35 +604,48 @@ const FrogGPTV2: React.FC = () => {
               <span className="frog-gpt-badge success">
                 🛰️ 数据源: {includeSystemData ? '包含系统数据' : '对话模式'}
               </span>
-            </Space>
-          </Col>
-          <Col xs={24} md="auto">
-            <Space direction="vertical" size="small" align="end">
-              <Space wrap>
+              <Tooltip title="测试 OpenRouter API 连接，验证是否能正确获得回复">
+                <Button
+                  type="primary"
+                  size="small"
+                  onClick={async () => {
+                    try {
+                      const hide = message.loading('正在测试连接...', 0)
+                      const result = await frogGptApi.testConnection(selectedModel || 'auto') as any
+                      hide()
+                      if (result.success) {
+                        message.success(`✅ 连接测试成功！使用的模型: ${result.model_used || selectedModel || 'auto'}`)
+                        if (result.response_content) {
+                          console.log('测试响应内容:', result.response_content)
+                        }
+                      } else {
+                        message.error(`❌ 连接测试失败: ${result.message}`)
+                      }
+                    } catch (error: any) {
+                      message.destroy()
+                      const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message || '未知错误'
+                      message.error(`❌ 连接测试失败: ${errorMsg}`)
+                      console.error('测试连接错误:', error)
+                    }
+                  }}
+                  style={{ marginLeft: '8px' }}
+                >
+                  🔗 测试连接
+                </Button>
+              </Tooltip>
                 <Select
                   allowClear
                   value={selectedShopId}
                   onChange={(value) => setSelectedShopId(value ?? undefined)}
                   placeholder="全部店铺"
                   style={{ minWidth: 200 }}
+                showSearch
+                optionFilterProp="label"
                   options={(shops || []).map((shop: any) => ({
-                    label: shop.name,
+                  label: shop.name || shop.shop_name || `店铺 ${shop.id}`,
                     value: shop.id,
                   }))}
                 />
-                <Segmented
-                  size="middle"
-                  value={dataSummaryDays}
-                  onChange={(value) => setDataSummaryDays(value as number)}
-                  options={[
-                    { label: '近3天', value: 3 },
-                    { label: '近7天', value: 7 },
-                    { label: '近14天', value: 14 },
-                    { label: '30天', value: 30 },
-                  ]}
-                />
-              </Space>
-              <Space wrap align="center">
                 <Segmented
                   size="middle"
                   value={temperature}
@@ -518,7 +687,6 @@ const FrogGPTV2: React.FC = () => {
                 >
                   重置
                 </Button>
-              </Space>
             </Space>
           </Col>
         </Row>
@@ -546,7 +714,7 @@ const FrogGPTV2: React.FC = () => {
             model={selectedModel}
             temperature={temperature}
             includeSystemData={includeSystemData}
-            dataSummaryDays={dataSummaryDays}
+            dataSummaryDays={undefined}
             onDecisionParsed={handleDecisionParsed}
             externalMessage={externalMessage}
             onExternalMessageSent={handleExternalMessageSent}
@@ -580,52 +748,149 @@ const FrogGPTV2: React.FC = () => {
           footer: { background: '#1e293b', borderTop: '1px solid #334155' },
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* 模型选择 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* 第一步：选择接入方式 */}
           <div>
-            <Text strong style={{ color: '#e2e8f0', display: 'block', marginBottom: '8px' }}>
-              选择 AI 模型
+            <Text strong style={{ color: '#e2e8f0', display: 'block', marginBottom: '12px', fontSize: '16px' }}>
+              步骤 1：选择接入方式
             </Text>
-            <AutoComplete
-              value={modelSearchValue !== null ? modelSearchValue : (selectedModelDisplay || selectedModel || '')}
-              onChange={(value) => {
-                // 允许用户输入任何内容，包括空字符串
-                setModelSearchValue(value)
+            <Radio.Group
+              value={connectionType}
+              onChange={(e) => {
+                setConnectionType(e.target.value)
+                // 切换接入方式时，如果使用 OpenRouter，默认选择 auto 模型
+                if (e.target.value === 'openrouter') {
+                  setSelectedModel('auto')
+                }
               }}
-              onSearch={(value) => {
-                // 搜索时更新搜索值，允许空字符串以便用户清空
-                setModelSearchValue(value)
-              }}
+              style={{ width: '100%' }}
+            >
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                <Radio value="openrouter" style={{ color: '#e2e8f0' }}>
+                  <div>
+                    <div style={{ fontWeight: 500, marginBottom: '4px' }}>OpenRouter（推荐）</div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                      一个 API Key 即可访问多种模型，包括 OpenAI、Anthropic、Google 等
+                    </div>
+                  </div>
+                </Radio>
+                <Radio value="direct" style={{ color: '#e2e8f0' }}>
+                  <div>
+                    <div style={{ fontWeight: 500, marginBottom: '4px' }}>直接接入</div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                      直接使用特定供应商的 API，需要各自的 API Key
+                    </div>
+                  </div>
+                </Radio>
+              </Space>
+            </Radio.Group>
+          </div>
+
+          {/* 第二步：配置 API Key */}
+          <div>
+            <Text strong style={{ color: '#e2e8f0', display: 'block', marginBottom: '12px', fontSize: '16px' }}>
+              步骤 2：配置 API Key
+            </Text>
+            {connectionType === 'openrouter' ? (
+              <div>
+                <Input.Password
+                  value={apiKeys.openrouter}
+                  onChange={(e) => setApiKeys(prev => ({ ...prev, openrouter: e.target.value }))}
+                  placeholder="请输入 OpenRouter API Key"
+                  allowClear
+                  style={{ width: '100%' }}
+                />
+                <Text type="secondary" style={{ color: '#94a3b8', fontSize: '12px', marginTop: '8px', display: 'block' }}>
+                  在 <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>OpenRouter.ai</a> 注册并获取 API Key
+                </Text>
+              </div>
+            ) : (
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                <div>
+                  <Text style={{ color: '#e2e8f0', display: 'block', marginBottom: '8px' }}>
+                    选择供应商
+                  </Text>
+                  <Select
+                    value={directProvider}
+                    onChange={setDirectProvider}
+                    style={{ width: '100%' }}
+                    options={[
+                      { label: 'OpenAI', value: 'openai' },
+                      { label: 'Anthropic (Claude)', value: 'anthropic' },
+                      { label: 'Google (Gemini)', value: 'gemini' },
+                    ]}
+                  />
+                </div>
+                <div>
+                  <Text style={{ color: '#e2e8f0', display: 'block', marginBottom: '8px' }}>
+                    API Key
+                  </Text>
+                  {directProvider === 'openai' && (
+                    <Input.Password
+                      value={apiKeys.openai}
+                      onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}
+                      placeholder="请输入 OpenAI API Key"
+                      allowClear
+                      style={{ width: '100%' }}
+                    />
+                  )}
+                  {directProvider === 'anthropic' && (
+                    <Input.Password
+                      value={apiKeys.anthropic}
+                      onChange={(e) => setApiKeys(prev => ({ ...prev, anthropic: e.target.value }))}
+                      placeholder="请输入 Anthropic API Key"
+                      allowClear
+                      style={{ width: '100%' }}
+                    />
+                  )}
+                  {directProvider === 'gemini' && (
+                    <Input.Password
+                      value={apiKeys.gemini}
+                      onChange={(e) => setApiKeys(prev => ({ ...prev, gemini: e.target.value }))}
+                      placeholder="请输入 Google Gemini API Key"
+                      allowClear
+                      style={{ width: '100%' }}
+                    />
+                  )}
+                </div>
+              </Space>
+            )}
+          </div>
+
+          {/* 第三步：选择模型 */}
+          <div>
+            <Text strong style={{ color: '#e2e8f0', display: 'block', marginBottom: '12px', fontSize: '16px' }}>
+              步骤 3：选择 AI 模型
+            </Text>
+            {connectionType === 'openrouter' ? (
+              <div>
+                <AutoComplete
+                  value={modelSearchValue !== null ? modelSearchValue : (selectedModelDisplay || selectedModel || '')}
+                  onChange={(value) => setModelSearchValue(value)}
+                  onSearch={(value) => setModelSearchValue(value)}
               options={filteredModelOptions}
               style={{ width: '100%' }}
               placeholder="选择或搜索AI模型（支持AUTO自动选择）"
               onSelect={(value) => {
-                // 选择模型后，更新选中值并清空搜索状态
                 setSelectedModel(value)
                 setModelSearchValue(null)
               }}
               onFocus={() => {
-                // 获得焦点时，如果当前显示的是选中的模型，清空以便用户输入
                 if (modelSearchValue === null && selectedModel) {
                   setModelSearchValue('')
                 }
               }}
               onBlur={() => {
-                // 失去焦点时，如果搜索值为空或不匹配，恢复显示选中的模型
                 if (modelSearchValue === '') {
-                  // 如果用户清空了内容，恢复显示已选模型
                   setModelSearchValue(null)
                 } else if (modelSearchValue && modelSearchValue !== selectedModel) {
-                  // 如果输入了内容但不匹配任何模型，检查是否是有效的模型ID
                   const match = modelOptions.find(opt => 
                     opt.value === modelSearchValue || 
                     opt.searchText?.includes(modelSearchValue.toLowerCase())
                   )
                   if (!match) {
-                    // 没有匹配，恢复显示已选模型
                     setModelSearchValue(null)
                   } else {
-                    // 有匹配，选择该模型
                     setSelectedModel(match.value)
                     setModelSearchValue(null)
                   }
@@ -645,14 +910,48 @@ const FrogGPTV2: React.FC = () => {
                 setModelSearchValue(null)
               }}
             />
-            <Text type="secondary" style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-              选择 AI 模型用于对话。AUTO 选项将自动选择最佳模型。
+                <Text type="secondary" style={{ color: '#94a3b8', fontSize: '12px', marginTop: '8px', display: 'block' }}>
+                  选择 AI 模型用于对话。AUTO 选项将自动选择最佳模型。OpenRouter 支持多种模型。
+                </Text>
+              </div>
+            ) : (
+              <div>
+                <Select
+                  value={selectedModel}
+                  onChange={setSelectedModel}
+                  style={{ width: '100%' }}
+                  placeholder="选择模型"
+                  options={
+                    directProvider === 'openai' ? [
+                      { label: 'GPT-4 Turbo', value: 'openai/gpt-4-turbo' },
+                      { label: 'GPT-4', value: 'openai/gpt-4' },
+                      { label: 'GPT-3.5 Turbo', value: 'openai/gpt-3.5-turbo' },
+                    ] : directProvider === 'anthropic' ? [
+                      { label: 'Claude 3.5 Sonnet', value: 'anthropic/claude-3.5-sonnet' },
+                      { label: 'Claude 3 Opus', value: 'anthropic/claude-3-opus' },
+                      { label: 'Claude 3 Sonnet', value: 'anthropic/claude-3-sonnet' },
+                    ] : [
+                      { label: 'Gemini Pro', value: 'google/gemini-pro' },
+                      { label: 'Gemini Pro Vision', value: 'google/gemini-pro-vision' },
+                    ]
+                  }
+                />
+                <Text type="secondary" style={{ color: '#94a3b8', fontSize: '12px', marginTop: '8px', display: 'block' }}>
+                  选择 {directProvider === 'openai' ? 'OpenAI' : directProvider === 'anthropic' ? 'Anthropic' : 'Google'} 的模型
             </Text>
+              </div>
+            )}
           </div>
 
-          {/* 温度设置 */}
+          {/* 第四步：其他设置 */}
           <div>
-            <Text strong style={{ color: '#e2e8f0', display: 'block', marginBottom: '8px' }}>
+            <Text strong style={{ color: '#e2e8f0', display: 'block', marginBottom: '12px', fontSize: '16px' }}>
+              步骤 4：其他设置
+            </Text>
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              {/* 温度设置 */}
+              <div>
+                <Text style={{ color: '#e2e8f0', display: 'block', marginBottom: '8px' }}>
               温度参数
             </Text>
             <Select
@@ -675,11 +974,7 @@ const FrogGPTV2: React.FC = () => {
 
           {/* 数据设置 */}
           <div>
-            <Text strong style={{ color: '#e2e8f0', display: 'block', marginBottom: '8px' }}>
-              数据设置
-            </Text>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                 <Text style={{ color: '#e2e8f0' }}>包含系统数据</Text>
                 <Switch
                   checked={includeSystemData}
@@ -688,60 +983,11 @@ const FrogGPTV2: React.FC = () => {
                   unCheckedChildren="否"
                 />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: '#e2e8f0' }}>数据天数</Text>
-                <Select
-                  value={dataSummaryDays}
-                  onChange={setDataSummaryDays}
-                  style={{ width: 150 }}
-                  options={[
-                    { label: '3天', value: 3 },
-                    { label: '7天', value: 7 },
-                    { label: '14天', value: 14 },
-                    { label: '30天', value: 30 },
-                  ]}
-                />
-              </div>
-            </Space>
-            <Text type="secondary" style={{ color: '#94a3b8', fontSize: '12px', marginTop: '8px', display: 'block' }}>
+                <Text type="secondary" style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px', display: 'block' }}>
               包含系统数据将在对话中包含运营数据摘要，帮助 AI 提供更准确的建议。
             </Text>
           </div>
-
-          {/* 模型 API Key 配置 */}
-          <div>
-            <Text strong style={{ color: '#e2e8f0', display: 'block', marginBottom: '8px' }}>
-              模型 API Key 配置
-            </Text>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <Input
-                value={apiKeys.openrouter}
-                onChange={(e) => setApiKeys(prev => ({ ...prev, openrouter: e.target.value }))}
-                placeholder="OpenRouter API Key（推荐）"
-                allowClear
-              />
-              <Input
-                value={apiKeys.openai}
-                onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}
-                placeholder="OpenAI API Key"
-                allowClear
-              />
-              <Input
-                value={apiKeys.anthropic}
-                onChange={(e) => setApiKeys(prev => ({ ...prev, anthropic: e.target.value }))}
-                placeholder="Anthropic/Claude API Key"
-                allowClear
-              />
-              <Input
-                value={apiKeys.gemini}
-                onChange={(e) => setApiKeys(prev => ({ ...prev, gemini: e.target.value }))}
-                placeholder="Google Gemini API Key"
-                allowClear
-              />
             </Space>
-            <Text type="secondary" style={{ color: '#94a3b8', fontSize: '12px', marginTop: '8px', display: 'block' }}>
-              支持主流模型接入，优先使用 OpenRouter；如需切换模型，请在上方选择对应模型并保存。
-            </Text>
           </div>
         </div>
       </Modal>
