@@ -6,7 +6,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Card, Space, Typography, Avatar, Spin, message } from 'antd'
 import { RobotOutlined, UserOutlined } from '@ant-design/icons'
 import type { UploadFile } from 'antd'
-import { Sender, ThoughtChain, FileCard, type SenderProps } from '@ant-design/x'
+import { Sender, ThoughtChain, Think, FileCard, type SenderProps } from '@ant-design/x'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -222,6 +222,18 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
           formData.append('files', file)
         })
 
+        // 创建初始助手消息（带加载状态和思考过程）
+        const initialAssistantMessage: ChatMessage = {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now(),
+          isLoading: true,
+          thinking: '正在处理文件并分析内容...',
+        } as ChatMessage
+        
+        setMessages(prev => [...prev, initialAssistantMessage])
+        
         // 调用带文件的 API（非流式）
         try {
           const response = await frogGptApi.chatWithFiles(formData)
@@ -239,6 +251,7 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
                     ...msg,
                     content: assistantMessageContent,
                     isLoading: false,
+                    thinking: undefined, // 完成后移除思考过程
                   }
                 }
                 return msg
@@ -285,13 +298,14 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
         shopId: shopId ? parseInt(shopId) : undefined,
       })
       
-      // 创建初始助手消息（带加载状态）
+      // 创建初始助手消息（带加载状态和思考过程）
       const initialAssistantMessage: ChatMessage = {
         id: assistantMessageId,
         role: 'assistant',
         content: '',
         timestamp: Date.now(),
         isLoading: true, // 标记为加载中
+        thinking: '正在分析您的问题，准备生成回答...', // 初始思考过程
       } as ChatMessage
       
       setMessages(prev => [...prev, initialAssistantMessage])
@@ -328,10 +342,16 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
           setMessages(prev => {
             return prev.map(msg => {
               if (msg.id === assistantMessageId) {
+                // 当有内容时，更新思考过程或移除它
+                const thinking = assistantMessageContent.length > 50 
+                  ? '正在生成回答...' 
+                  : '正在分析您的问题，准备生成回答...'
+                
                 return {
                   ...msg,
                   content: assistantMessageContent,
                   isLoading: false, // 有内容后取消加载状态
+                  thinking: thinking, // 更新思考过程
                 }
               }
               return msg
@@ -349,13 +369,14 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
             finishReason: chunk.finish_reason,
           })
           
-          // 确保取消加载状态
+          // 确保取消加载状态，并移除思考过程（如果已完成）
           setMessages(prev => {
             return prev.map(msg => {
               if (msg.id === assistantMessageId) {
                 return {
                   ...msg,
                   isLoading: false,
+                  thinking: undefined, // 完成后移除思考过程
                 }
               }
               return msg
@@ -665,10 +686,28 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
                     </ReactMarkdown>
                     )}
                     {message.thinking && (
-                      <div style={{ marginTop: '8px', padding: '8px', background: '#1e293b', borderRadius: '4px' }}>
-                        <Text style={{ color: '#94a3b8', fontSize: '12px' }}>
-                          💭 思考过程: {message.thinking}
-                        </Text>
+                      <div style={{ marginTop: '12px' }}>
+                        <Think
+                          title="思考过程"
+                          defaultExpanded={true}
+                          styles={{
+                            root: {
+                              background: 'rgba(15, 23, 42, 0.8)',
+                              border: '1px solid rgba(59, 130, 246, 0.3)',
+                              borderRadius: '8px',
+                            },
+                            content: {
+                              color: '#e2e8f0',
+                              fontSize: '13px',
+                              lineHeight: '1.6',
+                            },
+                            status: {
+                              color: '#94a3b8',
+                            },
+                          }}
+                        >
+                          {message.thinking}
+                        </Think>
                       </div>
                     )}
                     {message.sources && message.sources.length > 0 && (
