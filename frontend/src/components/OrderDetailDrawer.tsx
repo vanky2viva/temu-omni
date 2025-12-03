@@ -42,13 +42,45 @@ export default function OrderDetailDrawer({ visible, orderId, onClose }: OrderDe
     staleTime: 30000,
   })
   
-  // 复制到剪贴板
+  // 复制到剪贴板（带降级方案）
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      message.success('已复制到剪贴板')
-    }).catch(() => {
-      message.error('复制失败')
-    })
+    // 优先使用现代 Clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        message.success('已复制到剪贴板')
+      }).catch(() => {
+        // 降级到传统方法
+        fallbackCopyToClipboard(text)
+      })
+    } else {
+      // 降级到传统方法
+      fallbackCopyToClipboard(text)
+    }
+  }
+
+  // 降级复制方法
+  const fallbackCopyToClipboard = (text: string) => {
+    const textArea = document.createElement('textarea')
+    textArea.value = text
+    textArea.style.position = 'fixed'
+    textArea.style.left = '-999999px'
+    textArea.style.top = '-999999px'
+    document.body.appendChild(textArea)
+    textArea.focus()
+    textArea.select()
+    
+    try {
+      const successful = document.execCommand('copy')
+      if (successful) {
+        message.success('已复制到剪贴板')
+      } else {
+        message.error('复制失败，请手动选择文本复制')
+      }
+    } catch (err) {
+      message.error('复制失败，请手动选择文本复制')
+    } finally {
+      document.body.removeChild(textArea)
+    }
   }
   
   // 计算延误信息

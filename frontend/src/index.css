@@ -48,6 +48,9 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--color-bg);
+  /* 允许文本选择 */
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* 网格背景仅在深色主题启用 */
@@ -1164,16 +1167,36 @@ body {
     transition: all 0.1s ease;
   }
 
-  /* 禁用文本选择（移动端优化） */
-  .ant-table-tbody > tr {
-    -webkit-user-select: none;
-    user-select: none;
-  }
-
-  /* 允许文本选择（对于需要复制的字段） */
-  .ant-table-tbody > tr > td[data-copyable] {
+  /* 允许文本选择（用户可以复制表格中的内容） */
+  .ant-table-tbody > tr > td {
     -webkit-user-select: text;
     user-select: text;
+  }
+
+  /* 按钮和图标不参与文本选择 */
+  .ant-table-tbody > tr > td .ant-btn,
+  .ant-table-tbody > tr > td .anticon {
+    -webkit-user-select: none;
+    user-select: none;
+    pointer-events: auto; /* 确保按钮可以点击 */
+  }
+  
+  /* 确保页面其他部分的文本也可以被选择 */
+  .bulma-card,
+  .stat-card,
+  .chart-card,
+  .ant-statistic-content {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  
+  /* 按钮、输入框等交互元素不参与文本选择 */
+  .ant-btn,
+  .ant-input,
+  .ant-select-selector,
+  .anticon {
+    -webkit-user-select: none;
+    user-select: none;
   }
 }
 
