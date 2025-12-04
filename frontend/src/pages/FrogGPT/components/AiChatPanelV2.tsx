@@ -299,6 +299,7 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
       })
       
       // 创建初始助手消息（带加载状态和思考过程）
+      let assistantThinkingContent = '' // 累积思考过程内容
       const initialAssistantMessage: ChatMessage = {
         id: assistantMessageId,
         role: 'assistant',
@@ -333,6 +334,23 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
       for await (const chunk of stream) {
         if (chunk.type === 'error') {
           throw new Error(chunk.error || '未知错误')
+        } else if (chunk.type === 'reasoning') {
+          // 处理思考过程（DeepSeek 的 reasoning_content）
+          assistantThinkingContent += chunk.content || ''
+          
+          // 实时更新思考过程
+          setMessages(prev => {
+            return prev.map(msg => {
+              if (msg.id === assistantMessageId) {
+                return {
+                  ...msg,
+                  thinking: assistantThinkingContent || '正在思考...',
+                  isLoading: true, // 思考过程中保持加载状态
+                }
+              }
+              return msg
+            })
+          })
         } else if (chunk.type === 'content') {
           // 累积内容
           assistantMessageContent += chunk.content
@@ -342,16 +360,12 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
           setMessages(prev => {
             return prev.map(msg => {
               if (msg.id === assistantMessageId) {
-                // 当有内容时，更新思考过程或移除它
-                const thinking = assistantMessageContent.length > 50 
-                  ? '正在生成回答...' 
-                  : '正在分析您的问题，准备生成回答...'
-                
                 return {
                   ...msg,
                   content: assistantMessageContent,
                   isLoading: false, // 有内容后取消加载状态
-                  thinking: thinking, // 更新思考过程
+                  // 保留思考过程（如果有）
+                  thinking: assistantThinkingContent || undefined,
                 }
               }
               return msg
@@ -366,17 +380,19 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
           // 流式响应完成
           console.log('流式响应完成:', {
             contentLength: assistantMessageContent.length,
+            thinkingLength: assistantThinkingContent.length,
             finishReason: chunk.finish_reason,
           })
           
-          // 确保取消加载状态，并移除思考过程（如果已完成）
+          // 确保取消加载状态，保留思考过程（如果有）
           setMessages(prev => {
             return prev.map(msg => {
               if (msg.id === assistantMessageId) {
                 return {
                   ...msg,
                   isLoading: false,
-                  thinking: undefined, // 完成后移除思考过程
+                  // 保留思考过程（DeepSeek 的 reasoning_content）
+                  thinking: assistantThinkingContent || undefined,
                 }
               }
               return msg
@@ -690,19 +706,21 @@ const AiChatPanelV2: React.FC<AiChatPanelV2Props> = ({
                         <Think
                           title="思考过程"
                           defaultExpanded={true}
+                          blink={message.isLoading}
                           styles={{
                             root: {
-                              background: 'rgba(15, 23, 42, 0.8)',
+                              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.1))',
                               border: '1px solid rgba(59, 130, 246, 0.3)',
                               borderRadius: '8px',
+                              padding: '12px 16px',
+                              boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2)',
                             },
                             content: {
-                              color: '#e2e8f0',
+                              color: '#94a3b8',
                               fontSize: '13px',
                               lineHeight: '1.6',
-                            },
-                            status: {
-                              color: '#94a3b8',
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
                             },
                           }}
                         >

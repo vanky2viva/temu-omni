@@ -37,26 +37,57 @@ class FrogGPTService:
             follow_redirects=True
         )
     
-    def get_api_key_from_db(self, db: Session) -> Optional[str]:
+    def get_api_key_from_db(self, db: Session, provider: str = "openrouter") -> Optional[str]:
         """从数据库获取API key"""
         from app.models.system_config import SystemConfig
         
-        config = db.query(SystemConfig).filter(SystemConfig.key == "openrouter_api_key").first()
+        # 根据 provider 选择对应的配置键
+        key_map = {
+            "openrouter": "openrouter_api_key",
+            "openai": "openai_api_key",
+            "anthropic": "anthropic_api_key",
+            "gemini": "gemini_api_key",
+            "deepseek": "deepseek_api_key",
+        }
+        config_key = key_map.get(provider, "openrouter_api_key")
+        
+        config = db.query(SystemConfig).filter(SystemConfig.key == config_key).first()
         if config and config.value:
             return config.value
         
-        # 如果数据库中没有，返回环境变量中的值
-        return self.api_key
+        # 如果数据库中没有，返回环境变量中的值（仅对 openrouter）
+        if provider == "openrouter":
+            return self.api_key
+        return None
     
-    def get_api_key(self, db: Optional[Session] = None) -> Optional[str]:
+    def get_api_key(self, db: Optional[Session] = None, provider: str = "openrouter") -> Optional[str]:
         """获取API key（优先从数据库，其次环境变量）"""
         if db:
-            db_key = self.get_api_key_from_db(db)
+            db_key = self.get_api_key_from_db(db, provider)
             if db_key:
                 return db_key
         
-        # 如果数据库中没有或没有提供db，使用环境变量
-        return self.api_key
+        # 如果数据库中没有或没有提供db，使用环境变量（仅对 openrouter）
+        if provider == "openrouter":
+            return self.api_key
+        return None
+    
+    def _detect_provider_from_model(self, model: str) -> str:
+        """从模型名称检测供应商"""
+        if not model:
+            return "openrouter"
+        
+        model_lower = model.lower()
+        if model_lower.startswith("deepseek") or "deepseek" in model_lower:
+            return "deepseek"
+        elif model_lower.startswith("openai/") or model_lower.startswith("gpt"):
+            return "openai"
+        elif model_lower.startswith("anthropic/") or model_lower.startswith("claude"):
+            return "anthropic"
+        elif model_lower.startswith("google/") or model_lower.startswith("gemini"):
+            return "gemini"
+        else:
+            return "openrouter"
     
     async def chat_completion(
         self,
@@ -111,7 +142,7 @@ class FrogGPTService:
                 raise ValueError(f"模型名称格式错误: {model}。OpenRouter 要求格式为 'provider/model'，例如 'openai/gpt-4o-mini'")
             
             # 获取API key（优先从数据库）
-            api_key = self.get_api_key(db)
+            api_key = self.get_api_key(db, provider)
             
             # 构建请求头（根据 OpenRouter API 文档）
             # 参考: https://openrouter.ai/docs/api/reference/overview
@@ -334,8 +365,7 @@ class FrogGPTService:
         db: Optional[Session] = None
     ):
         """
-        发送流式聊天完成请求到OpenRouter
-        参考: https://openrouter.ai/docs/sdks/python/chat
+        发送流式聊天完成请求（支持 OpenRouter 和 DeepSeek）
         
         Args:
             messages: 消息列表，格式为 [{"role": "user", "content": "..."}]
@@ -347,6 +377,21 @@ class FrogGPTService:
             SSE格式的数据块（字典格式）
         """
         try:
+            # 检测供应商
+            provider = self._detect_provider_from_model(model or self.default_model)
+            
+            # 如果是 DeepSeek，使用 DeepSeek 流式 API
+            if provider == "deepseek":
+                async for chunk in self._chat_completion_stream_deepseek(
+                    messages=messages,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    db=db
+                ):
+                    yield chunk
+                return
+            
             # 处理AUTO模式：如果model为"auto"，使用OpenRouter的自动路由
             if model == "auto" or model is None:
                 model = self.default_model or "openai/gpt-4o-mini"
@@ -356,7 +401,7 @@ class FrogGPTService:
                 model = f"openai/{model}"
             
             # 获取 API Key
-            api_key = self.get_api_key(db)
+            api_key = self.get_api_key(db, "openrouter")
             if not api_key:
                 raise ValueError("未提供 OpenRouter API Key，无法发送请求。请在高级设置中配置 API Key。")
             
@@ -990,6 +1035,254 @@ class FrogGPTService:
 
 """
         return system_prompt + context
+    
+    async def _chat_completion_deepseek(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        db: Optional[Session] = None
+    ) -> Dict[str, Any]:
+        """
+        DeepSeek API 聊天完成请求
+        
+        DeepSeek API 与 OpenAI API 兼容，使用相同的格式
+        参考: https://api-docs.deepseek.com/zh-cn/quick_start/pricing
+        """
+        # 获取 DeepSeek API Key
+        api_key = self.get_api_key(db, "deepseek")
+        if not api_key:
+            raise ValueError("未配置 DeepSeek API Key，请在高级设置中配置 API Key")
+        
+        # DeepSeek API 端点
+        base_url = "https://api.deepseek.com"
+        
+        # 处理模型名称（DeepSeek 模型：deepseek-chat, deepseek-reasoner）
+        if model:
+            # 移除可能的 provider 前缀
+            if "/" in model:
+                model = model.split("/")[-1]
+            # 确保使用正确的模型名称
+            if model not in ["deepseek-chat", "deepseek-reasoner"]:
+                # 如果模型名称不匹配，默认使用 deepseek-chat
+                logger.warning(f"DeepSeek 模型名称 '{model}' 可能不正确，使用 'deepseek-chat'")
+                model = "deepseek-chat"
+        else:
+            model = "deepseek-chat"  # 默认模型
+        
+        # 构建请求头
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+        
+        # 构建请求体（与 OpenAI 格式兼容）
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+        
+        # 验证消息格式
+        if not messages or len(messages) == 0:
+            raise ValueError("消息列表不能为空")
+        
+        logger.info(f"使用 DeepSeek API 发送请求: model={model}, messages_count={len(messages)}")
+        api_key_preview = f"{api_key[:8]}...{api_key[-4:]}" if api_key and len(api_key) > 12 else "***"
+        logger.debug(f"请求详情: URL={base_url}/v1/chat/completions, API Key={api_key_preview}, 模型={model}")
+        
+        # 发送请求
+        response = await self.client.post(
+            f"{base_url}/v1/chat/completions",
+            json=payload,
+            headers=headers
+        )
+        
+        # 处理响应
+        if response.status_code >= 400:
+            try:
+                error_body = response.json()
+                error_info = error_body.get("error", {})
+                error_message = error_info.get("message", str(error_body))
+                
+                if response.status_code == 401:
+                    error_detail = "DeepSeek API Key 无效或已过期，请检查 API Key 配置"
+                elif response.status_code == 403:
+                    error_detail = f"DeepSeek API 访问被拒绝: {error_message}. 请检查 API Key 权限或账户余额"
+                elif response.status_code == 429:
+                    error_detail = "DeepSeek API 请求频率过高，请稍后重试"
+                else:
+                    error_detail = f"DeepSeek API 错误 ({response.status_code}): {error_message}"
+                
+                logger.error(f"DeepSeek API 错误响应: {error_detail}")
+                raise ValueError(error_detail)
+            except ValueError:
+                raise
+            except:
+                error_text = response.text[:500] if response.text else "无响应内容"
+                error_detail = f"DeepSeek API 错误 ({response.status_code}): {error_text}"
+                logger.error(f"DeepSeek API 错误响应: {error_detail}")
+                raise ValueError(error_detail)
+        
+        response.raise_for_status()
+        result = response.json()
+        
+        logger.debug(f"DeepSeek API 响应成功: model={model}, response_keys={list(result.keys())}")
+        
+        # 验证响应格式
+        if not isinstance(result, dict):
+            raise ValueError(f"DeepSeek API 返回了无效的响应类型: {type(result)}")
+        
+        if "choices" not in result:
+            error_msg = result.get("error", {}).get("message", "响应中缺少 choices 字段")
+            logger.error(f"DeepSeek API 响应格式错误: {error_msg}, response: {result}")
+            raise ValueError(f"DeepSeek API 响应格式错误: {error_msg}")
+        
+        if len(result.get("choices", [])) == 0:
+            error_msg = "响应中 choices 为空"
+            logger.error(f"DeepSeek API 响应格式错误: {error_msg}, response: {result}")
+            raise ValueError(f"DeepSeek API 响应格式错误: {error_msg}")
+        
+        return result
+    
+    async def _chat_completion_stream_deepseek(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        db: Optional[Session] = None
+    ):
+        """
+        DeepSeek API 流式聊天完成请求
+        
+        DeepSeek API 与 OpenAI API 兼容，支持流式响应
+        """
+        # 获取 DeepSeek API Key
+        api_key = self.get_api_key(db, "deepseek")
+        if not api_key:
+            raise ValueError("未配置 DeepSeek API Key，请在高级设置中配置 API Key")
+        
+        # DeepSeek API 端点
+        base_url = "https://api.deepseek.com"
+        
+        # 处理模型名称
+        if model:
+            if "/" in model:
+                model = model.split("/")[-1]
+            if model not in ["deepseek-chat", "deepseek-reasoner"]:
+                logger.warning(f"DeepSeek 模型名称 '{model}' 可能不正确，使用 'deepseek-chat'")
+                model = "deepseek-chat"
+        else:
+            model = "deepseek-chat"
+        
+        # 构建请求头
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+        
+        # 构建请求体
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,  # 启用流式响应
+        }
+        
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+        
+        logger.info(f"使用 DeepSeek API 发送流式请求: model={model}, messages_count={len(messages)}")
+        
+        # 发送流式请求
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with client.stream(
+                "POST",
+                f"{base_url}/v1/chat/completions",
+                json=payload,
+                headers=headers
+            ) as response:
+                # 检查初始 HTTP 状态码
+                if response.status_code >= 400:
+                    try:
+                        error_body = await response.aread()
+                        error_json = json.loads(error_body.decode())
+                        error_info = error_json.get("error", {})
+                        error_message = error_info.get("message", str(error_json))
+                        
+                        if response.status_code == 401:
+                            error_detail = "DeepSeek API Key 无效或已过期，请检查 API Key 配置"
+                        elif response.status_code == 403:
+                            error_detail = f"DeepSeek API 访问被拒绝: {error_message}. 请检查 API Key 权限或账户余额"
+                        elif response.status_code == 429:
+                            error_detail = "DeepSeek API 请求频率过高，请稍后重试"
+                        else:
+                            error_detail = f"DeepSeek API 错误 ({response.status_code}): {error_message}"
+                        
+                        logger.error(f"DeepSeek API 错误响应: {error_detail}")
+                        yield {"type": "error", "error": error_detail}
+                        return
+                    except:
+                        error_text = response.text[:500] if hasattr(response, 'text') else "无响应内容"
+                        error_detail = f"DeepSeek API 错误 ({response.status_code}): {error_text}"
+                        logger.error(f"DeepSeek API 错误响应: {error_detail}")
+                        yield {"type": "error", "error": error_detail}
+                        return
+                
+                # 解析流式响应
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    
+                    # SSE 格式：data: {...}
+                    if line.startswith("data: "):
+                        data_str = line[6:]  # 移除 "data: " 前缀
+                        
+                        # 检查是否是结束标记
+                        if data_str.strip() == "[DONE]":
+                            yield {"type": "done"}
+                            break
+                        
+                        try:
+                            data = json.loads(data_str)
+                            
+                            # 提取内容
+                            if "choices" in data and len(data["choices"]) > 0:
+                                choice = data["choices"][0]
+                                delta = choice.get("delta", {})
+                                
+                                # 提取思考过程（reasoning_content）
+                                reasoning_content = delta.get("reasoning_content", "")
+                                
+                                # 提取最终回答内容
+                                content = delta.get("content", "")
+                                
+                                # 如果有思考过程，单独发送
+                                if reasoning_content:
+                                    yield {
+                                        "type": "reasoning",
+                                        "content": reasoning_content
+                                    }
+                                
+                                # 如果有最终回答内容，发送
+                                if content:
+                                    yield {
+                                        "type": "content",
+                                        "content": content
+                                    }
+                                
+                                # 检查是否完成
+                                if choice.get("finish_reason"):
+                                    yield {"type": "done"}
+                                    break
+                        except json.JSONDecodeError:
+                            logger.warning(f"无法解析 DeepSeek 流式响应: {data_str}")
+                            continue
     
     async def close(self):
         """关闭HTTP客户端"""

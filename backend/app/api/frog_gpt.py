@@ -378,13 +378,17 @@ async def chat_stream(
                 except Exception as e:
                     logger.warning(f"获取系统数据摘要失败，将不包含系统上下文: {e}")
             
-            # 检查是否有 API Key
-            api_key = frog_gpt_service.get_api_key(db)
+            # 检测供应商
+            provider = frog_gpt_service._detect_provider_from_model(request.model or frog_gpt_service.default_model)
+            
+            # 检查是否有 API Key（根据供应商）
+            api_key = frog_gpt_service.get_api_key(db, provider)
             if not api_key:
-                yield f"data: {json.dumps({'type': 'error', 'error': '未配置 OpenRouter API Key，请在高级设置中配置 API Key'})}\n\n"
+                provider_name = "OpenRouter" if provider == "openrouter" else provider.upper()
+                yield f"data: {json.dumps({'type': 'error', 'error': f'未配置 {provider_name} API Key，请在高级设置中配置 API Key'})}\n\n"
                 return
             
-            logger.info(f"收到流式聊天请求: model={request.model}, temperature={request.temperature}, messages_count={len(messages)}")
+            logger.info(f"收到流式聊天请求: model={request.model}, provider={provider}, temperature={request.temperature}, messages_count={len(messages)}")
             
             # 调用流式方法
             async for chunk in frog_gpt_service.chat_completion_stream(
@@ -748,6 +752,7 @@ class AllProvidersApiKeysUpdate(BaseModel):
     openai: Optional[str] = None
     anthropic: Optional[str] = None
     gemini: Optional[str] = None
+    deepseek: Optional[str] = None
 
 
 @router.get("/api-config", response_model=OpenRouterConfigResponse)
@@ -826,6 +831,10 @@ def get_all_providers_api_keys(
         "gemini": {
             "api_key": get_full_key("gemini_api_key"),
             "has_api_key": bool(get_full_key("gemini_api_key"))
+        },
+        "deepseek": {
+            "api_key": get_full_key("deepseek_api_key"),
+            "has_api_key": bool(get_full_key("deepseek_api_key"))
         }
     }
 

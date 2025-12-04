@@ -67,6 +67,7 @@ const FrogGPTV2: React.FC = () => {
     openai: '',
     anthropic: '',
     gemini: '',
+    deepseek: '',
   })
 
   // 获取可用模型列表（仅当使用 OpenRouter 时）
@@ -470,6 +471,7 @@ const FrogGPTV2: React.FC = () => {
           openai: parsed.openai || '',
           anthropic: parsed.anthropic || '',
           gemini: parsed.gemini || '',
+          deepseek: parsed.deepseek || '',
         })
         // 恢复连接类型和直接接入的供应商
         if (parsed.connectionType) {
@@ -492,6 +494,7 @@ const FrogGPTV2: React.FC = () => {
           openai: prev.openai || (backendKeys?.openai?.api_key || ''),
           anthropic: prev.anthropic || (backendKeys?.anthropic?.api_key || ''),
           gemini: prev.gemini || (backendKeys?.gemini?.api_key || ''),
+          deepseek: prev.deepseek || (backendKeys?.deepseek?.api_key || ''),
         }))
         
         // 如果后端有 OpenRouter API Key，验证其有效性
@@ -543,6 +546,8 @@ const FrogGPTV2: React.FC = () => {
           keysToSave.anthropic = apiKeys.anthropic
         } else if (directProvider === 'gemini' && apiKeys.gemini) {
           keysToSave.gemini = apiKeys.gemini
+        } else if (directProvider === 'deepseek' && apiKeys.deepseek) {
+          keysToSave.deepseek = apiKeys.deepseek
         }
       }
       
@@ -593,6 +598,7 @@ const FrogGPTV2: React.FC = () => {
       openai: '',
       anthropic: '',
       gemini: '',
+      deepseek: '',
     })
     localStorage.removeItem('frog-gpt-config')
     localStorage.removeItem('frog-gpt-api-keys')
@@ -912,6 +918,7 @@ const FrogGPTV2: React.FC = () => {
                       { label: 'OpenAI', value: 'openai' },
                       { label: 'Anthropic (Claude)', value: 'anthropic' },
                       { label: 'Google (Gemini)', value: 'gemini' },
+                      { label: 'DeepSeek', value: 'deepseek' },
                     ]}
                   />
                 </div>
@@ -942,6 +949,15 @@ const FrogGPTV2: React.FC = () => {
                       value={apiKeys.gemini}
                       onChange={(e) => setApiKeys(prev => ({ ...prev, gemini: e.target.value }))}
                       placeholder="请输入 Google Gemini API Key"
+                      allowClear
+                      style={{ width: '100%' }}
+                    />
+                  )}
+                  {directProvider === 'deepseek' && (
+                    <Input.Password
+                      value={apiKeys.deepseek}
+                      onChange={(e) => setApiKeys(prev => ({ ...prev, deepseek: e.target.value }))}
+                      placeholder="请输入 DeepSeek API Key (sk-...)"
                       allowClear
                       style={{ width: '100%' }}
                     />
@@ -1022,14 +1038,17 @@ const FrogGPTV2: React.FC = () => {
                       { label: 'Claude 3.5 Sonnet', value: 'anthropic/claude-3.5-sonnet' },
                       { label: 'Claude 3 Opus', value: 'anthropic/claude-3-opus' },
                       { label: 'Claude 3 Sonnet', value: 'anthropic/claude-3-sonnet' },
-                    ] : [
+                    ] : directProvider === 'gemini' ? [
                       { label: 'Gemini Pro', value: 'google/gemini-pro' },
                       { label: 'Gemini Pro Vision', value: 'google/gemini-pro-vision' },
+                    ] : [
+                      { label: 'DeepSeek-V3.2 (非思考模式)', value: 'deepseek-chat' },
+                      { label: 'DeepSeek-V3.2 (思考模式)', value: 'deepseek-reasoner' },
                     ]
                   }
                 />
                 <Text type="secondary" style={{ color: '#94a3b8', fontSize: '12px', marginTop: '8px', display: 'block' }}>
-                  选择 {directProvider === 'openai' ? 'OpenAI' : directProvider === 'anthropic' ? 'Anthropic' : 'Google'} 的模型
+                  选择 {directProvider === 'openai' ? 'OpenAI' : directProvider === 'anthropic' ? 'Anthropic' : directProvider === 'gemini' ? 'Google' : 'DeepSeek'} 的模型
             </Text>
               </div>
             )}
