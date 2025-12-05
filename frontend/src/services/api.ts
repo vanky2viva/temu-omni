@@ -271,7 +271,7 @@ export const frogGptApi = {
     include_system_data?: boolean
     data_summary_days?: number
     shop_id?: number
-  }) {
+  }, signal?: AbortSignal) {
     const token = localStorage.getItem('token')
     const response = await fetch(`${rawApi.defaults.baseURL || ''}/frog-gpt/chat/stream`, {
       method: 'POST',
@@ -280,6 +280,7 @@ export const frogGptApi = {
         'Authorization': token ? `Bearer ${token}` : '',
       },
       body: JSON.stringify(data),
+      signal, // 支持取消请求
     })
 
     if (!response.ok) {
@@ -297,33 +298,59 @@ export const frogGptApi = {
 
     try {
       while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+        try {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
+          buffer += decoder.decode(value, { stream: true })
 
-        while (true) {
-          const lineEnd = buffer.indexOf('\n')
-          if (lineEnd === -1) break
+          while (true) {
+            const lineEnd = buffer.indexOf('\n')
+            if (lineEnd === -1) break
 
-          const line = buffer.slice(0, lineEnd).trim()
-          buffer = buffer.slice(lineEnd + 1)
+            const line = buffer.slice(0, lineEnd).trim()
+            buffer = buffer.slice(lineEnd + 1)
 
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6)
-            if (data === '[DONE]') return
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6)
+              if (data === '[DONE]') return
 
-            try {
-              const parsed = JSON.parse(data)
-              yield parsed
-            } catch (e) {
-              // 忽略无效的 JSON
+              try {
+                const parsed = JSON.parse(data)
+                yield parsed
+              } catch (e) {
+                // 忽略无效的 JSON
+                console.warn('解析SSE数据失败:', e, 'data:', data)
+              }
             }
           }
+        } catch (readError: any) {
+          // 处理读取错误（包括TLS/SSL连接错误）
+          if (readError.name === 'AbortError' || signal?.aborted) {
+            // 请求被取消，正常退出
+            break
+          }
+          // 其他错误（如TLS/SSL连接关闭）也正常退出，不抛出异常
+          console.warn('读取流式响应时发生错误:', readError)
+          // 发送一个错误类型的chunk，让前端知道连接中断
+          yield { type: 'error', error: `连接中断: ${readError.message || '未知错误'}` }
+          break
         }
       }
+    } catch (error: any) {
+      // 外层错误处理
+      if (error.name === 'AbortError' || signal?.aborted) {
+        // 请求被取消，正常退出
+        return
+      }
+      // 其他错误，发送错误chunk
+      yield { type: 'error', error: `流式请求失败: ${error.message || '未知错误'}` }
     } finally {
-      reader.cancel()
+      try {
+        reader.cancel()
+      } catch (e) {
+        // 忽略取消时的错误
+      }
     }
   },
   

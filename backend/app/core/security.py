@@ -31,20 +31,36 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
                     这些错误应该被记录为系统错误，而不是简单的认证失败
     """
     try:
+        if not plain_password:
+            return False
+        if not hashed_password:
+            # 为了安全，当哈希值为空时也返回 False，而不是抛出异常
+            # 这样可以防止通过错误响应类型（500 vs 401）来区分不存在的账户和密码错误的账户
+            return False
+        
         password_bytes = plain_password.encode('utf-8')
         # hashed_password 已经是字符串格式的bcrypt哈希值
         # bcrypt.checkpw 需要 bytes 格式的哈希值
         hashed_bytes = hashed_password.encode('utf-8')
+        
+        # 检查哈希值格式（bcrypt 哈希值应该以 $2a$, $2b$ 或 $2y$ 开头）
+        if not (hashed_password.startswith('$2a$') or 
+                hashed_password.startswith('$2b$') or 
+                hashed_password.startswith('$2y$')):
+            from loguru import logger
+            logger.error(f"无效的密码哈希格式: {hashed_password[:20]}...")
+            raise ValueError(f"无效的密码哈希格式")
+        
         return bcrypt.checkpw(password_bytes, hashed_bytes)
     except (ValueError, TypeError) as e:
         # 这些是系统错误（如无效的哈希格式、类型错误等），应该被记录
         from loguru import logger
-        logger.error(f"密码验证系统错误: {e}, 哈希值类型: {type(hashed_password)}")
+        logger.error(f"密码验证系统错误: {e}, 哈希值类型: {type(hashed_password)}, 哈希值长度: {len(hashed_password) if hashed_password else 0}")
         raise ValueError(f"密码验证系统错误: {str(e)}") from e
     except Exception as e:
         # 其他未预期的错误（如 bcrypt 库问题），也应该被记录
         from loguru import logger
-        logger.error(f"密码验证未预期的错误: {e}")
+        logger.error(f"密码验证未预期的错误: {e}, 哈希值类型: {type(hashed_password)}")
         raise ValueError(f"密码验证系统错误: {str(e)}") from e
 
 
@@ -112,8 +128,14 @@ def get_current_user(
         )
     
     # 更新最后登录时间
-    user.last_login_at = datetime.utcnow()
-    db.commit()
+    try:
+        user.last_login_at = datetime.utcnow()
+        db.commit()
+    except Exception as e:
+        # 如果更新最后登录时间失败，记录错误但不影响认证
+        from loguru import logger
+        logger.warning(f"更新最后登录时间失败: {e}")
+        db.rollback()
     
     return user
 

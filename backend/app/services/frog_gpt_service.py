@@ -667,12 +667,13 @@ class FrogGPTService:
                 {"id": "anthropic/claude-3-haiku", "name": "Claude 3 Haiku"},
             ]
     
-    def build_system_context(self, data_summary: Dict[str, Any]) -> str:
+    def build_system_context(self, data_summary: Dict[str, Any], db: Optional[Session] = None) -> str:
         """
         构建系统上下文提示词
         
         Args:
             data_summary: 数据摘要字典，包含overview、top_skus、top_managers等
+            db: 数据库会话（可选，用于获取实际SKU列表）
             
         Returns:
             系统上下文字符串
@@ -715,6 +716,79 @@ class FrogGPTService:
                     f"GMV: ¥{manager.get('total_gmv', 0):,.2f}, "
                     f"利润: ¥{manager.get('total_profit', 0):,.2f}"
                 )
+        
+        # 添加店铺信息
+        if db:
+            try:
+                from app.models.shop import Shop
+                shops = db.query(Shop).filter(Shop.environment == 'production').all()
+                if shops:
+                    context_parts.append("\n## 店铺信息")
+                    for shop in shops[:10]:  # 最多显示10个店铺
+                        context_parts.append(
+                            f"- {shop.shop_name} (ID: {shop.id}, 地区: {shop.region.value if shop.region else 'N/A'}, "
+                            f"负责人: {shop.default_manager or '未分配'})"
+                        )
+            except Exception as e:
+                logger.warning(f"获取店铺信息失败: {e}")
+        
+        # 添加商品库存信息（Top SKU的库存情况）
+        if db and "top_skus" in data_summary and data_summary["top_skus"]:
+            try:
+                from app.models.product import Product
+                from app.models.order import Order
+                from sqlalchemy import func
+                
+                context_parts.append("\n## 热门SKU库存情况")
+                for sku_data in data_summary["top_skus"][:10]:
+                    sku_code = sku_data.get('sku', '')
+                    if not sku_code:
+                        continue
+                    
+                    # 查询该SKU的商品信息（通过product_sku匹配）
+                    product = db.query(Product).filter(
+                        Product.sku == sku_code
+                    ).first()
+                    
+                    if product:
+                        stock_info = f"库存: {product.stock_quantity or 0} 件"
+                        if product.stock_quantity and product.stock_quantity < 50:
+                            stock_info += " ⚠️ 库存不足"
+                        context_parts.append(
+                            f"- {sku_code} ({sku_data.get('product_name', 'N/A')}): {stock_info}, "
+                            f"当前售价: ¥{product.current_price or 0:.2f}, "
+                            f"累计销量: {product.total_sales or 0} 件"
+                        )
+            except Exception as e:
+                logger.warning(f"获取商品库存信息失败: {e}")
+        
+        # 添加实际SKU列表（用于确保不虚构SKU）
+        if db:
+            try:
+                from sqlalchemy import func, distinct
+                from app.models.order import Order
+                # 获取所有唯一的SKU货号（product_sku）
+                unique_skus = db.query(
+                    distinct(Order.product_sku)
+                ).filter(
+                    Order.product_sku.isnot(None),
+                    Order.product_sku != ''
+                ).limit(100).all()
+                
+                if unique_skus:
+                    sku_list = [sku[0] for sku in unique_skus if sku[0]]
+                    if sku_list:
+                        context_parts.append("\n## 系统中实际存在的SKU货号列表（重要）")
+                        context_parts.append("以下是在订单数据中实际存在的SKU货号（product_sku），**只能使用这些SKU，不能虚构或创建新的SKU**：")
+                        # 按字母顺序排序，方便查找
+                        sku_list_sorted = sorted(sku_list)
+                        # 每行显示5个SKU，避免过长
+                        for i in range(0, len(sku_list_sorted), 5):
+                            batch = sku_list_sorted[i:i+5]
+                            context_parts.append(f"- {', '.join(batch)}")
+                        context_parts.append(f"\n**重要提示**：决策卡片中的 `target` 字段如果涉及SKU，必须使用上述列表中的SKU货号，不能使用虚构的SKU（如 'SKU-12345'、'SKU-ABC' 等）。")
+            except Exception as e:
+                logger.warning(f"获取SKU列表失败: {e}")
         
         context = "\n".join(context_parts)
         
@@ -760,7 +834,7 @@ class FrogGPTService:
   "actions": [
     {
       "type": "动作类型（如：调整SKU、优化库存、调整价格、优化物流、团队激励等）",
-      "target": "目标对象（如：SKU编号、负责人姓名、具体指标等）",
+      "target": "目标对象（如：SKU货号、负责人姓名、具体指标等）",
       "delta": "变化量或目标值（如：+10%、提升至5%、降低2%等）",
       "reason": "原因说明（简要说明为什么需要这个动作）",
       "priority": "high|medium|low",
@@ -775,6 +849,16 @@ class FrogGPTService:
 }
 ```
 
+### ⚠️ SKU使用规范（非常重要）：
+1. **只能使用系统中实际存在的SKU货号**：系统会在上下文中提供实际存在的SKU货号列表，**必须严格使用这些SKU，不能虚构、创建或猜测SKU**。
+2. **SKU格式**：SKU货号格式通常为字母数字组合（如：LBB3-1-US、LBB4-A-US），不是纯数字。
+3. **禁止虚构SKU**：**绝对禁止**使用虚构的SKU（如 "SKU-12345"、"SKU-ABC"、"示例SKU" 等），这会导致决策卡片无法正确匹配数据。
+4. **SKU来源**：
+   - 优先使用系统提供的"热门SKU（Top 10）"列表中的SKU
+   - 或使用系统提供的"系统中实际存在的SKU货号列表"中的SKU
+   - 如果上下文中没有提供SKU列表，**不要猜测或虚构SKU**，而是说明需要查看实际数据
+5. **决策卡片中的target字段**：如果涉及SKU，必须使用实际存在的SKU货号（product_sku），格式如 "LBB3-1-US"，不能使用SKU ID（纯数字）或虚构的SKU。
+
 ### 决策卡片字段说明：
 - **decisionSummary**（必需）：决策总结，1-2句话概括核心问题和解决方案
 - **riskLevel**（必需）：风险级别
@@ -783,7 +867,10 @@ class FrogGPTService:
   - `high`：高风险，需要立即处理
 - **actions**（必需）：执行动作数组，至少1个动作
   - `type`：动作类型（如：调整SKU、优化库存、调整价格、优化物流、团队激励、下架商品、加大投入等）
-  - `target`：目标对象（具体SKU、负责人、指标名称等）
+  - `target`：目标对象（**必须使用实际存在的SKU货号、负责人姓名、指标名称等，不能虚构**）
+    - 如果涉及SKU，必须使用系统提供的实际SKU货号（如：LBB3-1-US），不能使用虚构的SKU
+    - 如果涉及负责人，必须使用系统提供的实际负责人姓名
+    - 如果涉及指标，使用准确的指标名称（如：GMV、利润率、延误率等）
   - `delta`：变化量或目标值（如：+10%、提升至5%、降低2%等，可选）
   - `reason`：原因说明（简要说明为什么需要这个动作，可选）
   - `priority`：优先级（high/medium/low，可选，默认为medium）
@@ -801,15 +888,15 @@ class FrogGPTService:
 1. 文字分析（正常回答）
 2. 决策卡片JSON（在回答末尾或中间，用```json代码块包裹）
 
-示例：
+**示例**（注意：示例中的SKU是虚构的，实际使用时必须使用系统提供的真实SKU）：
 ```
 根据数据分析，最近7天GMV下降了15%，主要原因是：
-1. Top SKU "SKU-12345" 销量下降30%
+1. Top SKU "LBB3-1-US" 销量下降30%（注意：这是实际存在的SKU，来自系统数据）
 2. 延误率上升至8%，影响客户满意度
 3. 新SKU投入不足
 
 建议采取以下措施：
-- 立即检查SKU-12345的库存和价格
+- 立即检查LBB3-1-US的库存和价格
 - 优化物流流程，降低延误率
 - 加大新SKU的推广投入
 
@@ -820,7 +907,7 @@ class FrogGPTService:
   "actions": [
     {
       "type": "调整SKU",
-      "target": "SKU-12345",
+      "target": "LBB3-1-US",
       "delta": "提升销量30%",
       "reason": "Top SKU销量下降30%，影响整体GMV",
       "priority": "high",
@@ -859,6 +946,12 @@ class FrogGPTService:
 4. **actions数组至少包含1个动作**，建议3-5个动作
 5. **priority建议根据风险级别和影响程度设置**：高风险问题用high，常规优化用medium/low
 6. **confidence建议根据数据完整性和分析确定性设置**：数据完整且分析确定用0.8-1.0，数据不足用0.5-0.8
+7. **⚠️ SKU使用规范（最重要）**：
+   - **只能使用系统提供的实际SKU货号**，不能虚构、猜测或创建SKU
+   - 如果上下文中提供了"系统中实际存在的SKU货号列表"，必须严格使用列表中的SKU
+   - 如果上下文中没有提供SKU列表，**不要猜测SKU**，而是说明需要查看实际数据
+   - 决策卡片中的 `target` 字段如果涉及SKU，必须使用实际存在的SKU货号（格式如：LBB3-1-US），不能使用虚构的SKU（如：SKU-12345）
+   - 如果无法确定实际SKU，可以在 `target` 中使用描述性文字（如："Top SKU"、"高销量SKU"），但最好使用具体的实际SKU货号
 
 ## 数据查询方法（重要）：
 系统已经为你提供了当前时间范围内的运营数据。这些数据是通过统一的数据端点获取的，所有端点都使用 `UnifiedStatisticsService` 确保数据一致性，并内置 Redis 缓存（TTL=300秒）以提升性能。
@@ -928,14 +1021,33 @@ class FrogGPTService:
 - GMV、成本、利润统一为CNY
 - 延误率统一计算：发货时间 > 预期最晚发货时间的订单占比（与订单列表的延误率是同一数据）
 
-### 7. 回款数据查询
-- **方法**：`/api/analytics/payment-collection`
+### 7. 回款数据查询（重要）
+**✅ 重要提示**：当用户询问回款相关问题时，系统会自动查询回款数据并注入到上下文中。你可以直接使用这些数据回答用户的问题。
+
+- **API端点**：`/api/analytics/payment-collection`
 - **描述**：获取回款统计数据
 - **回款逻辑**：已签收（DELIVERED）的订单，签收时间加8天后计入回款金额
+  - 回款日期 = 订单签收时间（delivery_time）+ 8天
+  - 只有状态为 DELIVERED 的订单才会产生回款
+- **参数**：
+  - `days`: 查询天数（默认30天，范围1-365）
+  - `start_date`: 开始日期（可选，格式：YYYY-MM-DD）
+  - `end_date`: 结束日期（可选，格式：YYYY-MM-DD）
+  - `shop_ids`: 店铺ID列表（可选）
 - **返回字段**：
   - `table_data`: 按日期和店铺分组的回款金额
   - `summary`: 汇总信息（总回款金额、总订单数）
   - `period`: 日期范围
+
+**当系统已自动查询回款数据时**：
+- 系统会在上下文中提供回款数据（包括总回款金额、总订单数、每日回款明细等）
+- 你可以直接使用这些数据回答用户的问题，无需再告诉用户需要查询API
+- 如果上下文中没有回款数据，说明系统未能自动查询，此时可以建议用户通过API查询
+
+**回款数据说明**：
+- 回款逻辑：已签收（DELIVERED）订单，签收时间+8天后计入回款
+- 回款金额：按父订单去重统计，单位为CNY（人民币）
+- 数据来源：基于订单表中的签收时间和订单状态自动计算
 
 ### 8. 备货计划数据查询
 - **方法**：`/api/inventory-planning/stock-plan`
@@ -1001,6 +1113,7 @@ class FrogGPTService:
 - **决策卡片（可选）**：如果用户明确要求，可以输出决策卡片JSON，action类型为"备货计划"
   - **重要**：决策卡片中的SKU字段必须是SKU货号（product_sku，如 LBB3-1-US），不能是SKU ID（纯数字）
   - 决策卡片中的每个item的id字段应该使用备货计划API返回的 `sku` 字段值（即product_sku）
+  - **⚠️ 必须使用实际存在的SKU**：只能使用系统提供的"系统中实际存在的SKU货号列表"中的SKU，不能虚构SKU
 
 **备货计划示例输出**：
 ```
@@ -1030,6 +1143,11 @@ class FrogGPTService:
 - **趋势分析时**：使用每日统计数据，注意日期格式的一致性
 - **SKU分析时**：使用SKU统计数据，注意SKU ID和商品名称的对应关系
 - **备货计划时**：结合回款数据和销量数据，考虑资金回笼和销售趋势。**必须按SKU货号（product_sku）统计**，这是订单表中的 `product_sku` 字段，对应原始数据中的 extCode 字段值（如 LBB3-1-US），而不是按SKU ID统计
+- **回款数据查询时**：**重要** - 当用户询问"未来一周回款"、"回款金额"、"回款统计"等问题时，系统会自动查询回款数据并注入到上下文中。你应该：
+  1. 直接使用上下文中的回款数据回答用户问题
+  2. 说明回款逻辑（已签收订单，签收时间+8天）
+  3. 基于实际数据提供分析和建议
+  4. 说明回款数据对备货计划和资金规划的重要性
 
 当前系统提供了以下运营数据，请基于这些数据回答用户的问题，并提供有价值的分析和建议。当问题需要决策建议时，务必输出决策卡片JSON。
 

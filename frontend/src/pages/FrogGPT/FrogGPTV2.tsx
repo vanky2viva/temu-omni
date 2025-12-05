@@ -20,6 +20,7 @@ import {
   Col,
   Segmented,
   Radio,
+  Button,
 } from 'antd'
 import {
   SaveOutlined,
@@ -39,25 +40,36 @@ import './frog-gpt.css'
 const { Text } = Typography
 
 const FrogGPTV2: React.FC = () => {
-  // 检测是否为移动设备
+  // 状态管理 - 先定义所有状态
   const [isMobile, setIsMobile] = useState(false)
-  
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768)
-    }
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
-  
-  // 状态管理
   const [selectedModel, setSelectedModel] = useState<string>('auto')
   const [temperature, setTemperature] = useState(0.7)
   const [includeSystemData, setIncludeSystemData] = useState(true)
   const [selectedShopId, setSelectedShopId] = useState<number | undefined>()
   const [decisionData, setDecisionData] = useState<DecisionData | null>(null)
   const [configModalVisible, setConfigModalVisible] = useState(false)
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      // 使用更严格的移动端判断，确保在移动设备上始终使用上下布局
+      const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      const isMobileWidth = window.innerWidth < 1024
+      setIsMobile(isMobileDevice || isMobileWidth)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    
+    // 监听来自子组件的设置弹窗打开事件
+    const handleOpenConfigEvent = () => {
+      setConfigModalVisible(true)
+    }
+    window.addEventListener('openFrogGPTConfig', handleOpenConfigEvent as EventListener)
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile)
+      window.removeEventListener('openFrogGPTConfig', handleOpenConfigEvent as EventListener)
+    }
+  }, [])
   const [modelSearchValue, setModelSearchValue] = useState<string | null>(null)
   const [externalMessage, setExternalMessage] = useState<string | null>(null)
   const [connectionType, setConnectionType] = useState<'openrouter' | 'direct'>('openrouter')
@@ -614,8 +626,8 @@ const FrogGPTV2: React.FC = () => {
     }
   }
 
-  // 计算页面高度：100vh - Header高度（桌面端64px，移动端56px）- 额外边距（8px用于Content padding等）
-  const pageHeight = isMobile ? 'calc(100vh - 64px)' : 'calc(100vh - 72px)'
+  // 计算页面高度：移动端需要考虑Header高度和Content padding
+  const pageHeight = isMobile ? 'calc(100vh - 56px)' : 'calc(100vh - 72px)'
   
   return (
     <div
@@ -623,16 +635,22 @@ const FrogGPTV2: React.FC = () => {
       style={{
         height: pageHeight,
         maxHeight: pageHeight,
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
-        padding: '6px',
-        gap: '4px',
+        padding: isMobile ? '0' : '6px',
+        gap: isMobile ? '0' : '4px',
         position: 'relative',
         overflow: 'hidden',
         boxSizing: 'border-box',
+        width: '100%',
+        maxWidth: '100%',
+        visibility: 'visible',
+        opacity: 1,
       }}
     >
-      {/* 顶部英雄区 */}
+      {/* 桌面端：顶部英雄区 */}
+      {!isMobile && (
       <Card
         className="frog-gpt-hero-card frog-gpt-floating"
         styles={{ 
@@ -745,81 +763,122 @@ const FrogGPTV2: React.FC = () => {
           </Col>
         </Row>
       </Card>
+      )}
 
-      {/* 主内容区：左右分栏 */}
+      {/* 主内容区：移动端只显示对话窗口，桌面端左右分栏 */}
       <div style={{ 
         display: 'flex', 
-        gap: '4px', 
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: isMobile ? '0' : '4px',
         flex: 1, 
+        minHeight: 0,
         overflow: 'hidden',
         position: 'relative',
         zIndex: 1,
-        minHeight: 0,
         maxHeight: '100%',
+        width: '100%',
+        maxWidth: '100%',
+        visibility: 'visible',
+        opacity: 1,
       }}>
-        {/* 左侧：数据 & 决策视图（45%） */}
-        <div 
-          className="frog-gpt-left-panel"
-          style={{ 
-            width: '45%', 
-            minWidth: 0, 
-            maxWidth: '45%',
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '4px', 
-            overflowY: 'auto', 
-            overflowX: 'hidden',
-            paddingRight: '2px',
-            position: 'relative',
-            zIndex: 1,
-            minHeight: 0,
-            maxHeight: '100%',
-          }}
-        >
-          {/* AI 结构化决策区置顶 */}
-          <div style={{ width: '100%', minWidth: 0, flexShrink: 0, position: 'relative', zIndex: 1 }}>
-            <DecisionHybridBoard decisionData={decisionData} />
+        {/* 移动端：对话窗口全屏显示 */}
+        {isMobile ? (
+          <div 
+            className="frog-gpt-right-panel"
+            style={{ 
+              width: '100%', 
+              maxWidth: '100%',
+              minWidth: 0,
+              height: '100%',
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+              zIndex: 1,
+              overflow: 'hidden',
+              visibility: 'visible',
+              opacity: 1,
+            }}
+          >
+            <AiChatPanelV2
+              shopId={selectedShopId?.toString()}
+              shopName={currentShopName}
+              model={selectedModel}
+              temperature={temperature}
+              includeSystemData={includeSystemData}
+              dataSummaryDays={undefined}
+              onDecisionParsed={handleDecisionParsed}
+              externalMessage={externalMessage}
+              onExternalMessageSent={handleExternalMessageSent}
+            />
           </div>
+        ) : (
+          <>
+            {/* 桌面端：左侧：数据 & 决策视图（45%） */}
+            <div 
+              className="frog-gpt-left-panel"
+              style={{ 
+                width: '45%', 
+                minWidth: 0, 
+                maxWidth: '45%',
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '4px', 
+                overflowY: 'auto', 
+                overflowX: 'hidden',
+                paddingRight: '2px',
+                position: 'relative',
+                zIndex: 1,
+                minHeight: 0,
+                maxHeight: '100%',
+              }}
+            >
+              {/* AI 结构化决策区置顶 */}
+              <div style={{ width: '100%', minWidth: 0, flexShrink: 0, position: 'relative', zIndex: 1 }}>
+                <DecisionHybridBoard decisionData={decisionData} />
+              </div>
 
-          {/* 运营指标速览 */}
-          {metrics.length > 0 && (
-            <div style={{ width: '100%', minWidth: 0, flexShrink: 0, position: 'relative', zIndex: 1 }}>
-              <MetricOverview metrics={metrics} />
+              {/* 运营指标速览 */}
+              {metrics.length > 0 && (
+                <div style={{ width: '100%', minWidth: 0, flexShrink: 0, position: 'relative', zIndex: 1 }}>
+                  <MetricOverview metrics={metrics} />
+                </div>
+              )}
+
+              {/* 运营图表区 */}
+              <div style={{ width: '100%', minWidth: 0, flexShrink: 0, position: 'relative', zIndex: 1 }}>
+                <TrendsCharts trendData={trendData} skuRanking={skuRanking} />
+              </div>
             </div>
-          )}
 
-          {/* 运营图表区 */}
-          <div style={{ width: '100%', minWidth: 0, flexShrink: 0, position: 'relative', zIndex: 1 }}>
-            <TrendsCharts trendData={trendData} skuRanking={skuRanking} />
-          </div>
-        </div>
-
-        {/* 右侧：AI Chat 面板（55%） */}
-        <div 
-          className="frog-gpt-right-panel"
-          style={{ 
-            width: '55%', 
-            maxWidth: '55%',
-            minWidth: 0,
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            position: 'relative',
-            zIndex: 1,
-          }}
-        >
-          <AiChatPanelV2
-            shopId={selectedShopId?.toString()}
-            shopName={currentShopName}
-            model={selectedModel}
-            temperature={temperature}
-            includeSystemData={includeSystemData}
-            dataSummaryDays={undefined}
-            onDecisionParsed={handleDecisionParsed}
-            externalMessage={externalMessage}
-            onExternalMessageSent={handleExternalMessageSent}
-          />
-        </div>
+            {/* 桌面端：右侧：AI Chat 面板（55%） */}
+            <div 
+              className="frog-gpt-right-panel"
+              style={{ 
+                width: '55%', 
+                maxWidth: '55%',
+                minWidth: 0,
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                position: 'relative',
+                zIndex: 1,
+              }}
+            >
+              <AiChatPanelV2
+                shopId={selectedShopId?.toString()}
+                shopName={currentShopName}
+                model={selectedModel}
+                temperature={temperature}
+                includeSystemData={includeSystemData}
+                dataSummaryDays={undefined}
+                onDecisionParsed={handleDecisionParsed}
+                externalMessage={externalMessage}
+                onExternalMessageSent={handleExternalMessageSent}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* 设置弹窗 */}

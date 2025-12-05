@@ -104,6 +104,20 @@ def login(
     try:
         logger.info(f"登录请求: username={form_data.username}")
         
+        # 检查输入参数
+        if not form_data.username:
+            logger.warning("用户名为空")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="用户名不能为空"
+            )
+        if not form_data.password:
+            logger.warning("密码为空")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="密码不能为空"
+            )
+        
         # 检查数据库连接
         try:
             from sqlalchemy import text
@@ -188,31 +202,24 @@ def login(
         # 将 User 对象转换为 UserResponse
         try:
             logger.debug("开始转换用户数据")
-            # 使用 from_attributes=True 来从 SQLAlchemy 模型创建 Pydantic 模型
-            user_response = UserResponse.model_validate(user, from_attributes=True)
+            logger.debug(f"用户对象字段: id={user.id}, username={user.username}, email={getattr(user, 'email', None)}, is_active={getattr(user, 'is_active', None)}, is_superuser={getattr(user, 'is_superuser', None)}")
+            # 直接手动构建响应，避免 Pydantic 验证问题
+            user_response = UserResponse(
+                id=user.id,
+                username=user.username,
+                email=user.email if user.email else "",
+                is_active=user.is_active if user.is_active is not None else True,
+                is_superuser=user.is_superuser if user.is_superuser is not None else False,
+            )
             logger.debug(f"用户数据转换成功: {user_response}")
         except Exception as validate_error:
             logger.error(f"用户数据验证失败: {validate_error}")
-            logger.error(f"用户对象信息: id={user.id}, username={user.username}, email={user.email}")
+            logger.error(f"用户对象信息: id={user.id}, username={user.username}, email={getattr(user, 'email', 'N/A')}")
             logger.error(traceback.format_exc())
-            # 如果验证失败，尝试手动构建响应
-            try:
-                logger.debug("尝试手动构建用户响应")
-                user_response = UserResponse(
-                    id=user.id,
-                    username=user.username,
-                    email=user.email,
-                    is_active=user.is_active,
-                    is_superuser=user.is_superuser,
-                )
-                logger.debug("手动构建用户响应成功")
-            except Exception as fallback_error:
-                logger.error(f"手动构建用户响应也失败: {fallback_error}")
-                logger.error(traceback.format_exc())
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"用户数据验证失败: {str(validate_error)}"
-                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"用户数据验证失败: {str(validate_error)}"
+            )
         
         logger.info(f"登录成功: username={form_data.username}, user_id={user.id}")
         return {

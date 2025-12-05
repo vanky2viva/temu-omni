@@ -71,10 +71,37 @@ export default function DecisionHybridBoard({ decisionData }: DecisionHybridBoar
     icon: priorityIcon[action.priority || ''] || <LineChartOutlined />,
     danger: action.priority === 'high',
     actionRender: (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{action.target}</div>
-        {action.delta && <Text style={{ color: '#60a5fa' }}>{action.delta}</Text>}
-        {action.reason && <Text type="secondary" style={{ color: '#94a3b8' }}>{action.reason}</Text>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
+        <div style={{ 
+          color: '#e2e8f0', 
+          fontWeight: 600, 
+          fontSize: '12px',
+          lineHeight: 1.4,
+          marginBottom: '2px'
+        }}>
+          {action.target}
+        </div>
+        {action.delta && (
+          <Text style={{ 
+            color: '#60a5fa', 
+            fontSize: '11px',
+            fontWeight: 500,
+            display: 'block'
+          }}>
+            {action.delta}
+          </Text>
+        )}
+        {action.reason && (
+          <Text type="secondary" style={{ 
+            color: '#94a3b8', 
+            fontSize: '11px',
+            lineHeight: 1.4,
+            display: 'block',
+            marginTop: '2px'
+          }}>
+            {action.reason}
+          </Text>
+        )}
       </div>
     ),
   })) || []
@@ -96,29 +123,50 @@ export default function DecisionHybridBoard({ decisionData }: DecisionHybridBoar
     <Card
       className="frog-gpt-section-card"
       styles={{ 
-        body: { padding: '6px' },
+        body: { padding: '4px 6px' },
         root: { width: '100%', maxWidth: '100%', position: 'relative', zIndex: 1 },
         header: { 
           background: 'transparent',
           borderBottom: '1px solid rgba(96, 165, 250, 0.2)',
-          padding: '6px 10px'
+          padding: '4px 8px',
+          minHeight: '32px'
         }
       }}
       title={
-        <Space>
-          <ThunderboltOutlined style={{ color: '#60a5fa', fontSize: '14px' }} />
-          <span style={{ fontSize: '13px', fontWeight: 600 }}>AI 决策链路</span>
+        <Space size="small">
+          <ThunderboltOutlined style={{ color: '#60a5fa', fontSize: '13px' }} />
+          <span style={{ fontSize: '12px', fontWeight: 600 }}>AI 决策链路</span>
           {riskTag}
         </Space>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative', zIndex: 1 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, position: 'relative', zIndex: 1 }}>
         <ThoughtChain
           items={thoughtItems}
           className="frog-gpt-thought"
+          line="solid"
           styles={{ 
-            item: { color: '#e2e8f0' },
-            root: { position: 'relative', zIndex: 1 }
+            item: { 
+              color: '#e2e8f0',
+              padding: '6px 10px',
+              fontSize: '12px',
+              minHeight: 'auto'
+            },
+            itemHeader: {
+              fontSize: '12px',
+              fontWeight: 500,
+              marginBottom: '2px'
+            },
+            itemContent: {
+              fontSize: '11px',
+              color: '#94a3b8',
+              lineHeight: 1.4
+            },
+            root: { 
+              position: 'relative', 
+              zIndex: 1,
+              marginBottom: '4px'
+            }
           }}
         />
 
@@ -126,25 +174,28 @@ export default function DecisionHybridBoard({ decisionData }: DecisionHybridBoar
           <Card
             size="small"
             style={{ 
-              background: 'linear-gradient(135deg, rgba(11, 18, 32, 0.9), rgba(15, 23, 42, 0.7))',
-              borderColor: 'rgba(96, 165, 250, 0.2)',
+              background: 'linear-gradient(135deg, rgba(11, 18, 32, 0.95), rgba(15, 23, 42, 0.85))',
+              borderColor: 'rgba(96, 165, 250, 0.3)',
               position: 'relative', 
               zIndex: 1,
-              backdropFilter: 'blur(10px)'
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 2px 8px rgba(96, 165, 250, 0.15)',
+              marginTop: '4px'
             }}
             styles={{ 
-              body: { padding: '4px' },
+              body: { padding: '6px 8px' },
               root: { position: 'relative', zIndex: 1 },
               header: {
                 background: 'transparent',
-                borderBottom: '1px solid rgba(96, 165, 250, 0.15)',
-                padding: '4px 8px'
+                borderBottom: '1px solid rgba(96, 165, 250, 0.2)',
+                padding: '4px 6px',
+                minHeight: '28px'
               }
             }}
             title={
-              <Space>
-                <LineChartOutlined style={{ color: '#60a5fa' }} />
-                <span style={{ fontSize: '12px', fontWeight: 500 }}>执行动作</span>
+              <Space size="small">
+                <LineChartOutlined style={{ color: '#60a5fa', fontSize: '12px' }} />
+                <span style={{ fontSize: '11px', fontWeight: 500 }}>执行动作</span>
               </Space>
             }
           >
@@ -152,32 +203,40 @@ export default function DecisionHybridBoard({ decisionData }: DecisionHybridBoar
               items={actions}
               variant="outlined"
               styles={{
-                root: { gap: 8, position: 'relative', zIndex: 1 },
-                item: { background: '#0f172a', color: '#e2e8f0' },
+                root: { gap: 6, position: 'relative', zIndex: 1 },
+                item: { 
+                  background: 'rgba(15, 23, 42, 0.8)', 
+                  color: '#e2e8f0',
+                  borderColor: 'rgba(96, 165, 250, 0.3)',
+                  borderRadius: '6px',
+                  padding: '8px 10px',
+                  transition: 'all 0.2s',
+                  fontSize: '12px'
+                },
               }}
             />
           </Card>
         )}
 
-        <Divider style={{ borderColor: '#1f2937', margin: '8px 0' }} />
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          {decisionData.metadata?.confidence !== undefined && (
-            <Tag color="blue" style={{ margin: 0, padding: '6px 10px' }}>
-              <ClockCircleOutlined /> 置信度 {Math.round(decisionData.metadata.confidence * 100)}%
-            </Tag>
-          )}
-          {decisionData.metadata?.analysisDate && (
-            <Tag color="geekblue" style={{ margin: 0, padding: '6px 10px' }}>
-              <ClockCircleOutlined /> {decisionData.metadata.analysisDate}
-            </Tag>
-          )}
-          {decisionData.metadata?.dataRange && (
-            <Tag color="purple" style={{ margin: 0, padding: '6px 10px' }}>
-              数据范围 {decisionData.metadata.dataRange}
-            </Tag>
-          )}
-        </div>
+        {(decisionData.metadata?.confidence !== undefined || decisionData.metadata?.analysisDate || decisionData.metadata?.dataRange) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: '4px', paddingTop: '4px', borderTop: '1px solid rgba(31, 41, 55, 0.5)' }}>
+            {decisionData.metadata?.confidence !== undefined && (
+              <Tag color="blue" style={{ margin: 0, padding: '4px 8px', fontSize: '11px', borderRadius: '4px' }}>
+                <ClockCircleOutlined style={{ fontSize: '10px' }} /> 置信度 {Math.round(decisionData.metadata.confidence * 100)}%
+              </Tag>
+            )}
+            {decisionData.metadata?.analysisDate && (
+              <Tag color="geekblue" style={{ margin: 0, padding: '4px 8px', fontSize: '11px', borderRadius: '4px' }}>
+                <ClockCircleOutlined style={{ fontSize: '10px' }} /> {decisionData.metadata.analysisDate}
+              </Tag>
+            )}
+            {decisionData.metadata?.dataRange && (
+              <Tag color="purple" style={{ margin: 0, padding: '4px 8px', fontSize: '11px', borderRadius: '4px' }}>
+                数据范围 {decisionData.metadata.dataRange}
+              </Tag>
+            )}
+          </div>
+        )}
       </div>
     </Card>
   )

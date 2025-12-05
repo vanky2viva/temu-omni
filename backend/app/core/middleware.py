@@ -1,6 +1,6 @@
 """全局中间件"""
 import time
-from fastapi import Request, Response
+from fastapi import Request, Response, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -37,14 +37,19 @@ class ExceptionHandlerMiddleware(BaseHTTPMiddleware):
                     "error": str(e)
                 }
             )
+        except HTTPException as http_exc:
+            # 重新抛出 HTTP 异常，让 FastAPI 处理
+            raise http_exc
         except Exception as e:
             logger.error(f"未处理的异常: {e}")
             logger.error(traceback.format_exc())
+            # 检查是否是调试模式
+            debug_mode = getattr(request.app, 'debug', False) if hasattr(request.app, 'debug') else False
             return JSONResponse(
                 status_code=500,
                 content={
                     "detail": "服务器内部错误",
-                    "error": str(e) if request.app.debug else "Internal server error"
+                    "error": str(e) if debug_mode else "Internal server error"
                 }
             )
 

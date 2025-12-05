@@ -919,14 +919,56 @@ body {
 
 /* 移动端基础样式 */
 @media (max-width: 768px) {
-  /* 隐藏桌面端侧边栏 */
-  .ant-layout-sider {
-    display: none !important;
-  }
-
-  /* 调整布局间距 */
+  /* 调整布局间距 - FrogGPT页面特殊处理 */
   .site-content {
-    padding: 12px !important;
+    padding: 0 !important;
+    min-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  
+  /* FrogGPT页面特殊处理 - 使用内部滚动 */
+  .frog-gpt-page ~ * .site-content,
+  .site-content:has(.frog-gpt-page) {
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+  
+  /* 页面容器优化 - 允许垂直滚动 */
+  .ant-layout-content {
+    padding: 0 !important;
+    min-height: calc(100vh - 56px) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  
+  /* 确保内容区域不水平溢出，但允许垂直滚动 */
+  .ant-layout {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  
+  /* 确保根容器不溢出 - 但允许内部滚动 */
+  #root {
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  
+  body {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    -webkit-overflow-scrolling: touch !important;
   }
 
   /* 表格在移动端水平滚动 - 优化触摸滚动 */
@@ -935,22 +977,53 @@ body {
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x;
     position: relative;
+    margin: 0 -12px;
+    padding: 0 12px;
   }
-
-  /* 表格容器添加滚动提示 */
-  .ant-table-wrapper::after {
-    content: '← 滑动查看更多 →';
+  
+  /* 表格容器添加滚动阴影提示 */
+  .ant-table-wrapper::before {
+    content: '';
     position: absolute;
-    right: 10px;
-    top: 10px;
-    font-size: 10px;
-    color: rgba(0, 0, 0, 0.3);
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 20px;
+    background: linear-gradient(to right, var(--color-bg, #fff), transparent);
     pointer-events: none;
-    z-index: 1;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.3s;
   }
-
+  
+  .ant-table-wrapper::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 20px;
+    background: linear-gradient(to left, var(--color-bg, #fff), transparent);
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  
+  .ant-table-wrapper.scrollable-left::before {
+    opacity: 1;
+  }
+  
+  .ant-table-wrapper.scrollable-right::after {
+    opacity: 1;
+  }
+  
+  .theme-dark .ant-table-wrapper::before {
+    background: linear-gradient(to right, var(--color-bg, #0d1117), transparent);
+  }
+  
   .theme-dark .ant-table-wrapper::after {
-    color: rgba(255, 255, 255, 0.3);
+    background: linear-gradient(to left, var(--color-bg, #0d1117), transparent);
   }
 
   /* 订单列表表格在移动端优化 */
@@ -1007,6 +1080,11 @@ body {
     height: 56px !important;
     line-height: 56px !important;
     padding: 0 12px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  }
+  
+  .theme-dark .site-header {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
   }
 
   /* 图表容器在移动端 */
@@ -1161,10 +1239,61 @@ body {
 
   /* 触摸反馈优化 */
   .ant-btn:active,
-  .ant-table-tbody > tr:active {
+  .ant-table-tbody > tr:active,
+  .ant-card:active {
     opacity: 0.7;
     transform: scale(0.98);
     transition: all 0.1s ease;
+  }
+  
+  /* 移动端卡片优化 */
+  .ant-card {
+    border-radius: 12px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+  }
+  
+  .theme-dark .ant-card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+  }
+  
+  /* 移动端表单优化 */
+  .ant-form-item-label {
+    padding-bottom: 4px !important;
+  }
+  
+  .ant-form-item-label > label {
+    font-size: 14px !important;
+    font-weight: 500 !important;
+  }
+  
+  /* 移动端Space组件优化 */
+  .ant-space-vertical {
+    width: 100% !important;
+  }
+  
+  /* 移动端Modal优化 */
+  .ant-modal {
+    max-width: calc(100vw - 32px) !important;
+    margin: 16px auto !important;
+  }
+  
+  .ant-modal-content {
+    border-radius: 12px !important;
+  }
+  
+  /* 移动端Drawer优化 */
+  .ant-drawer-content-wrapper {
+    max-width: 90vw !important;
+  }
+  
+  /* 移动端Select下拉优化 */
+  .ant-select-dropdown {
+    max-height: 50vh !important;
+  }
+  
+  /* 移动端Tooltip优化 */
+  .ant-tooltip {
+    max-width: calc(100vw - 32px) !important;
   }
 
   /* 允许文本选择（用户可以复制表格中的内容） */
@@ -1207,12 +1336,30 @@ body {
   }
 
   .ant-card {
-    border-radius: 4px !important;
+    border-radius: 8px !important;
     margin-bottom: 8px !important;
   }
 
   .ant-card-body {
-    padding: 10px !important;
+    padding: 12px !important;
+  }
+  
+  /* 超小屏幕表格进一步优化 */
+  .ant-table-wrapper {
+    margin: 0 -8px;
+    padding: 0 8px;
+  }
+  
+  /* 超小屏幕按钮组优化 */
+  .ant-btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .ant-btn-group .ant-btn {
+    flex: 1;
+    min-width: auto;
   }
 
   h1 {

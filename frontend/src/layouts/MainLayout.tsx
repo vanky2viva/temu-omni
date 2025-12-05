@@ -189,9 +189,10 @@ function MainLayout() {
           title={
             <div style={{ 
               color: isDark ? '#c9d1d9' : '#1f2328',
-              fontSize: '14px',
+              fontSize: '16px',
               fontWeight: 'bold',
               fontFamily: 'JetBrains Mono, monospace',
+              padding: '8px 0',
             }}>
               Luffy Store Omni
             </div>
@@ -200,8 +201,17 @@ function MainLayout() {
           closable={true}
           onClose={() => setMobileMenuOpen(false)}
           open={mobileMenuOpen}
-          styles={{ body: { padding: 0 } }}
-          width={250}
+          styles={{ 
+            body: { padding: 0 },
+            header: {
+              borderBottom: isDark ? '1px solid #30363d' : '1px solid #f0f0f0',
+              padding: '16px',
+            },
+            wrapper: {
+              width: '280px',
+            }
+          }}
+          zIndex={1000}
         >
           {menuComponent}
         </Drawer>
@@ -211,7 +221,9 @@ function MainLayout() {
         style={{ 
           marginLeft: isMobile ? 0 : (collapsed ? 80 : 200), 
           transition: 'all 0.2s', 
-          background: 'transparent' 
+          background: 'transparent',
+          width: isMobile ? '100%' : `calc(100% - ${collapsed ? 80 : 200}px)`,
+          minWidth: 0, // 防止内容溢出
         }}
       >
         <Header 
@@ -293,11 +305,25 @@ function MainLayout() {
             </Dropdown>
           </div>
         </Header>
-        <Content style={{ margin: 0, minHeight: 'calc(100vh - 64px)' }}>
+        <Content style={{ 
+          margin: 0, 
+          minHeight: isMobile ? 'calc(100vh - 56px)' : 'calc(100vh - 64px)',
+          height: isMobile ? 'calc(100vh - 56px)' : 'auto',
+          maxHeight: isMobile ? 'calc(100vh - 56px)' : 'none',
+          overflowX: 'hidden', // 防止水平滚动
+          overflowY: isMobile ? 'hidden' : 'auto', // 移动端隐藏垂直滚动，由内部组件处理
+          position: 'relative',
+        }}>
           <div 
             className="site-content" 
             style={{ 
-              padding: 0,
+              padding: isMobile ? '0' : '24px',
+              maxWidth: '100%',
+              overflowX: 'hidden',
+              overflowY: isMobile ? 'hidden' : 'auto',
+              height: isMobile ? '100%' : 'auto',
+              maxHeight: isMobile ? '100%' : 'none',
+              position: isMobile ? 'relative' : 'static',
             }}
           >
             <Outlet />

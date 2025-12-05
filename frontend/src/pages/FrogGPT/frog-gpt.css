@@ -447,7 +447,47 @@
 .frog-gpt-chat-scroll .ant-bubble-content-filled > * {
   opacity: 1 !important;
   visibility: visible !important;
-  display: block !important;
+}
+
+/* 确保用户消息靠右对齐 */
+.frog-gpt-chat-scroll .frog-gpt-user-message {
+  display: flex !important;
+  justify-content: flex-end !important;
+  width: 100% !important;
+  align-items: flex-start !important;
+  margin-bottom: 8px !important;
+}
+
+.frog-gpt-chat-scroll .frog-gpt-assistant-message {
+  display: flex !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  align-items: flex-start !important;
+  margin-bottom: 8px !important;
+}
+
+/* 确保 Bubble 组件在用户消息中正确显示 - 覆盖可能的 display: block */
+.frog-gpt-chat-scroll .frog-gpt-user-message .ant-bubble {
+  display: flex !important;
+  width: auto !important;
+  max-width: 75% !important;
+  margin-left: auto !important;
+  margin-right: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+/* 确保用户消息容器靠右 */
+.frog-gpt-chat-scroll .frog-gpt-user-message > div {
+  margin-left: auto !important;
+  margin-right: 0 !important;
+}
+
+.frog-gpt-chat-scroll .frog-gpt-assistant-message .ant-bubble {
+  display: flex !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
 .frog-gpt-assistant-message,
@@ -575,22 +615,73 @@
   }
 }
 
-/* 思考链 - 赛博朋克风格 */
+/* 思考链 - 赛博朋克风格 - 更紧凑 */
 .frog-gpt-thought {
-  border: 1px dashed rgba(139, 92, 246, 0.5);
-  border-radius: 16px;
-  padding: 16px;
+  border: 1px dashed rgba(139, 92, 246, 0.4);
+  border-radius: 8px;
+  padding: 4px 6px;
   background: linear-gradient(135deg, 
-    rgba(10, 10, 26, 0.7) 0%,
-    rgba(26, 10, 46, 0.5) 100%);
-  backdrop-filter: blur(10px);
+    rgba(10, 10, 26, 0.6) 0%,
+    rgba(26, 10, 46, 0.4) 100%);
+  backdrop-filter: blur(8px);
   position: relative;
   z-index: 1;
   box-shadow: 
-    inset 0 0 20px rgba(139, 92, 246, 0.2),
-    0 4px 16px rgba(139, 92, 246, 0.3),
-    0 0 20px rgba(139, 92, 246, 0.2);
+    inset 0 0 10px rgba(139, 92, 246, 0.15),
+    0 2px 8px rgba(139, 92, 246, 0.2);
   animation: frog-gpt-thought-glow 2s ease-in-out infinite alternate;
+}
+
+/* 优化思考链项目间距 */
+.frog-gpt-thought .ant-thought-chain-item {
+  padding: 4px 6px !important;
+  margin-bottom: 2px !important;
+  min-height: auto !important;
+}
+
+.frog-gpt-thought .ant-thought-chain-item-header {
+  font-size: 12px !important;
+  line-height: 1.3 !important;
+  margin-bottom: 2px !important;
+}
+
+.frog-gpt-thought .ant-thought-chain-item-content {
+  font-size: 11px !important;
+  line-height: 1.4 !important;
+}
+
+/* 优化决策卡片 Actions 样式 */
+.frog-gpt-section-card .ant-actions-root {
+  gap: 6px !important;
+}
+
+.frog-gpt-section-card .ant-actions-item {
+  background: rgba(15, 23, 42, 0.8) !important;
+  border: 1px solid rgba(96, 165, 250, 0.3) !important;
+  border-radius: 6px !important;
+  padding: 8px 10px !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  color: #e2e8f0 !important;
+  font-size: 12px !important;
+  box-shadow: 0 2px 4px rgba(96, 165, 250, 0.1) !important;
+}
+
+.frog-gpt-section-card .ant-actions-item:hover {
+  background: rgba(15, 23, 42, 0.95) !important;
+  border-color: rgba(96, 165, 250, 0.5) !important;
+  box-shadow: 0 4px 8px rgba(96, 165, 250, 0.2) !important;
+  transform: translateY(-1px) !important;
+}
+
+.frog-gpt-section-card .ant-actions-item[data-danger="true"] {
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  background: rgba(30, 15, 15, 0.8) !important;
+}
+
+.frog-gpt-section-card .ant-actions-item[data-danger="true"]:hover {
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  background: rgba(30, 15, 15, 0.95) !important;
+  box-shadow: 0 4px 8px rgba(239, 68, 68, 0.2) !important;
 }
 
 @keyframes frog-gpt-thought-glow {
@@ -792,6 +883,125 @@
   }
 }
 
+/* 沉浸式输入框样式 - 与页面配色一致 */
+.frog-gpt-sender-root {
+  position: relative;
+  border: 1px solid rgba(139, 92, 246, 0.3) !important;
+  background: linear-gradient(135deg, rgba(10, 10, 26, 0.95), rgba(26, 10, 46, 0.95)) !important;
+  backdrop-filter: blur(20px) !important;
+  box-shadow: 
+    0 4px 16px rgba(139, 92, 246, 0.2), 
+    0 0 0 1px rgba(139, 92, 246, 0.1), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  margin: 0 !important;
+  padding: 4px 2px !important;
+}
+
+.frog-gpt-sender-root:hover {
+  box-shadow: 
+    0 6px 20px rgba(139, 92, 246, 0.3), 
+    0 0 0 1px rgba(139, 92, 246, 0.2), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(139, 92, 246, 0.4) !important;
+}
+
+.frog-gpt-sender-root:focus-within {
+  box-shadow: 
+    0 8px 24px rgba(139, 92, 246, 0.4), 
+    0 0 0 1px rgba(139, 92, 246, 0.3), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 20px rgba(139, 92, 246, 0.2) !important;
+  border-color: rgba(139, 92, 246, 0.5) !important;
+}
+
+.frog-gpt-sender-content {
+  min-height: 40px;
+  background: transparent !important;
+  color: #e2e8f0 !important;
+}
+
+.frog-gpt-sender-content input,
+.frog-gpt-sender-content textarea {
+  color: #e2e8f0 !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  max-height: 272px !important;
+  outline: none !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+.frog-gpt-sender-content input:focus,
+.frog-gpt-sender-content textarea:focus {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.frog-gpt-sender-content input::placeholder,
+.frog-gpt-sender-content textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* 深色模式适配 */
+@media (prefers-color-scheme: dark) {
+  .frog-gpt-sender-root {
+    background: #1f1f23 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+  
+  .frog-gpt-sender-content {
+    color: #ececf1 !important;
+  }
+  
+  .frog-gpt-sender-root input,
+  .frog-gpt-sender-root textarea {
+    color: #ececf1 !important;
+    height: 34px !important;
+    line-height: 34px !important;
+    max-height: 272px !important;
+    outline: none !important;
+    background: transparent !important;
+    border: none !important;
+  }
+  
+  .frog-gpt-sender-root input:focus,
+  .frog-gpt-sender-root textarea:focus {
+    outline: none !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  
+  .frog-gpt-sender-root input::placeholder,
+  .frog-gpt-sender-root textarea::placeholder {
+    color: #8e8ea0 !important;
+  }
+  
+  .frog-gpt-sender-root:hover {
+    border-color: rgba(255, 255, 255, 0.15) !important;
+  }
+  
+  .frog-gpt-sender-root:focus-within {
+    border-color: rgba(255, 255, 255, 0.2) !important;
+  }
+}
+
+/* 前缀按钮样式（深色模式） */
+@media (prefers-color-scheme: dark) {
+  .frog-gpt-sender-root [style*="background: rgba(0, 0, 0, 0.05)"] {
+    background: rgba(255, 255, 255, 0.08) !important;
+  }
+  
+  .frog-gpt-sender-root [style*="background: rgba(0, 0, 0, 0.05)"]:hover {
+    background: rgba(255, 255, 255, 0.12) !important;
+  }
+  
+  .frog-gpt-sender-root [style*="color: #666"] {
+    color: #d1d5db !important;
+  }
+}
+
 /* Welcome 组件紧凑样式 - 赛博朋克 */
 .frog-gpt-hero-card .ant-welcome {
   margin: 0;
@@ -985,5 +1195,589 @@
   .frog-gpt-right-panel {
     width: 100% !important;
     max-width: 100% !important;
+  }
+}
+
+/* 移动端响应式优化 - 提高断点到1024px，确保平板也使用移动布局 */
+@media (max-width: 1023px) {
+  .frog-gpt-page {
+    padding: 0 !important; /* 移动端无内边距 */
+    gap: 0 !important; /* 移动端无间距 */
+    height: calc(100vh - 56px) !important;
+    max-height: calc(100vh - 56px) !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+  
+  /* 移动端卡片优化 */
+  .frog-gpt-section-card,
+  .frog-gpt-hero-card,
+  .frog-gpt-chat-card {
+    border-radius: 12px !important;
+    padding: 0 !important;
+    margin-bottom: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* 移动端聊天卡片全屏显示 */
+  .frog-gpt-chat-card {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-height: 0 !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+  }
+  
+  /* 确保移动端右侧面板可见 */
+  .frog-gpt-right-panel {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+  }
+  
+  /* 隐藏移动端左侧面板 */
+  .frog-gpt-left-panel {
+    display: none !important;
+  }
+  
+  /* 强制移动端主内容区使用column布局 */
+  .frog-gpt-page > div:last-child {
+    flex-direction: column !important;
+  }
+  
+  /* 确保移动端对话窗口占据全宽并在下方 */
+  .frog-gpt-right-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    order: 2 !important; /* 确保对话窗口在下方 */
+  }
+  
+  /* 确保Card组件在移动端正确显示 */
+  .frog-gpt-chat-card .ant-card {
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  
+  .frog-gpt-chat-card .ant-card-body {
+    flex: 1 !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    padding: 0 !important;
+  }
+  
+  /* 移动端隐藏聊天元数据区域 */
+  .frog-gpt-chat-meta {
+    display: none !important;
+  }
+  
+  /* 确保输入区域可见 */
+  .frog-gpt-chat-card > div:last-child {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-height: 60px !important;
+    position: relative !important;
+    z-index: 100 !important;
+  }
+  
+  /* 确保Sender组件在移动端可见 */
+  .frog-gpt-sender-root {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative !important;
+    z-index: 100 !important;
+    background: linear-gradient(135deg, rgba(10, 10, 26, 0.98), rgba(26, 10, 46, 0.98)) !important;
+    min-height: 56px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border: 1px solid rgba(139, 92, 246, 0.4) !important;
+    border-radius: 24px !important;
+  }
+  
+  /* 确保Sender内容可见 */
+  .frog-gpt-sender-content {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-height: 48px !important;
+    padding: 10px 14px !important;
+  }
+  
+  /* 确保输入框可见 */
+  .frog-gpt-sender-root input,
+  .frog-gpt-sender-root textarea {
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: block !important;
+    color: #e2e8f0 !important;
+    font-size: 16px !important;
+    min-height: 48px !important;
+  }
+  
+  /* 确保消息列表可见 */
+  .frog-gpt-chat-scroll {
+    display: flex !important;
+    flex-direction: column !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-height: 200px !important; /* 确保有足够高度显示内容 */
+  }
+  
+  /* 确保消息内容可见 */
+  .frog-gpt-chat-scroll > div:first-child {
+    display: flex !important;
+    flex-direction: column !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  /* 确保欢迎消息可见 */
+  .frog-gpt-chat-scroll .ant-bubble {
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: block !important;
+  }
+  
+  /* 确保聊天滚动容器可以滚动 */
+  .frog-gpt-chat-card .frog-gpt-chat-scroll {
+    position: relative !important;
+    z-index: 1 !important;
+    /* 强制启用滚动 */
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+  }
+  
+  /* 移动端聊天滚动区域 */
+  .frog-gpt-chat-scroll {
+    flex: 1 !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    padding: 8px 4px !important;
+    padding-bottom: 80px !important;
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overscroll-behavior-y: contain !important;
+    will-change: scroll-position !important;
+  }
+  
+  /* 确保移动端消息容器不产生空白 */
+  .frog-gpt-chat-scroll > div:first-child {
+    min-height: auto !important;
+    height: auto !important;
+  }
+  
+  /* 确保消息容器不溢出 */
+  .frog-gpt-chat-scroll > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  
+  /* 移动端隐藏"暂无消息"的额外空白 */
+  .frog-gpt-chat-scroll > div:first-child > div:only-child {
+    padding: 20px 0 !important;
+  }
+  
+  /* 移动端消息列表容器 - 确保内容足够高以触发滚动 */
+  .frog-gpt-chat-scroll > div:first-child {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    min-height: calc(100% + 1px) !important; /* 确保内容足够高以触发滚动 */
+    padding-bottom: 20px !important; /* 底部留白 */
+  }
+  
+  /* 移动端控制卡片 */
+  .frog-gpt-control-card {
+    padding: 8px 10px !important;
+    border-radius: 10px !important;
+    margin-bottom: 8px !important;
+  }
+  
+  /* 移动端建议芯片 */
+  .frog-gpt-suggestion-chip {
+    width: 120px !important;
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+  }
+  
+  .frog-gpt-suggestion-chip-title {
+    font-size: 11px !important;
+    margin-bottom: 2px !important;
+  }
+  
+  .frog-gpt-suggestion-chip-desc {
+    font-size: 9px !important;
+  }
+  
+  /* 移动端输入框 */
+  .frog-gpt-sender-root {
+    border-radius: 20px !important;
+    padding: 6px 4px !important;
+    min-height: 52px !important;
+    margin: 0 !important;
+  }
+  
+  .frog-gpt-sender-content {
+    min-height: 44px !important; /* iOS推荐最小触摸区域 */
+    padding: 8px 12px !important;
+  }
+  
+  .frog-gpt-sender-content input,
+  .frog-gpt-sender-content textarea {
+    font-size: 16px !important; /* 防止iOS自动缩放 */
+    min-height: 44px !important;
+    line-height: 1.5 !important;
+    padding: 8px 0 !important;
+  }
+  
+  /* 移动端输入框按钮优化 */
+  .frog-gpt-sender-root .ant-sender-suffix,
+  .frog-gpt-sender-root .ant-sender-prefix {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  
+  /* 移动端输入框背景渐变（固定在底部时） */
+  .frog-gpt-chat-card .ant-sender {
+    background: linear-gradient(180deg, 
+      transparent 0%,
+      rgba(10, 10, 26, 0.7) 20%,
+      rgba(10, 10, 26, 0.95) 100%) !important;
+  }
+  
+  /* 移动端快捷提示区域优化 */
+  .frog-gpt-chat-card > div:last-child {
+    padding: 8px 12px !important;
+    background: linear-gradient(180deg, 
+      rgba(10, 10, 26, 0.95) 0%,
+      rgba(10, 10, 26, 0.98) 100%) !important;
+    backdrop-filter: blur(20px) !important;
+    border-top: 1px solid rgba(139, 92, 246, 0.3) !important;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3) !important;
+  }
+  
+  /* 移动端Markdown内容优化 */
+  .frog-gpt-chat-scroll .ant-bubble-content p {
+    margin: 4px 0 !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+  }
+  
+  .frog-gpt-chat-scroll .ant-bubble-content code {
+    font-size: 12px !important;
+    padding: 2px 6px !important;
+  }
+  
+  .frog-gpt-chat-scroll .ant-bubble-content pre {
+    font-size: 12px !important;
+    padding: 8px 12px !important;
+    margin: 8px 0 !important;
+    overflow-x: auto !important;
+  }
+  
+  .frog-gpt-chat-scroll .ant-bubble-content ul,
+  .frog-gpt-chat-scroll .ant-bubble-content ol {
+    margin: 4px 0 !important;
+    padding-left: 20px !important;
+  }
+  
+  .frog-gpt-chat-scroll .ant-bubble-content li {
+    margin: 2px 0 !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+  }
+  
+  /* 移动端表格优化 */
+  .frog-gpt-chat-scroll .ant-bubble-content table {
+    font-size: 12px !important;
+    margin: 8px 0 !important;
+  }
+  
+  .frog-gpt-chat-scroll .ant-bubble-content th,
+  .frog-gpt-chat-scroll .ant-bubble-content td {
+    padding: 6px 8px !important;
+    font-size: 12px !important;
+  }
+  
+  /* 移动端聊天区域 */
+  .frog-gpt-chat-scroll {
+    padding: 8px !important;
+  }
+  
+  /* 移动端消息气泡 */
+  .frog-gpt-chat-scroll .frog-gpt-user-message .ant-bubble {
+    max-width: 85% !important;
+    margin-left: auto !important;
+    margin-right: 0 !important;
+  }
+  
+  .frog-gpt-chat-scroll .frog-gpt-assistant-message .ant-bubble {
+    max-width: 90% !important;
+    margin-left: 0 !important;
+    margin-right: auto !important;
+  }
+  
+  /* 移动端输入框固定在底部 */
+  .frog-gpt-chat-card > div:last-child {
+    position: sticky !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 100 !important;
+    background: linear-gradient(180deg, 
+      transparent 0%,
+      rgba(10, 10, 26, 0.7) 20%,
+      rgba(10, 10, 26, 0.95) 100%) !important;
+    backdrop-filter: blur(20px) !important;
+    border-top: 1px solid rgba(139, 92, 246, 0.3) !important;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  
+  .frog-gpt-chat-card .ant-sender {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  
+  /* 移动端建议提示行优化 */
+  .frog-gpt-suggestion-row {
+    padding: 8px 4px !important;
+    margin-bottom: 4px !important;
+  }
+  
+  /* 移动端建议芯片更紧凑 */
+  .frog-gpt-suggestion-chip {
+    width: 140px !important;
+    padding: 8px 10px !important;
+    min-height: 60px !important;
+  }
+  
+  .frog-gpt-suggestion-chip-title {
+    font-size: 12px !important;
+    margin-bottom: 4px !important;
+    line-height: 1.3 !important;
+  }
+  
+  .frog-gpt-suggestion-chip-desc {
+    font-size: 10px !important;
+    line-height: 1.3 !important;
+  }
+  
+  /* 移动端思考链 */
+  .frog-gpt-thought {
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+    margin-bottom: 12px !important;
+  }
+  
+  .frog-gpt-thought .ant-thought-chain-item {
+    padding: 6px 8px !important;
+    font-size: 12px !important;
+    margin-bottom: 4px !important;
+  }
+  
+  .frog-gpt-thought .ant-thought-chain-item-header {
+    font-size: 13px !important;
+    margin-bottom: 4px !important;
+  }
+  
+  .frog-gpt-thought .ant-thought-chain-item-content {
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* 移动端消息间距优化 */
+  .frog-gpt-chat-scroll > div:first-child {
+    gap: 12px !important;
+    min-height: min-content !important;
+    padding-bottom: 20px !important; /* 确保最后一条消息可见 */
+  }
+  
+  /* 确保滚动区域可以滚动 */
+  .frog-gpt-chat-scroll {
+    /* 强制启用滚动 */
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    will-change: scroll-position !important; /* 优化滚动性能 */
+  }
+  
+  /* 移动端Bubble组件优化 */
+  .frog-gpt-chat-scroll .ant-bubble {
+    margin-bottom: 8px !important;
+  }
+  
+  .frog-gpt-chat-scroll .ant-bubble-content {
+    padding: 10px 14px !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+  }
+  
+  /* 移动端头像优化 */
+  .frog-gpt-chat-scroll .ant-avatar {
+    width: 32px !important;
+    height: 32px !important;
+    flex-shrink: 0 !important;
+  }
+  
+  /* 移动端思考过程优化 */
+  .frog-gpt-chat-scroll .ant-think {
+    margin-bottom: 8px !important;
+    font-size: 12px !important;
+  }
+  
+  .frog-gpt-chat-scroll .ant-think-content {
+    padding: 8px 10px !important;
+    line-height: 1.5 !important;
+  }
+  
+  /* 移动端徽章 */
+  .frog-gpt-badge {
+    padding: 3px 10px !important;
+    font-size: 10px !important;
+  }
+  
+  /* 移动端标签 */
+  .frog-gpt-chip {
+    padding: 4px 10px !important;
+    font-size: 11px !important;
+  }
+  
+  /* 移动端表格 */
+  .frog-gpt-sku-table .ant-table-thead > tr > th {
+    padding: 3px 3px !important;
+    font-size: 10px !important;
+  }
+  
+  .frog-gpt-sku-table .ant-table-tbody > tr > td {
+    padding: 2px 3px !important;
+    font-size: 10px !important;
+  }
+  
+  /* 移动端按钮组 */
+  .frog-gpt-control-card .ant-space {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  
+  .frog-gpt-control-card .ant-space-item {
+    flex: 1;
+    min-width: calc(50% - 4px);
+  }
+  
+  /* 移动端Welcome组件 */
+  .frog-gpt-hero-card .ant-welcome-title {
+    font-size: 18px !important;
+  }
+  
+  /* 移动端Actions */
+  .frog-gpt-section-card .ant-actions-item {
+    padding: 6px 8px !important;
+    font-size: 11px !important;
+  }
+}
+
+/* 超小屏幕设备 (< 480px) */
+@media (max-width: 480px) {
+  .frog-gpt-page {
+    padding: 4px 2px !important;
+    gap: 4px !important;
+  }
+  
+  .frog-gpt-chat-scroll {
+    padding: 8px 4px !important;
+    padding-bottom: 70px !important;
+  }
+  
+  .frog-gpt-section-card,
+  .frog-gpt-hero-card,
+  .frog-gpt-chat-card {
+    border-radius: 8px !important;
+  }
+  
+  .frog-gpt-suggestion-chip {
+    width: 120px !important;
+    padding: 6px 8px !important;
+    min-height: 56px !important;
+  }
+  
+  .frog-gpt-suggestion-chip-title {
+    font-size: 11px !important;
+  }
+  
+  .frog-gpt-suggestion-chip-desc {
+    font-size: 9px !important;
+  }
+  
+  .frog-gpt-chat-scroll .frog-gpt-user-message .ant-bubble {
+    max-width: 88% !important;
+  }
+  
+  .frog-gpt-chat-scroll .frog-gpt-assistant-message .ant-bubble {
+    max-width: 92% !important;
+  }
+  
+  /* 超小屏幕输入框 */
+  .frog-gpt-sender-root {
+    min-height: 48px !important;
+    padding: 4px 2px !important;
+  }
+  
+  .frog-gpt-sender-content {
+    min-height: 40px !important;
+    padding: 6px 10px !important;
+  }
+  
+  .frog-gpt-sender-content input,
+  .frog-gpt-sender-content textarea {
+    font-size: 16px !important;
+    min-height: 40px !important;
+    padding: 6px 0 !important;
   }
 }

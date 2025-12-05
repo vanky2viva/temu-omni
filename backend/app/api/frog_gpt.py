@@ -71,6 +71,40 @@ async def chat(
         # 构建消息列表
         messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
         
+        # 检测用户问题是否涉及回款数据，如果是则主动查询
+        user_message = next((msg.content for msg in request.messages if msg.role == "user"), "")
+        payment_collection_data = None
+        
+        # 检测关键词：回款、回款金额、回款数据、未来一周回款、未来7天回款等
+        payment_keywords = ["回款", "回款金额", "回款数据", "回款统计", "未来一周回款", "未来7天回款", 
+                          "未来一个月回款", "未来30天回款", "payment collection", "payout"]
+        if any(keyword in user_message for keyword in payment_keywords):
+            try:
+                logger.info(f"检测到回款相关问题，主动查询回款数据: {user_message[:100]}")
+                from app.api.analytics import get_payment_collection
+                from datetime import datetime, timedelta
+                
+                # 解析日期范围（尝试从问题中提取，否则使用默认值）
+                days = 30  # 默认30天
+                if "一周" in user_message or "7天" in user_message:
+                    days = 7
+                elif "一个月" in user_message or "30天" in user_message:
+                    days = 30
+                elif "两周" in user_message or "14天" in user_message:
+                    days = 14
+                
+                # 调用回款API获取数据
+                payment_collection_data = get_payment_collection(
+                    shop_ids=[request.shop_id] if request.shop_id else None,
+                    days=days,
+                    db=db,
+                    current_user=current_user
+                )
+                logger.info(f"成功获取回款数据: summary.total_amount={payment_collection_data.get('summary', {}).get('total_amount', 0)}")
+            except Exception as e:
+                logger.warning(f"获取回款数据失败: {e}")
+                logger.debug(traceback.format_exc())
+        
         # 如果需要包含系统数据上下文，在消息前添加系统提示
         if request.include_system_data:
             try:
@@ -145,7 +179,29 @@ async def chat(
                 }
                 
                 # 构建系统上下文
-                system_context = frog_gpt_service.build_system_context(data_summary)
+                system_context = frog_gpt_service.build_system_context(data_summary, db)
+                
+                # 如果获取了回款数据，添加到系统上下文中
+                if payment_collection_data:
+                    payment_context = "\n\n## 回款数据（已自动查询）\n"
+                    period = payment_collection_data.get('period', {})
+                    payment_context += f"- **查询日期范围**: {period.get('start_date', 'N/A')} 至 {period.get('end_date', 'N/A')}\n"
+                    summary = payment_collection_data.get('summary', {})
+                    payment_context += f"- **总回款金额**: ¥{summary.get('total_amount', 0):,.2f}\n"
+                    payment_context += f"- **总回款订单数**: {summary.get('total_orders', 0)}\n"
+                    
+                    # 添加每日回款数据（最近7天）
+                    table_data = payment_collection_data.get('table_data', [])
+                    if table_data:
+                        payment_context += "\n**最近7天回款明细**（按日期倒序）：\n"
+                        recent_days = table_data[:7]  # 已经是倒序排列
+                        for day_data in recent_days:
+                            date = day_data.get('date', 'N/A')
+                            amount = day_data.get('total', 0)
+                            payment_context += f"- {date}: ¥{amount:,.2f}\n"
+                    
+                    system_context += payment_context
+                    logger.info("已将回款数据注入系统上下文")
                 
                 # 在消息列表前添加系统消息
                 messages.insert(0, {
@@ -298,6 +354,72 @@ async def chat_stream(
             # 构建消息列表
             messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
             
+            # 检测用户问题是否涉及回款数据，如果是则主动查询
+            user_message = next((msg.content for msg in request.messages if msg.role == "user"), "")
+            payment_collection_data = None
+            
+            # 检测关键词：回款、回款金额、回款数据、未来一周回款、未来7天回款等
+            payment_keywords = ["回款", "回款金额", "回款数据", "回款统计", "未来一周回款", "未来7天回款", 
+                              "未来一个月回款", "未来30天回款", "payment collection", "payout"]
+            if any(keyword in user_message for keyword in payment_keywords):
+                try:
+                    logger.info(f"检测到回款相关问题，主动查询回款数据: {user_message[:100]}")
+                    from app.api.analytics import get_payment_collection
+                    from datetime import datetime, timedelta
+                    import asyncio
+                    from concurrent.futures import ThreadPoolExecutor
+                    
+                    # 解析日期范围（尝试从问题中提取，否则使用默认值）
+                    days = 30  # 默认30天
+                    if "一周" in user_message or "7天" in user_message:
+                        days = 7
+                    elif "一个月" in user_message or "30天" in user_message:
+                        days = 30
+                    elif "两周" in user_message or "14天" in user_message:
+                        days = 14
+                    
+                    # 限制最大查询天数为30天，避免查询时间过长
+                    if days > 30:
+                        days = 30
+                    
+                    # 在后台线程中执行数据库查询，避免阻塞异步事件循环
+                    # 注意：需要在后台线程中创建新的数据库会话，因为SQLAlchemy会话不能跨线程使用
+                    try:
+                        from app.core.database import SessionLocal
+                        
+                        def query_payment_collection():
+                            """在后台线程中执行查询，创建新的数据库会话"""
+                            db_session = SessionLocal()
+                            try:
+                                return get_payment_collection(
+                                    shop_ids=[request.shop_id] if request.shop_id else None,
+                                    days=days,
+                                    db=db_session,
+                                    current_user=current_user
+                                )
+                            finally:
+                                db_session.close()
+                        
+                        loop = asyncio.get_event_loop()
+                        with ThreadPoolExecutor(max_workers=1) as executor:
+                            payment_collection_data = await asyncio.wait_for(
+                                loop.run_in_executor(executor, query_payment_collection),
+                                timeout=8.0  # 8秒超时
+                            )
+                        logger.info(f"成功获取回款数据: summary.total_amount={payment_collection_data.get('summary', {}).get('total_amount', 0)}")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"获取回款数据超时（8秒），将跳过回款数据查询")
+                        payment_collection_data = None
+                    except Exception as query_error:
+                        logger.warning(f"获取回款数据失败: {query_error}")
+                        logger.debug(traceback.format_exc())
+                        payment_collection_data = None
+                except Exception as e:
+                    logger.warning(f"获取回款数据失败: {e}")
+                    logger.debug(traceback.format_exc())
+                    # 不抛出异常，继续执行，只是不包含回款数据
+                    payment_collection_data = None
+            
             # 如果需要包含系统数据上下文，在消息前添加系统提示
             if request.include_system_data:
                 try:
@@ -370,7 +492,30 @@ async def chat_stream(
                         "top_managers": summary_data["top_managers"],
                     }
                     
-                    system_context = frog_gpt_service.build_system_context(data_summary)
+                    system_context = frog_gpt_service.build_system_context(data_summary, db=db)
+                    
+                    # 如果获取了回款数据，添加到系统上下文中
+                    if payment_collection_data:
+                        payment_context = "\n\n## 回款数据（已自动查询）\n"
+                        period = payment_collection_data.get('period', {})
+                        payment_context += f"- **查询日期范围**: {period.get('start_date', 'N/A')} 至 {period.get('end_date', 'N/A')}\n"
+                        summary = payment_collection_data.get('summary', {})
+                        payment_context += f"- **总回款金额**: ¥{summary.get('total_amount', 0):,.2f}\n"
+                        payment_context += f"- **总回款订单数**: {summary.get('total_orders', 0)}\n"
+                        
+                        # 添加每日回款数据（最近7天）
+                        table_data = payment_collection_data.get('table_data', [])
+                        if table_data:
+                            payment_context += "\n**最近7天回款明细**（按日期倒序）：\n"
+                            recent_days = table_data[:7]  # 已经是倒序排列
+                            for day_data in recent_days:
+                                date = day_data.get('date', 'N/A')
+                                amount = day_data.get('total', 0)
+                                payment_context += f"- {date}: ¥{amount:,.2f}\n"
+                        
+                        system_context += payment_context
+                        logger.info("已将回款数据注入系统上下文")
+                    
                     messages.insert(0, {
                         "role": "system",
                         "content": system_context
@@ -391,24 +536,47 @@ async def chat_stream(
             logger.info(f"收到流式聊天请求: model={request.model}, provider={provider}, temperature={request.temperature}, messages_count={len(messages)}")
             
             # 调用流式方法
-            async for chunk in frog_gpt_service.chat_completion_stream(
-                messages=messages,
-                model=request.model,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-                db=db
-            ):
-                # 将数据块转换为 SSE 格式
-                yield f"data: {json.dumps(chunk)}\n\n"
+            try:
+                async for chunk in frog_gpt_service.chat_completion_stream(
+                    messages=messages,
+                    model=request.model,
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                    db=db
+                ):
+                    try:
+                        # 将数据块转换为 SSE 格式
+                        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+                    except Exception as e:
+                        logger.error(f"序列化数据块失败: {e}")
+                        # 继续处理下一个数据块
+                        continue
+            except Exception as stream_error:
+                logger.error(f"流式响应生成错误: {stream_error}")
+                logger.error(traceback.format_exc())
+                # 发送错误信息
+                error_chunk = {
+                    "type": "error",
+                    "error": f"流式响应错误: {str(stream_error)}"
+                }
+                try:
+                    yield f"data: {json.dumps(error_chunk, ensure_ascii=False)}\n\n"
+                except:
+                    # 如果连错误信息都无法发送，记录日志
+                    logger.error("无法发送错误信息到客户端")
                 
         except Exception as e:
             logger.error(f"流式聊天错误: {e}")
             logger.error(traceback.format_exc())
             error_chunk = {
                 "type": "error",
-                "error": str(e)
+                "error": f"流式聊天请求失败: {str(e)}"
             }
-            yield f"data: {json.dumps(error_chunk)}\n\n"
+            try:
+                yield f"data: {json.dumps(error_chunk, ensure_ascii=False)}\n\n"
+            except:
+                # 如果连错误信息都无法发送，记录日志
+                logger.error("无法发送错误信息到客户端")
     
     return StreamingResponse(
         generate(),
@@ -552,7 +720,7 @@ async def chat_with_files(
                     "top_managers": summary_data["top_managers"],
                 }
                 
-                system_context = frog_gpt_service.build_system_context(data_summary)
+                system_context = frog_gpt_service.build_system_context(data_summary, db=db)
                 message_list.insert(0, {
                     "role": "system",
                     "content": system_context
