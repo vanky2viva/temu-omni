@@ -249,6 +249,61 @@ export const userViewsApi = {
   getDefaultView: (viewType: string) => api.get(`/user-views/default/${viewType}`),
 }
 
+// 利润表API
+export const profitStatementApi = {
+  // 上传回款表
+  uploadCollection: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return rawApi.post('/profit-statement/upload/collection', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }).then((res) => res.data)
+  },
+  
+  // 上传头程运费表
+  uploadShipping: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return rawApi.post('/profit-statement/upload/shipping', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }).then((res) => res.data)
+  },
+  
+  // 上传延迟扣款表
+  uploadDeduction: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return rawApi.post('/profit-statement/upload/deduction', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }).then((res) => res.data)
+  },
+  
+  // 上传尾程运费表
+  uploadLastMileShipping: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return rawApi.post('/profit-statement/upload/last-mile-shipping', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }).then((res) => res.data)
+  },
+  
+  // 计算利润
+  calculateProfit: (data: {
+    collection_data: any
+    shipping_data: Array<{ order_sn: string; parent_order_sn?: string; shipping_cost: number; chargeable_weight?: number }>
+    deduction_data: Array<{ order_sn: string; parent_order_sn?: string; deduction: number }>
+    last_mile_shipping_data?: Array<{ order_sn: string; last_mile_cost: number }>
+  }) => api.post('/profit-statement/calculate', data),
+}
+
 // FrogGPT AI API
 export const frogGptApi = {
   // 发送聊天消息

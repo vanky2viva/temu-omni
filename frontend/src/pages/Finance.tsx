@@ -1,15 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
-import { Table, Card, Row, Col, Spin, Tabs, Button, DatePicker, Space } from 'antd'
-import { DollarOutlined, RiseOutlined, ShoppingOutlined, FundOutlined } from '@ant-design/icons'
+import { Table, Card, Row, Col, Spin, Tabs, Button, DatePicker, Space, Upload, message, Statistic, Tooltip } from 'antd'
+import { DollarOutlined, RiseOutlined, ShoppingOutlined, FundOutlined, UploadOutlined, FileExcelOutlined, CheckCircleOutlined, RightOutlined, DownOutlined, WarningOutlined, CopyOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
 import LazyECharts from '@/components/LazyECharts'
-import { analyticsApi } from '@/services/api'
+import { analyticsApi, profitStatementApi } from '@/services/api'
 import { getDailyCollectionForecast } from '@/services/orderCostApi'
 import { statisticsApi } from '@/services/statisticsApi'
 import dayjs from 'dayjs'
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 
 // 扩展 dayjs 插件
 dayjs.extend(isSameOrBefore)
@@ -24,6 +24,35 @@ function Finance() {
   
   // 是否选择全部历史数据，默认为true（显示全部数据）
   const [isAllData, setIsAllData] = useState(true)
+  
+  // 利润表相关状态
+  const [profitCollectionData, setProfitCollectionData] = useState<Array<{ parent_order_sn: string; sales_collection: number; sales_collection_after_discount: number; sales_reversal: number; shipping_collection: number; shipping_collection_after_discount: number }>>([])
+  const [profitShippingData, setProfitShippingData] = useState<Array<{ order_sn: string; parent_order_sn?: string; shipping_cost: number; chargeable_weight?: number }>>([])
+  const [profitDeductionData, setProfitDeductionData] = useState<Array<{ order_sn: string; parent_order_sn?: string; deduction: number }>>([])
+  const [profitLastMileShippingData, setProfitLastMileShippingData] = useState<Array<{ order_sn: string; last_mile_cost: number }>>([])
+  const [profitData, setProfitData] = useState<any>(null)
+  const [calculating, setCalculating] = useState(false)
+  const [revenueExpanded, setRevenueExpanded] = useState<Record<string, boolean>>({}) // 收入列展开状态
+  
+  // 从localStorage加载已保存的利润数据
+  useEffect(() => {
+    const savedProfitData = localStorage.getItem('profit_statement_data')
+    if (savedProfitData) {
+      try {
+        const parsed = JSON.parse(savedProfitData)
+        setProfitData(parsed)
+      } catch (e) {
+        console.error('加载保存的利润数据失败:', e)
+      }
+    }
+  }, [])
+  
+  // 保存利润数据到localStorage
+  useEffect(() => {
+    if (profitData) {
+      localStorage.setItem('profit_statement_data', JSON.stringify(profitData))
+    }
+  }, [profitData])
 
   // 检测是否为移动设备
   useEffect(() => {
@@ -956,12 +985,50 @@ function Finance() {
               </div>
             ),
           },
-          // 可以在这里添加更多标签页，例如：
-          // {
-          //   key: 'other-tab',
-          //   label: '其他功能',
-          //   children: <div>其他功能内容</div>,
-          // },
+          {
+            key: 'profit-statement',
+            label: '账单统计',
+            children: (
+              <ProfitStatementTab
+                collectionData={profitCollectionData}
+                shippingData={profitShippingData}
+                deductionData={profitDeductionData}
+                lastMileShippingData={profitLastMileShippingData}
+                profitData={profitData}
+                calculating={calculating}
+                onCollectionUpload={(data) => setProfitCollectionData(data)}
+                onShippingUpload={(data) => setProfitShippingData(data)}
+                onDeductionUpload={(data) => setProfitDeductionData(data)}
+                onLastMileShippingUpload={(data) => setProfitLastMileShippingData(data)}
+                onCalculate={() => {
+                  setCalculating(true)
+                  profitStatementApi.calculateProfit({
+                    collection_data: profitCollectionData as any,
+                    shipping_data: profitShippingData,
+                    deduction_data: profitDeductionData,
+                    last_mile_shipping_data: profitLastMileShippingData,
+                  }).then((result) => {
+                    setProfitData(result.data)
+                    message.success(result.message || '利润计算完成')
+                  }).catch((error) => {
+                    message.error(error.response?.data?.detail || '计算失败')
+                  }).finally(() => {
+                    setCalculating(false)
+                  })
+                }}
+                onProfitDataUpdate={(data) => {
+                  setProfitData(data)
+                }}
+                revenueExpanded={revenueExpanded}
+                onRevenueToggle={(key: string) => {
+                  setRevenueExpanded(prev => ({
+                    ...prev,
+                    [key]: !prev[key]
+                  }))
+                }}
+              />
+            ),
+          },
         ]}
       />
       {/* DatePicker 暗色主题样式 */}
@@ -1021,7 +1088,930 @@ function Finance() {
         .ant-picker-dropdown .ant-picker-cell-in-range::before {
           background: rgba(99, 102, 241, 0.1) !important;
         }
+        /* 利润表固定列样式 - 深色主题下确保不透明度100%，避免重叠遮挡 */
+        /* 通用固定列样式 - 确保完全不透明，但使用与普通列相同的背景色 */
+        .theme-dark .profit-statement-table .ant-table-wrapper .ant-table-cell.ant-table-cell-fix {
+          position: sticky !important;
+          opacity: 1 !important;
+          /* 不设置背景色，使用普通列的背景色 */
+        }
+        .theme-dark .profit-statement-table .ant-table-wrapper .ant-table-thead .ant-table-cell.ant-table-cell-fix {
+          /* 不设置背景色，使用普通列的背景色 */
+        }
+        .theme-dark .profit-statement-table .ant-table-container {
+          background: #161b22 !important;
+          background-color: #161b22 !important;
+        }
+        .theme-dark .profit-statement-table .ant-table {
+          background: #161b22 !important;
+          background-color: #161b22 !important;
+        }
+        .theme-dark .profit-statement-table .ant-table-body {
+          background: #161b22 !important;
+          background-color: #161b22 !important;
+        }
+        /* 固定列单元格 - 深色主题下完全不透明，但使用与普通列相同的背景色 */
+        .theme-dark .profit-statement-table .ant-table-cell-fix-left,
+        .theme-dark .profit-statement-table .ant-table-cell-fix-right {
+          opacity: 1 !important;
+          /* 不设置背景色，使用普通列的背景色 */
+          z-index: 1000 !important;
+          position: relative !important;
+        }
+        /* 表头固定列 - 使用与普通表头相同的背景色 */
+        .theme-dark .profit-statement-table .ant-table-thead > tr > th.ant-table-cell-fix-left,
+        .theme-dark .profit-statement-table .ant-table-thead > tr > th.ant-table-cell-fix-right {
+          opacity: 1 !important;
+          /* 不设置背景色，使用普通表头的背景色 */
+          z-index: 1001 !important;
+        }
+        /* 表体固定列 - 使用与普通单元格相同的背景色 */
+        .theme-dark .profit-statement-table .ant-table-tbody > tr > td.ant-table-cell-fix-left,
+        .theme-dark .profit-statement-table .ant-table-tbody > tr > td.ant-table-cell-fix-right {
+          opacity: 1 !important;
+          /* 不设置背景色，使用普通单元格的背景色 */
+          z-index: 1000 !important;
+        }
+        /* 固定列hover状态 - 使用与普通单元格hover相同的背景色 */
+        .theme-dark .profit-statement-table .ant-table-tbody > tr:hover > td.ant-table-cell-fix-left,
+        .theme-dark .profit-statement-table .ant-table-tbody > tr:hover > td.ant-table-cell-fix-right {
+          /* 不设置背景色，使用普通单元格hover的背景色 */
+        }
+        /* 固定列的伪元素（阴影效果）也要不透明 - 深色主题 */
+        .theme-dark .profit-statement-table .ant-table-cell-fix-left-first::after,
+        .theme-dark .profit-statement-table .ant-table-cell-fix-right-first::after,
+        .theme-dark .profit-statement-table .ant-table-cell-fix-left-last::after,
+        .theme-dark .profit-statement-table .ant-table-cell-fix-right-last::after {
+          opacity: 1 !important;
+          /* 不设置背景色，使用普通列的背景色 */
+          z-index: 999 !important;
+          display: none !important; /* 隐藏伪元素，避免遮挡 */
+        }
+        /* 确保固定列阴影效果 - 深色主题 */
+        .theme-dark .profit-statement-table .ant-table-cell-fix-left {
+          box-shadow: 2px 0 8px rgba(0, 0, 0, 0.8) !important;
+          border-right: 1px solid #30363d !important;
+        }
+        .theme-dark .profit-statement-table .ant-table-cell-fix-right {
+          box-shadow: -2px 0 8px rgba(0, 0, 0, 0.8) !important;
+          border-left: 1px solid #30363d !important;
+        }
+        /* 确保固定列内的所有内容都可见 - 深色主题 */
+        .theme-dark .profit-statement-table .ant-table-cell-fix-left *,
+        .theme-dark .profit-statement-table .ant-table-cell-fix-right * {
+          opacity: 1 !important;
+        }
+        /* 确保固定列在滚动时始终在最上层 */
+        .theme-dark .profit-statement-table .ant-table-body {
+          position: relative;
+        }
+        .theme-dark .profit-statement-table .ant-table-cell-fix-left,
+        .theme-dark .profit-statement-table .ant-table-cell-fix-right {
+          will-change: transform;
+        }
+        /* 确保固定列覆盖其他内容 - 深色主题 */
+        .theme-dark .profit-statement-table .ant-table-cell-fix-left {
+          position: sticky !important;
+          left: 0 !important;
+          /* 不设置背景色，使用普通列的背景色 */
+        }
+        .theme-dark .profit-statement-table .ant-table-cell-fix-right {
+          position: sticky !important;
+          right: 0 !important;
+          /* 不设置背景色，使用普通列的背景色 */
+        }
+        /* 确保固定列文字颜色在深色主题下可见 */
+        .theme-dark .profit-statement-table .ant-table-cell-fix-left,
+        .theme-dark .profit-statement-table .ant-table-cell-fix-right {
+          /* 不设置背景色，使用普通列的背景色 */
+        }
+        .theme-dark .profit-statement-table .ant-table-thead > tr > th.ant-table-cell-fix-left,
+        .theme-dark .profit-statement-table .ant-table-thead > tr > th.ant-table-cell-fix-right {
+          /* 不设置背景色，使用普通列的背景色 */
+        }
       `}</style>
+    </div>
+  )
+}
+
+// 利润表Tab组件
+function ProfitStatementTab({
+  collectionData,
+  shippingData,
+  deductionData,
+  lastMileShippingData,
+  profitData,
+  calculating,
+  onCollectionUpload,
+  onShippingUpload,
+  onDeductionUpload,
+  onLastMileShippingUpload,
+  onCalculate,
+  onProfitDataUpdate,
+  revenueExpanded,
+  onRevenueToggle,
+}: {
+  collectionData: Array<{ parent_order_sn: string; sales_collection: number; sales_collection_after_discount: number; sales_reversal: number; shipping_collection: number; shipping_collection_after_discount: number }>
+  shippingData: Array<{ order_sn: string; parent_order_sn?: string; shipping_cost: number; chargeable_weight?: number }>
+  deductionData: Array<{ order_sn: string; parent_order_sn?: string; deduction: number }>
+  lastMileShippingData: Array<{ order_sn: string; last_mile_cost: number }>
+  profitData: any
+  calculating: boolean
+  onCollectionUpload: (data: Array<{ parent_order_sn: string; sales_collection: number; sales_collection_after_discount: number; sales_reversal: number; shipping_collection: number; shipping_collection_after_discount: number }>) => void
+  onShippingUpload: (data: Array<{ order_sn: string; parent_order_sn?: string; shipping_cost: number; chargeable_weight?: number }>) => void
+  onDeductionUpload: (data: Array<{ order_sn: string; parent_order_sn?: string; deduction: number }>) => void
+  onLastMileShippingUpload: (data: Array<{ order_sn: string; last_mile_cost: number }>) => void
+  onCalculate: () => void
+  onProfitDataUpdate: (data: any) => void
+  revenueExpanded: Record<string, boolean>
+  onRevenueToggle: (key: string) => void
+}) {
+  const [isMobile, setIsMobile] = useState(false)
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+  
+  // 自动计算利润（使用所有已上传的数据）
+  const autoCalculate = async (updatedCollectionData?: any, updatedShippingData?: any, updatedDeductionData?: any, updatedLastMileData?: any) => {
+    // 使用传入的最新数据，如果没有则使用当前状态数据
+    const currentCollectionData = updatedCollectionData || collectionData
+    const currentShippingData = updatedShippingData || shippingData
+    const currentDeductionData = updatedDeductionData || deductionData
+    const currentLastMileData = updatedLastMileData || lastMileShippingData
+    
+    // 至少需要有结算数据才能计算
+    if (currentCollectionData.length === 0) {
+      return
+    }
+    
+    try {
+      const result = await profitStatementApi.calculateProfit({
+        collection_data: currentCollectionData as any,
+        shipping_data: currentShippingData,
+        deduction_data: currentDeductionData,
+        last_mile_shipping_data: currentLastMileData,
+      })
+      onProfitDataUpdate(result.data)
+      // 不显示成功提示，避免频繁提示
+    } catch (error: any) {
+      console.error('自动计算失败:', error)
+      // 不显示错误提示，因为可能只是缺少某些数据
+    }
+  }
+  
+  const handleUpload = async (type: 'collection' | 'shipping' | 'deduction' | 'lastMileShipping', file: File) => {
+    try {
+      let result
+      let updatedData: any = null
+      
+      if (type === 'collection') {
+        result = await profitStatementApi.uploadCollection(file)
+        updatedData = result.data
+        onCollectionUpload(updatedData)
+        // 上传结算表后，立即使用新数据计算
+        await autoCalculate(updatedData, shippingData, deductionData, lastMileShippingData)
+      } else if (type === 'shipping') {
+        result = await profitStatementApi.uploadShipping(file)
+        updatedData = result.data
+        onShippingUpload(updatedData)
+        // 上传头程运费表后，立即使用新数据计算
+        await autoCalculate(collectionData, updatedData, deductionData, lastMileShippingData)
+      } else if (type === 'deduction') {
+        result = await profitStatementApi.uploadDeduction(file)
+        updatedData = result.data
+        onDeductionUpload(updatedData)
+        // 上传延迟扣款表后，立即使用新数据计算
+        await autoCalculate(collectionData, shippingData, updatedData, lastMileShippingData)
+      } else if (type === 'lastMileShipping') {
+        result = await profitStatementApi.uploadLastMileShipping(file)
+        updatedData = result.data
+        onLastMileShippingUpload(updatedData)
+        // 上传尾程运费表后，立即使用新数据计算
+        await autoCalculate(collectionData, shippingData, deductionData, updatedData)
+      }
+      
+      message.success(result.message || '上传成功，数据已自动更新')
+      
+    } catch (error: any) {
+      message.error(error.response?.data?.detail || '上传失败')
+    }
+  }
+  
+  // 复制到剪贴板
+  const copyToClipboard = (text: string) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        message.success('已复制到剪贴板')
+      }).catch(() => {
+        // 降级方案
+        const textArea = document.createElement('textarea')
+        textArea.value = text
+        textArea.style.position = 'fixed'
+        textArea.style.opacity = '0'
+        document.body.appendChild(textArea)
+        textArea.select()
+        try {
+          document.execCommand('copy')
+          message.success('已复制到剪贴板')
+        } catch (err) {
+          message.error('复制失败')
+        }
+        document.body.removeChild(textArea)
+      })
+    } else {
+      // 降级方案
+      const textArea = document.createElement('textarea')
+      textArea.value = text
+      textArea.style.position = 'fixed'
+      textArea.style.opacity = '0'
+      document.body.appendChild(textArea)
+      textArea.select()
+      try {
+        document.execCommand('copy')
+        message.success('已复制到剪贴板')
+      } catch (err) {
+        message.error('复制失败')
+      }
+      document.body.removeChild(textArea)
+    }
+  }
+  
+  // 根据屏幕宽度决定显示哪些列
+  const getVisibleColumns = () => {
+    const baseColumns: ColumnsType<any> = [
+      {
+        title: 'PO单号',
+        dataIndex: 'parent_order_sn',
+        key: 'parent_order_sn',
+        width: 180,
+        fixed: 'left' as const,
+        ellipsis: true,
+        render: (val: string) => {
+          if (!val) return '-'
+          return (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '4px',
+              fontSize: '11px',
+              fontFamily: 'monospace',
+            }}>
+              <span style={{ 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis', 
+                whiteSpace: 'nowrap',
+                flex: 1,
+              }}>
+                {val}
+              </span>
+              <Button
+                type="text"
+                size="small"
+                icon={<CopyOutlined style={{ fontSize: '11px' }} />}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  copyToClipboard(val)
+                }}
+                style={{ 
+                  padding: '0 4px', 
+                  minWidth: 'auto', 
+                  height: '20px', 
+                  flexShrink: 0,
+                  opacity: 0.7,
+                }}
+              />
+            </div>
+          )
+        },
+      },
+      {
+        title: '匹配订单数',
+        dataIndex: 'matched_order_count',
+        key: 'matched_order_count',
+        width: 100,
+        align: 'right' as const,
+        render: (val: number, record: any) => {
+          if (!val) return '-'
+          const matchedParentSns = record.matched_parent_order_sns || []
+          const isExactMatch = matchedParentSns.length === 1 && matchedParentSns[0] === record.parent_order_sn
+          
+          return (
+            <Tooltip 
+              title={
+                <div>
+                  <div>匹配的父订单号：</div>
+                  {matchedParentSns.length > 0 ? (
+                    matchedParentSns.map((sn: string, idx: number) => (
+                      <div key={idx} style={{ marginTop: '4px' }}>
+                        {sn === record.parent_order_sn ? (
+                          <span style={{ color: '#52c41a' }}>✓ {sn}</span>
+                        ) : (
+                          <span style={{ color: '#f5222d' }}>✗ {sn}</span>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div>无匹配的父订单号</div>
+                  )}
+                  {record.matched_order_sns && record.matched_order_sns.length > 0 && (
+                    <div style={{ marginTop: '8px' }}>
+                      <div>匹配的子订单号：</div>
+                      {record.matched_order_sns.slice(0, 5).map((sn: string, idx: number) => (
+                        <div key={idx} style={{ fontSize: '11px', marginTop: '2px' }}>{sn}</div>
+                      ))}
+                      {record.matched_order_sns.length > 5 && (
+                        <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '2px' }}>
+                          等{record.matched_order_sns.length}个订单
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              }
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                {isExactMatch ? (
+                  <CheckCircleOutlined style={{ color: '#52c41a', fontSize: '14px' }} />
+                ) : (
+                  <WarningOutlined style={{ color: '#faad14', fontSize: '14px' }} />
+                )}
+                <span>{val}</span>
+              </div>
+            </Tooltip>
+          )
+        },
+      },
+      {
+        title: '包裹号',
+        dataIndex: 'package_sn',
+        key: 'package_sn',
+        width: 150,
+        ellipsis: true,
+        render: (val: string) => {
+          if (!val) return '-'
+          return (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '4px',
+              fontSize: '11px',
+              fontFamily: 'monospace',
+            }}>
+              <span style={{ 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis', 
+                whiteSpace: 'nowrap',
+                flex: 1,
+              }}>
+                {val}
+              </span>
+              <Button
+                type="text"
+                size="small"
+                icon={<CopyOutlined style={{ fontSize: '11px' }} />}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  copyToClipboard(val)
+                }}
+                style={{ 
+                  padding: '0 4px', 
+                  minWidth: 'auto', 
+                  height: '20px', 
+                  flexShrink: 0,
+                  opacity: 0.7,
+                }}
+              />
+            </div>
+          )
+        },
+      },
+    ]
+    
+    // 根据屏幕宽度决定是否显示某些列
+    const screenWidth = window.innerWidth
+    const showAllColumns = screenWidth >= 1400  // 宽度大于1400px时显示所有列
+    const showMostColumns = screenWidth >= 1200  // 宽度大于1200px时显示大部分列
+    
+    const optionalColumns: ColumnsType<any> = [
+      {
+        title: '商品名称',
+        dataIndex: 'product_name',
+        key: 'product_name',
+        width: 250,
+        ellipsis: true,
+        render: (val: string, record: any) => {
+          if (!val) return '-'
+          const displayText = val.length > 20 ? val.substring(0, 20) + '...' : val
+          
+          if (record.product_names && record.product_names.length > 1) {
+            return (
+              <Tooltip title={val}>
+                <div>
+                  <div>{displayText}</div>
+                  <div style={{ fontSize: '12px', color: '#8b949e' }}>
+                    等{record.product_names.length}个商品
+                  </div>
+                </div>
+              </Tooltip>
+            )
+          }
+          
+          return (
+            <Tooltip title={val}>
+              <span>{displayText}</span>
+            </Tooltip>
+          )
+        },
+      },
+      {
+        title: 'SKU',
+        dataIndex: 'sku',
+        key: 'sku',
+        width: 120,
+        render: (val: string, record: any) => {
+          if (record.skus && record.skus.length > 1) {
+            return (
+              <div>
+                <div>{val}</div>
+                <div style={{ fontSize: '12px', color: '#8b949e' }}>
+                  等{record.skus.length}个SKU
+                </div>
+              </div>
+            )
+          }
+          return val || '-'
+        },
+      },
+      {
+        title: '数量',
+        dataIndex: 'quantity',
+        key: 'quantity',
+        width: 80,
+        align: 'right' as const,
+      },
+    ]
+    
+    // 收入列（默认折叠，点击展开显示详细类目）
+    const revenueColumn: ColumnsType<any>[0] = {
+      title: '收入（回款）',
+      dataIndex: 'revenue',
+      key: 'revenue',
+      width: 150,
+      align: 'right' as const,
+      render: (val: number, record: any) => {
+        const isExpanded = revenueExpanded[record.parent_order_sn] || false
+        return (
+          <div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '4px',
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+              onClick={() => onRevenueToggle(record.parent_order_sn)}
+            >
+              {isExpanded ? (
+                <DownOutlined style={{ fontSize: '12px', color: '#8b949e' }} />
+              ) : (
+                <RightOutlined style={{ fontSize: '12px', color: '#8b949e' }} />
+              )}
+              <span style={{ fontWeight: 'bold', color: '#1890ff' }}>
+                ¥{val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            {isExpanded && (
+              <div style={{ 
+                marginTop: '8px', 
+                paddingTop: '8px', 
+                borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                display: 'flex',
+                flexDirection: 'row',
+                gap: '16px',
+                flexWrap: 'wrap',
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px', minWidth: '140px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <span style={{ color: '#8b949e' }}>销售回款:</span>
+                    <span style={{ fontWeight: 500 }}>{record.sales_collection ? `¥${record.sales_collection.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <span style={{ color: '#8b949e' }}>销售回款已减优惠:</span>
+                    <span style={{ fontWeight: 500 }}>{record.sales_collection_after_discount ? `¥${record.sales_collection_after_discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <span style={{ color: '#8b949e' }}>销售冲回:</span>
+                    <span style={{ fontWeight: 500, color: record.sales_reversal < 0 ? '#f5222d' : undefined }}>
+                      {record.sales_reversal ? `¥${record.sales_reversal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <span style={{ color: '#8b949e' }}>运费回款:</span>
+                    <span style={{ fontWeight: 500 }}>{record.shipping_collection ? `¥${record.shipping_collection.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <span style={{ color: '#8b949e' }}>运费回款已减优惠:</span>
+                    <span style={{ fontWeight: 500 }}>{record.shipping_collection_after_discount ? `¥${record.shipping_collection_after_discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      },
+    }
+    
+    const costColumns: ColumnsType<any> = [
+      {
+        title: '进货成本',
+        dataIndex: 'product_cost',
+        key: 'product_cost',
+        width: 120,
+        align: 'right' as const,
+        render: (val: number) => val ? `¥${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-',
+      },
+      {
+        title: '头程运费',
+        dataIndex: 'shipping_cost',
+        key: 'shipping_cost',
+        width: 120,
+        align: 'right' as const,
+        render: (val: number) => val ? `¥${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-',
+      },
+      {
+        title: '收费重 (KG)',
+        dataIndex: 'chargeable_weight',
+        key: 'chargeable_weight',
+        width: 100,
+        align: 'right' as const,
+        render: (val: number) => val !== undefined && val !== null ? `${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-',
+      },
+      {
+        title: '尾程运费',
+        dataIndex: 'last_mile_cost',
+        key: 'last_mile_cost',
+        width: 120,
+        align: 'right' as const,
+        render: (val: number) => val ? `¥${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-',
+      },
+      {
+        title: '扣款',
+        dataIndex: 'deduction',
+        key: 'deduction',
+        width: 100,
+        align: 'right' as const,
+        render: (val: number) => val ? `¥${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-',
+      },
+      {
+        title: '总成本',
+        dataIndex: 'total_cost',
+        key: 'total_cost',
+        width: 120,
+        align: 'right' as const,
+        render: (val: number) => val ? `¥${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-',
+      },
+    ]
+    
+    const profitColumn: ColumnsType<any>[0] = {
+      title: '利润 / 利润率',
+      key: 'profit_and_rate',
+      width: 180,
+      align: 'right' as const,
+      fixed: 'right' as const,
+      render: (_: any, record: any) => {
+        const profit = record.profit || 0
+        const profitRate = record.profit_rate || 0
+        const profitColor = profit >= 0 ? '#52c41a' : '#f5222d'
+        
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+            <span style={{ 
+              fontWeight: 'bold', 
+              color: profitColor,
+              fontSize: '14px',
+            }}>
+              ¥{profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            <span style={{ 
+              fontWeight: 500, 
+              color: profitColor,
+              fontSize: '12px',
+              opacity: 0.8,
+            }}>
+              {profitRate.toFixed(2)}%
+            </span>
+          </div>
+        )
+      },
+    }
+    
+    // 根据屏幕宽度决定显示哪些列
+    if (showAllColumns) {
+      // 显示所有列
+      return [...baseColumns, ...optionalColumns, revenueColumn, ...costColumns, profitColumn]
+    } else if (showMostColumns) {
+      // 显示大部分列，隐藏SKU
+      return [...baseColumns, optionalColumns[0], optionalColumns[2], revenueColumn, ...costColumns, profitColumn]
+    } else {
+      // 只显示核心列：PO单号、匹配订单数、数量、收入、利润
+      return [...baseColumns, optionalColumns[2], revenueColumn, profitColumn]
+    }
+  }
+  
+  // 使用useMemo根据屏幕宽度动态生成列
+  const profitColumns = useMemo(() => getVisibleColumns(), [isMobile, revenueExpanded, onRevenueToggle])
+  
+  return (
+    <div>
+      {/* 文件上传区域 */}
+      <Card 
+        className="chart-card" 
+        style={{ marginBottom: 24 }}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FileExcelOutlined />
+            <span>上传账单文件</span>
+          </div>
+        }
+      >
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} md={6}>
+            <Card 
+              size="small"
+              style={{ 
+                background: 'linear-gradient(135deg, rgba(82, 196, 26, 0.1) 0%, rgba(82, 196, 26, 0.05) 100%)',
+                border: '1px solid rgba(82, 196, 26, 0.3)',
+              }}
+            >
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px',
+                  marginBottom: 8,
+                }}>
+                  {collectionData.length > 0 ? (
+                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                  ) : (
+                    <UploadOutlined />
+                  )}
+                  <span style={{ fontWeight: 500 }}>Temu结算表</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#8b949e', marginBottom: 8 }}>
+                  {collectionData.length > 0 ? `已上传 ${collectionData.length} 个PO单号` : '请上传Temu结算表文件（包含PO单号和5个结算字段）'}
+                </div>
+              </div>
+              <Upload
+                accept=".csv,.xlsx,.xls"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  handleUpload('collection', file)
+                  return false
+                }}
+              >
+                <Button 
+                  type="primary" 
+                  icon={<UploadOutlined />}
+                >
+                  {collectionData.length > 0 ? '重新上传Temu结算表' : '上传Temu结算表'}
+                </Button>
+              </Upload>
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Card 
+              size="small"
+              style={{ 
+                background: 'linear-gradient(135deg, rgba(24, 144, 255, 0.1) 0%, rgba(24, 144, 255, 0.05) 100%)',
+                border: '1px solid rgba(24, 144, 255, 0.3)',
+              }}
+            >
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px',
+                  marginBottom: 8,
+                }}>
+                  {shippingData.length > 0 ? (
+                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                  ) : (
+                    <UploadOutlined />
+                  )}
+                  <span style={{ fontWeight: 500 }}>头程运费表</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#8b949e', marginBottom: 8 }}>
+                  {shippingData.length > 0 ? `已上传 ${shippingData.length} 条记录` : '请上传头程运费表文件'}
+                </div>
+              </div>
+              <Upload
+                accept=".csv,.xlsx,.xls"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  handleUpload('shipping', file)
+                  return false
+                }}
+              >
+                <Button 
+                  type="primary" 
+                  icon={<UploadOutlined />}
+                >
+                  {shippingData.length > 0 ? '重新上传头程运费表' : '上传头程运费表'}
+                </Button>
+              </Upload>
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Card 
+              size="small"
+              style={{ 
+                background: 'linear-gradient(135deg, rgba(250, 173, 20, 0.1) 0%, rgba(250, 173, 20, 0.05) 100%)',
+                border: '1px solid rgba(250, 173, 20, 0.3)',
+              }}
+            >
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px',
+                  marginBottom: 8,
+                }}>
+                  {lastMileShippingData.length > 0 ? (
+                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                  ) : (
+                    <UploadOutlined />
+                  )}
+                  <span style={{ fontWeight: 500 }}>尾程运费表</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#8b949e', marginBottom: 8 }}>
+                  {lastMileShippingData.length > 0 ? `已上传 ${lastMileShippingData.length} 条记录` : '请上传尾程运费表文件'}
+                </div>
+              </div>
+              <Upload
+                accept=".csv,.xlsx,.xls"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  handleUpload('lastMileShipping', file)
+                  return false
+                }}
+              >
+                <Button 
+                  type="primary" 
+                  icon={<UploadOutlined />}
+                >
+                  {lastMileShippingData.length > 0 ? '重新上传尾程运费表' : '上传尾程运费表'}
+                </Button>
+              </Upload>
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Card 
+              size="small"
+              style={{ 
+                background: 'linear-gradient(135deg, rgba(245, 34, 45, 0.1) 0%, rgba(245, 34, 45, 0.05) 100%)',
+                border: '1px solid rgba(245, 34, 45, 0.3)',
+              }}
+            >
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px',
+                  marginBottom: 8,
+                }}>
+                  {deductionData.length > 0 ? (
+                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                  ) : (
+                    <UploadOutlined />
+                  )}
+                  <span style={{ fontWeight: 500 }}>延迟扣款表</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#8b949e', marginBottom: 8 }}>
+                  {deductionData.length > 0 ? `已上传 ${deductionData.length} 条记录` : '请上传延迟扣款表文件'}
+                </div>
+              </div>
+              <Upload
+                accept=".csv,.xlsx,.xls"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  handleUpload('deduction', file)
+                  return false
+                }}
+              >
+                <Button 
+                  type="primary" 
+                  icon={<UploadOutlined />}
+                >
+                  {deductionData.length > 0 ? '重新上传延迟扣款表' : '上传延迟扣款表'}
+                </Button>
+              </Upload>
+            </Card>
+          </Col>
+        </Row>
+        
+        <div style={{ marginTop: 24, textAlign: 'center' }}>
+          <Button
+            type="primary"
+            size="large"
+            loading={calculating}
+            disabled={collectionData.length === 0 && shippingData.length === 0 && deductionData.length === 0}
+            onClick={onCalculate}
+            style={{
+              background: 'linear-gradient(135deg, #52c41a 0%, #389e0d 100%)',
+              border: 'none',
+              height: '48px',
+              padding: '0 32px',
+              fontSize: '16px',
+            }}
+          >
+            {calculating ? '计算中...' : '计算利润'}
+          </Button>
+        </div>
+      </Card>
+      
+      {/* 统计摘要 */}
+      {profitData?.summary && (
+        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+          <Col xs={24} sm={12} md={6}>
+            <Card>
+              <Statistic
+                title="总PO单数"
+                value={profitData.summary.total_orders}
+                suffix="个"
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Card>
+              <Statistic
+                title="匹配PO单数"
+                value={profitData.summary.matched_orders}
+                suffix="个"
+                valueStyle={{ color: '#52c41a' }}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Card>
+              <Statistic
+                title="总收入"
+                value={profitData.summary.total_revenue}
+                prefix="¥"
+                precision={2}
+                valueStyle={{ color: '#1890ff' }}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Card>
+              <Statistic
+                title="总利润"
+                value={profitData.summary.total_profit}
+                prefix="¥"
+                precision={2}
+                valueStyle={{ 
+                  color: profitData.summary.total_profit >= 0 ? '#52c41a' : '#f5222d' 
+                }}
+              />
+            </Card>
+          </Col>
+        </Row>
+      )}
+      
+      {/* 利润明细表格 */}
+      {profitData?.items && (
+        <Card 
+          className="chart-card"
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <DollarOutlined />
+              <span>利润明细</span>
+            </div>
+          }
+        >
+          <Table
+            columns={profitColumns}
+            dataSource={profitData.items}
+            scroll={{ x: 'max-content' }}
+            pagination={{
+              pageSize: 20,
+              showSizeChanger: true,
+              showTotal: (total) => `共 ${total} 条`,
+              pageSizeOptions: ['10', '20', '50', '100'],
+            }}
+            rowKey="parent_order_sn"
+            className="profit-statement-table"
+          />
+        </Card>
+      )}
     </div>
   )
 }

@@ -656,6 +656,50 @@ function OrderList() {
       },
     },
     {
+      title: '包裹号',
+      dataIndex: 'package_sn',
+      key: 'package_sn',
+      width: 150,
+      ellipsis: true,
+      align: 'left' as const,
+      render: (sn: string, record: any) => {
+        // 如果订单有父订单号，且不是第一行，不显示
+        if (record._hasParent && record._groupSize > 1 && !record._isFirstInGroup) {
+          return {
+            children: null,
+            props: { rowSpan: 0 },
+          }
+        }
+        
+        const displaySn = sn || '-'
+        
+        return {
+          children: (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', justifyContent: 'flex-start' }}>
+              <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {displaySn}
+              </span>
+              {sn && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CopyOutlined style={{ fontSize: '12px' }} />}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    copyToClipboard(sn)
+                  }}
+                  style={{ padding: '0 4px', minWidth: 'auto', height: '20px', flexShrink: 0 }}
+                />
+              )}
+            </div>
+          ),
+          props: record._hasParent && record._groupSize > 1 && record._isFirstInGroup 
+            ? { rowSpan: record._groupSize }
+            : { rowSpan: 1 },
+        }
+      },
+    },
+    {
       title: '商品名称',
       dataIndex: 'product_name',
       key: 'product_name',

@@ -526,6 +526,19 @@ class SyncService:
         if not order_sn:
             return
         
+        # 提取包裹号（从order_item或parent_order的packageSnInfo中提取）
+        package_sn = None
+        # 优先从order_item中提取
+        package_sn_info = order_item.get('packageSnInfo') or parent_order.get('packageSnInfo')
+        if package_sn_info and isinstance(package_sn_info, list) and len(package_sn_info) > 0:
+            # 取第一个包裹号
+            package_sn = package_sn_info[0].get('packageSn') if isinstance(package_sn_info[0], dict) else None
+        # 如果order_item中没有，尝试从parent_order中提取
+        if not package_sn:
+            parent_package_sn_info = parent_order.get('packageSnInfo')
+            if parent_package_sn_info and isinstance(parent_package_sn_info, list) and len(parent_package_sn_info) > 0:
+                package_sn = parent_package_sn_info[0].get('packageSn') if isinstance(parent_package_sn_info[0], dict) else None
+        
         # 查找现有订单（使用唯一约束：order_sn + product_sku + spu_id）
         # 从 productList 中提取真正的SKU信息（extCode字段）
         product_list = order_item.get('productList', [])
@@ -783,6 +796,7 @@ class SyncService:
             order_sn=order_item.get('orderSn'),
             temu_order_id=order_item.get('orderSn'),  # 使用子订单号作为唯一标识
             parent_order_sn=parent_order.get('parentOrderSn'),
+            package_sn=package_sn,  # 包裹号
             
             # 商品信息
             product_id=matched_product_id,  # 匹配到的商品ID
@@ -853,6 +867,19 @@ class SyncService:
             是否进行了更新
         """
         updated = False
+        
+        # 提取包裹号（从order_item或parent_order的packageSnInfo中提取）
+        package_sn = None
+        # 优先从order_item中提取
+        package_sn_info = order_item.get('packageSnInfo') or parent_order.get('packageSnInfo')
+        if package_sn_info and isinstance(package_sn_info, list) and len(package_sn_info) > 0:
+            # 取第一个包裹号
+            package_sn = package_sn_info[0].get('packageSn') if isinstance(package_sn_info[0], dict) else None
+        # 如果order_item中没有，尝试从parent_order中提取
+        if not package_sn:
+            parent_package_sn_info = parent_order.get('packageSnInfo')
+            if parent_package_sn_info and isinstance(parent_package_sn_info, list) and len(parent_package_sn_info) > 0:
+                package_sn = parent_package_sn_info[0].get('packageSn') if isinstance(parent_package_sn_info[0], dict) else None
         
         # 更新订单状态
         new_status = self._map_order_status(parent_order.get('parentOrderStatus', 0))
@@ -1037,6 +1064,11 @@ class SyncService:
         parent_order_sn = parent_order.get('parentOrderSn')
         if parent_order_sn and not order.parent_order_sn:
             order.parent_order_sn = parent_order_sn
+            updated = True
+        
+        # 更新包裹号
+        if package_sn and order.package_sn != package_sn:
+            order.package_sn = package_sn
             updated = True
         
         # 如果订单已更新，清除相关统计缓存

@@ -102,7 +102,7 @@ body {
 
 /* 订单列表表格 - Bulma 风格 */
 .order-list-table .ant-table {
-  background: transparent !important;
+  /* background: transparent !important; */
 }
 
 .order-list-table .ant-table-container {
@@ -258,7 +258,21 @@ body {
 }
 
 .theme-dark .ant-table-cell {
-  background: transparent !important;
+  /* background: transparent !important; */
+}
+
+/* 固定列需要不透明背景，但使用与普通列相同的背景色 */
+/* 利润统计表格的固定列使用普通列的背景色，不单独设置 */
+.theme-dark .profit-statement-table .ant-table-cell.ant-table-cell-fix-left,
+.theme-dark .profit-statement-table .ant-table-cell.ant-table-cell-fix-right {
+  /* 不设置背景色，使用普通列的背景色 */
+  opacity: 1 !important;
+}
+
+.theme-dark .profit-statement-table .ant-table-thead .ant-table-cell.ant-table-cell-fix-left,
+.theme-dark .profit-statement-table .ant-table-thead .ant-table-cell.ant-table-cell-fix-right {
+  /* 不设置背景色，使用普通列的背景色 */
+  opacity: 1 !important;
 }
 
 /* 分页 */
