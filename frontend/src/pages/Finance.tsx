@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Table, Card, Row, Col, Spin, Tabs, Button, DatePicker, Space, Upload, message, Statistic, Tooltip } from 'antd'
+import { Table, Card, Row, Col, Spin, Tabs, Button, DatePicker, Space, Upload, message, Statistic, Tooltip, Modal, Progress, App } from 'antd'
 import { DollarOutlined, RiseOutlined, ShoppingOutlined, FundOutlined, UploadOutlined, FileExcelOutlined, CheckCircleOutlined, RightOutlined, DownOutlined, WarningOutlined, CopyOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
@@ -24,6 +24,12 @@ function Finance() {
   
   // 是否选择全部历史数据，默认为true（显示全部数据）
   const [isAllData, setIsAllData] = useState(true)
+  
+  // 标签选择状态，从localStorage读取或使用默认值
+  const [activeTabKey, setActiveTabKey] = useState<string>(() => {
+    const savedTab = localStorage.getItem('finance_active_tab')
+    return savedTab || 'estimated-collection'
+  })
   
   // 利润表相关状态
   const [profitCollectionData, setProfitCollectionData] = useState<Array<{ parent_order_sn: string; sales_collection: number; sales_collection_after_discount: number; sales_reversal: number; shipping_collection: number; shipping_collection_after_discount: number }>>([])
@@ -681,7 +687,11 @@ function Finance() {
 
       {/* 详细数据 */}
       <Tabs
-        defaultActiveKey="estimated-collection"
+        activeKey={activeTabKey}
+        onChange={(key) => {
+          setActiveTabKey(key)
+          localStorage.setItem('finance_active_tab', key)
+        }}
         style={{ marginTop: 8 }}
         items={[
           {
@@ -1009,6 +1019,7 @@ function Finance() {
                     last_mile_shipping_data: profitLastMileShippingData,
                   }).then((result) => {
                     setProfitData(result.data)
+                    // 使用静态 message，因为这是在 Finance 组件中
                     message.success(result.message || '利润计算完成')
                   }).catch((error) => {
                     message.error(error.response?.data?.detail || '计算失败')
@@ -1226,7 +1237,19 @@ function ProfitStatementTab({
   revenueExpanded: Record<string, boolean>
   onRevenueToggle: (key: string) => void
 }) {
+  const { message: messageApi } = App.useApp()
   const [isMobile, setIsMobile] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{
+    visible: boolean
+    percent: number
+    status: 'active' | 'success' | 'exception'
+    text: string
+  }>({
+    visible: false,
+    percent: 0,
+    status: 'active',
+    text: '正在上传文件...',
+  })
   
   useEffect(() => {
     const checkMobile = () => {
@@ -1265,7 +1288,7 @@ function ProfitStatementTab({
     }
   }
   
-  const handleUpload = async (type: 'collection' | 'shipping' | 'deduction' | 'lastMileShipping', file: File) => {
+  const handleUpload = async (type: 'collection' | 'shipping' | 'deduction' | 'lastMileShipping' | 'orderList', file: File) => {
     try {
       let result
       let updatedData: any = null
@@ -1294,12 +1317,176 @@ function ProfitStatementTab({
         onLastMileShippingUpload(updatedData)
         // 上传尾程运费表后，立即使用新数据计算
         await autoCalculate(collectionData, shippingData, deductionData, updatedData)
+      } else if (type === 'orderList') {
+        // 显示上传进度Modal
+        setUploadProgress({
+          visible: true,
+          percent: 10,
+          status: 'active',
+          text: '正在上传文件...',
+        })
+        
+        // 模拟上传进度
+        const progressInterval = setInterval(() => {
+          setUploadProgress(prev => {
+            if (prev.percent < 80) {
+              return {
+                ...prev,
+                percent: Math.min(prev.percent + 10, 80),
+              }
+            }
+            return prev
+          })
+        }, 200)
+        
+        try {
+          result = await profitStatementApi.uploadOrderList(file)
+          
+          clearInterval(progressInterval)
+          
+          // 更新进度到90%
+          setUploadProgress(prev => ({
+            ...prev,
+            percent: 90,
+            text: '正在匹配订单并更新数据...',
+          }))
+          
+          // 等待一小段时间让用户看到进度
+          await new Promise(resolve => setTimeout(resolve, 300))
+          
+          // 上传订单列表后，显示处理结果
+          if (result.data) {
+            const { total, matched, updated, unmatched } = result.data
+            
+            // 如果有已计算的利润数据，自动重新计算以更新包裹号
+            if (profitData && profitData.items && profitData.items.length > 0 && collectionData.length > 0) {
+              // 更新进度：开始重新计算利润
+              setUploadProgress(prev => ({
+                ...prev,
+                percent: 92,
+                text: '正在重新计算利润表以更新包裹号...',
+              }))
+              
+              try {
+                // 等待一小段时间，确保数据库更新已完全提交
+                await new Promise(resolve => setTimeout(resolve, 500))
+                
+                // 自动重新计算利润，这样会从数据库重新查询最新的包裹号
+                await autoCalculate(collectionData, shippingData, deductionData, lastMileShippingData)
+                
+                // 更新进度到完成
+                setUploadProgress({
+                  visible: true,
+                  percent: 100,
+                  status: 'success',
+                  text: `处理完成：共${total}条，匹配${matched}条，更新${updated}条${unmatched > 0 ? `，${unmatched}条未匹配` : ''}。利润表已更新包裹号。`,
+                })
+                
+                // 获取包裹号列信息
+                const packageColName = result.data?.package_sn_col_name
+                const recordsWithPackage = result.data?.records_with_package || 0
+                
+                if (updated > 0) {
+                  messageApi.success(
+                    `订单列表处理完成：共${total}条，匹配${matched}条，更新${updated}条${unmatched > 0 ? `，${unmatched}条未匹配` : ''}${packageColName ? `（包裹号列：${packageColName}）` : ''}。利润表已自动更新包裹号信息。`,
+                    5
+                  )
+                } else {
+                  let warningMsg = `订单列表处理完成：共${total}条，匹配${matched}条，但更新了0条。`
+                  if (!packageColName) {
+                    warningMsg += `\n未识别到包裹号列，请确保文件包含包裹号列（如列名"包裹号"或"Y"列）。`
+                  } else if (recordsWithPackage === 0) {
+                    warningMsg += `\n已识别包裹号列"${packageColName}"，但该列数据为空或无效。`
+                  } else {
+                    warningMsg += `\n已识别包裹号列"${packageColName}"（包含${recordsWithPackage}条包裹号数据），但未更新任何记录。可能是订单已有相同包裹号。`
+                  }
+                  warningMsg += `\n已重新计算利润表。`
+                  messageApi.warning(warningMsg, 8)
+                }
+              } catch (error) {
+                // 重新计算失败，但订单列表已成功上传
+                setUploadProgress({
+                  visible: true,
+                  percent: 100,
+                  status: 'success',
+                  text: `处理完成：共${total}条，匹配${matched}条，更新${updated}条${unmatched > 0 ? `，${unmatched}条未匹配` : ''}`,
+                })
+                messageApi.warning('订单列表已更新，但重新计算利润表失败，请手动点击"计算利润"按钮更新包裹号信息', 5)
+              }
+            } else {
+              // 没有利润数据，直接完成
+              setUploadProgress({
+                visible: true,
+                percent: 100,
+                status: 'success',
+                text: `处理完成：共${total}条，匹配${matched}条，更新${updated}条${unmatched > 0 ? `，${unmatched}条未匹配` : ''}`,
+              })
+              
+              // 获取包裹号列信息
+              const packageColName = result.data?.package_sn_col_name
+              const recordsWithPackage = result.data?.records_with_package || 0
+              
+              if (updated > 0) {
+                messageApi.success(
+                  `订单列表处理完成：共${total}条，匹配${matched}条，更新${updated}条${unmatched > 0 ? `，${unmatched}条未匹配` : ''}${packageColName ? `（包裹号列：${packageColName}）` : ''}`,
+                  5
+                )
+              } else {
+                let warningMsg = `订单列表处理完成：共${total}条，匹配${matched}条，但更新了0条。`
+                if (!packageColName) {
+                  warningMsg += `\n未识别到包裹号列，请确保文件包含包裹号列（如列名"包裹号"或"Y"列）。`
+                } else if (recordsWithPackage === 0) {
+                  warningMsg += `\n已识别包裹号列"${packageColName}"，但该列数据为空或无效。`
+                } else {
+                  warningMsg += `\n已识别包裹号列"${packageColName}"（包含${recordsWithPackage}条包裹号数据），但未更新任何记录。可能是订单已有相同包裹号。`
+                }
+                messageApi.warning(warningMsg, 8)
+              }
+            }
+            
+            // 1.5秒后关闭Modal
+            setTimeout(() => {
+              setUploadProgress({
+                visible: false,
+                percent: 0,
+                status: 'active',
+                text: '',
+              })
+            }, 2000)
+          } else {
+            setUploadProgress({
+              visible: true,
+              percent: 100,
+              status: 'success',
+              text: result.message || '上传成功',
+            })
+            setTimeout(() => {
+              setUploadProgress({
+                visible: false,
+                percent: 0,
+                status: 'active',
+                text: '',
+              })
+            }, 1500)
+            messageApi.success(result.message || '上传成功')
+          }
+        } catch (error: any) {
+          clearInterval(progressInterval)
+          setUploadProgress({
+            visible: false,
+            percent: 0,
+            status: 'exception',
+            text: '',
+          })
+          messageApi.error(error.response?.data?.detail || '上传失败')
+        }
+        return // 订单列表上传不需要触发计算
       }
       
-      message.success(result.message || '上传成功，数据已自动更新')
+      messageApi.success(result.message || '上传成功，数据已自动更新')
       
     } catch (error: any) {
-      message.error(error.response?.data?.detail || '上传失败')
+      messageApi.error(error.response?.data?.detail || '上传失败')
     }
   }
   
@@ -1307,7 +1494,7 @@ function ProfitStatementTab({
   const copyToClipboard = (text: string) => {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
-        message.success('已复制到剪贴板')
+        messageApi.success('已复制到剪贴板')
       }).catch(() => {
         // 降级方案
         const textArea = document.createElement('textarea')
@@ -1318,9 +1505,9 @@ function ProfitStatementTab({
         textArea.select()
         try {
           document.execCommand('copy')
-          message.success('已复制到剪贴板')
+          messageApi.success('已复制到剪贴板')
         } catch (err) {
-          message.error('复制失败')
+          messageApi.error('复制失败')
         }
         document.body.removeChild(textArea)
       })
@@ -1334,7 +1521,7 @@ function ProfitStatementTab({
       textArea.select()
       try {
         document.execCommand('copy')
-        message.success('已复制到剪贴板')
+        messageApi.success('已复制到剪贴板')
       } catch (err) {
         message.error('复制失败')
       }
@@ -1915,6 +2102,45 @@ function ProfitStatementTab({
               </Upload>
             </Card>
           </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Card 
+              size="small"
+              style={{ 
+                background: 'linear-gradient(135deg, rgba(114, 46, 209, 0.1) 0%, rgba(114, 46, 209, 0.05) 100%)',
+                border: '1px solid rgba(114, 46, 209, 0.3)',
+              }}
+            >
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px',
+                  marginBottom: 8,
+                }}>
+                  <UploadOutlined />
+                  <span style={{ fontWeight: 500 }}>订单列表</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#8b949e', marginBottom: 8 }}>
+                  上传订单列表，匹配订单号并更新包裹号和收货地址信息
+                </div>
+              </div>
+              <Upload
+                accept=".csv,.xlsx,.xls"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  handleUpload('orderList', file)
+                  return false
+                }}
+              >
+                <Button 
+                  type="primary" 
+                  icon={<UploadOutlined />}
+                >
+                  上传订单列表
+                </Button>
+              </Upload>
+            </Card>
+          </Col>
         </Row>
         
         <div style={{ marginTop: 24, textAlign: 'center' }}>
@@ -2012,6 +2238,30 @@ function ProfitStatementTab({
           />
         </Card>
       )}
+      
+      {/* 上传进度Modal */}
+      <Modal
+        open={uploadProgress.visible}
+        closable={false}
+        footer={null}
+        centered
+        maskClosable={false}
+        width={400}
+      >
+        <div style={{ padding: '20px 0' }}>
+          <div style={{ textAlign: 'center', marginBottom: 20, fontSize: 16, fontWeight: 500 }}>
+            {uploadProgress.text}
+          </div>
+          <Progress
+            percent={uploadProgress.percent}
+            status={uploadProgress.status}
+            strokeColor={{
+              '0%': '#108ee9',
+              '100%': '#87d068',
+            }}
+          />
+        </div>
+      </Modal>
     </div>
   )
 }

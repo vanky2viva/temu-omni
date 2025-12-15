@@ -72,6 +72,7 @@ class Order(Base):
     shipping_city = Column(String(100), comment="收货城市")
     shipping_province = Column(String(50), comment="收货省份/州")
     shipping_postal_code = Column(String(20), comment="收货邮编")
+    shipping_address = Column(Text, comment="收货详细地址")
     
     # 其他信息
     notes = Column(Text, comment="备注")

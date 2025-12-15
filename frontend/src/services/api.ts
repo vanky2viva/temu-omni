@@ -295,6 +295,17 @@ export const profitStatementApi = {
     }).then((res) => res.data)
   },
   
+  // 上传订单列表
+  uploadOrderList: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return rawApi.post('/profit-statement/upload/order-list', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }).then((res) => res.data)
+  },
+  
   // 计算利润
   calculateProfit: (data: {
     collection_data: any

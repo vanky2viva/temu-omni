@@ -4,9 +4,10 @@ import shutil
 import re
 import pandas as pd
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -497,6 +498,307 @@ async def upload_deduction_file(
             os.remove(file_path)
 
 
+@router.post("/upload/order-list")
+async def upload_order_list_file(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    上传订单列表
+    
+    支持CSV和Excel格式，需要包含：
+    - 订单号（用于匹配系统内的父订单号）
+    - 包裹号
+    - 收货地址信息（国家、城市、省份、邮编、详细地址）
+    
+    根据订单号匹配系统内的父订单号(parent_order_sn)，然后更新包裹号和收货地址信息到数据库
+    """
+    # 验证文件类型
+    if not file.filename.endswith(('.csv', '.xlsx', '.xls')):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="只支持CSV和Excel文件(.csv, .xlsx, .xls)"
+        )
+    
+    file_path = os.path.join(UPLOAD_DIR, f"order_list_{current_user.id}_{file.filename}")
+    try:
+        # 保存文件
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # 解析文件
+        if file.filename.endswith('.csv'):
+            df = parse_csv_file(file_path)
+        else:
+            df = parse_excel_file(file_path)
+        
+        # 查找订单号列
+        order_sn_col = None
+        possible_order_cols = ['订单号', 'order_sn', '订单编号', 'order_id', '订单ID', 'PO单号', 'parent_order_sn', '平台单号']
+        for col in df.columns:
+            if col in possible_order_cols or '订单' in str(col) or 'PO' in str(col).upper() or 'order' in str(col).lower():
+                order_sn_col = col
+                break
+        
+        if order_sn_col is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"未找到订单号列，请确保文件包含以下列名之一: {', '.join(possible_order_cols)}"
+            )
+        
+        # 查找包裹号列
+        package_sn_col = None
+        possible_package_cols = ['包裹号', 'package_sn', '包裹编号', '物流单号', 'tracking_number', '运单号']
+        
+        # 首先尝试按列名匹配
+        for col in df.columns:
+            col_str = str(col).strip()
+            if col_str in possible_package_cols or '包裹' in col_str or 'package' in col_str.lower() or '物流' in col_str:
+                package_sn_col = col
+                break
+        
+        # 如果没找到，尝试按列索引查找（Excel中的Y列通常是索引24或列名就是Y）
+        if not package_sn_col:
+            # 检查是否有名为'Y'的列
+            if 'Y' in df.columns:
+                package_sn_col = 'Y'
+            # 或者尝试通过索引查找（如果列名是数字或Excel列标识）
+            else:
+                # 尝试找到可能的包裹号列（通常包含PK-前缀或类似格式）
+                for idx, col in enumerate(df.columns):
+                    # 检查这一列的前几行数据，看是否包含包裹号格式（如PK-开头）
+                    col_str = str(col).strip()
+                    sample_values = df[col].dropna().head(5).astype(str).tolist()
+                    # 如果样本值中包含PK-开头的数据，很可能是包裹号列
+                    if any('PK-' in val or 'pk-' in val.lower() for val in sample_values):
+                        package_sn_col = col
+                        break
+                    # 如果列名是Y或类似Excel列标识
+                    if col_str == 'Y' or col_str.upper() == 'Y':
+                        package_sn_col = col
+                        break
+        
+        # 查找收货地址相关列
+        address_cols = {
+            'shipping_country': ['收货国家', '国家', 'country', 'shipping_country', '收货国'],
+            'shipping_province': ['收货省份', '省份', '州', 'province', 'state', 'shipping_province'],
+            'shipping_city': ['收货城市', '城市', 'city', 'shipping_city'],
+            'shipping_postal_code': ['收货邮编', '邮编', 'postal_code', 'zip_code', 'shipping_postal_code', '邮政编码'],
+            'shipping_address': ['收货地址', '详细地址', '地址', 'address', 'shipping_address', '收货详细地址', '完整地址'],
+        }
+        
+        found_address_cols = {}
+        for field_key, possible_names in address_cols.items():
+            for col in df.columns:
+                if col in possible_names or any(keyword in str(col) for keyword in possible_names):
+                    found_address_cols[field_key] = col
+                    break
+        
+        # 至少需要订单号，包裹号和地址信息可选
+        # 如果没有找到包裹号和地址信息列，给出警告但继续处理（可能只更新订单号匹配信息）
+        if not package_sn_col and not found_address_cols:
+            # 不抛出错误，允许只有订单号的文件上传（虽然不会更新任何信息）
+            pass
+        
+        # 处理数据：按订单号分组，合并包裹号和地址信息
+        order_data_map = {}
+        for _, row in df.iterrows():
+            order_sn = str(row[order_sn_col]).strip() if pd.notna(row[order_sn_col]) else None
+            if not order_sn or order_sn == 'nan' or order_sn == '':
+                continue
+            
+            # 提取包裹号
+            package_sn = None
+            if package_sn_col:
+                try:
+                    if pd.notna(row[package_sn_col]):
+                        package_sn_raw = row[package_sn_col]
+                        package_sn = str(package_sn_raw).strip()
+                        # 过滤掉无效值
+                        if package_sn in ['nan', 'None', '--', '', 'null', 'NULL']:
+                            package_sn = None
+                except (KeyError, AttributeError):
+                    # 如果列不存在或无法访问，跳过
+                    package_sn = None
+            
+            # 提取地址信息
+            address_info = {}
+            for field_key, col_name in found_address_cols.items():
+                if pd.notna(row[col_name]):
+                    value = str(row[col_name]).strip()
+                    if value and value != 'nan':
+                        address_info[field_key] = value
+            
+            # 如果订单号已存在，合并信息（优先使用非空值）
+            if order_sn in order_data_map:
+                existing = order_data_map[order_sn]
+                # 如果新数据有包裹号且旧数据没有，或者新数据的包裹号与旧数据不同，则更新
+                if package_sn:
+                    if not existing.get('package_sn') or existing.get('package_sn') != package_sn:
+                        existing['package_sn'] = package_sn
+                for key, value in address_info.items():
+                    if value and (not existing.get(key) or existing.get(key) != value):
+                        existing[key] = value
+            else:
+                order_data_map[order_sn] = {
+                    'order_sn': order_sn,
+                    'package_sn': package_sn,
+                    **address_info
+                }
+        
+        # 匹配系统内的订单并更新
+        updated_count = 0
+        matched_count = 0
+        unmatched_orders = []
+        
+        for order_data in order_data_map.values():
+            order_sn = order_data['order_sn']
+            
+            # 查询系统内匹配的订单（优先匹配parent_order_sn，如果没有则匹配order_sn）
+            matched_orders = db.query(Order).filter(
+                or_(
+                    Order.parent_order_sn == order_sn,
+                    Order.order_sn == order_sn
+                )
+            ).all()
+            
+            if not matched_orders:
+                # 尝试模糊匹配：如果订单号包含PO-前缀，尝试去除前缀后匹配
+                if order_sn.startswith('PO-'):
+                    without_prefix = order_sn[3:]  # 去掉 "PO-"
+                    matched_orders = db.query(Order).filter(
+                        or_(
+                            Order.parent_order_sn == without_prefix,
+                            Order.order_sn == without_prefix
+                        )
+                    ).all()
+                    
+                    if not matched_orders and '-' in without_prefix:
+                        # 尝试提取数字部分匹配
+                        parts = without_prefix.split('-', 1)
+                        if len(parts) == 2:
+                            number_part = parts[1]
+                            matched_orders = db.query(Order).filter(
+                                or_(
+                                    Order.parent_order_sn.like(f"%{number_part}"),
+                                    Order.order_sn.like(f"%{number_part}")
+                                )
+                            ).all()
+                            # 刷新所有订单对象，确保获取最新的数据
+                            for order in matched_orders:
+                                db.refresh(order)
+            
+            if matched_orders:
+                matched_count += 1
+                # 更新所有匹配的订单
+                for order in matched_orders:
+                    updated = False
+                    
+                    # 更新包裹号（如果上传的数据中有包裹号，则更新）
+                    if order_data.get('package_sn'):
+                        package_sn_value = str(order_data['package_sn']).strip()
+                        # 过滤掉无效值
+                        if package_sn_value and package_sn_value != 'nan' and package_sn_value != 'None' and package_sn_value != '--' and package_sn_value.lower() != 'null':
+                            # 只有当值不同时才更新（允许覆盖已有值）
+                            current_package_sn = str(order.package_sn).strip() if order.package_sn else ''
+                            if current_package_sn != package_sn_value:
+                                order.package_sn = package_sn_value
+                                updated = True
+                    
+                    # 更新收货地址信息（如果上传的数据中有地址信息，则更新）
+                    if order_data.get('shipping_country'):
+                        country_value = str(order_data['shipping_country']).strip()
+                        if country_value and country_value != 'nan' and order.shipping_country != country_value:
+                            order.shipping_country = country_value
+                            updated = True
+                    
+                    if order_data.get('shipping_province'):
+                        province_value = str(order_data['shipping_province']).strip()
+                        if province_value and province_value != 'nan' and order.shipping_province != province_value:
+                            order.shipping_province = province_value
+                            updated = True
+                    
+                    if order_data.get('shipping_city'):
+                        city_value = str(order_data['shipping_city']).strip()
+                        if city_value and city_value != 'nan' and order.shipping_city != city_value:
+                            order.shipping_city = city_value
+                            updated = True
+                    
+                    if order_data.get('shipping_postal_code'):
+                        postal_value = str(order_data['shipping_postal_code']).strip()
+                        if postal_value and postal_value != 'nan' and order.shipping_postal_code != postal_value:
+                            order.shipping_postal_code = postal_value
+                            updated = True
+                    
+                    if order_data.get('shipping_address'):
+                        address_value = str(order_data['shipping_address']).strip()
+                        if address_value and address_value != 'nan' and order.shipping_address != address_value:
+                            order.shipping_address = address_value
+                            updated = True
+                    
+                    if updated:
+                        updated_count += 1
+                        order.updated_at = datetime.utcnow()
+            else:
+                unmatched_orders.append(order_sn)
+        
+        # 提交更改
+        db.commit()
+        
+        # 构建详细消息
+        message_parts = [f"成功处理{len(order_data_map)}条订单记录"]
+        if matched_count > 0:
+            message_parts.append(f"匹配到{matched_count}个订单")
+        if updated_count > 0:
+            message_parts.append(f"更新了{updated_count}条记录")
+        else:
+            message_parts.append("但未更新任何记录")
+            if not package_sn_col:
+                message_parts.append(f"（原因：未找到包裹号列，已尝试的列名：{', '.join(possible_package_cols)}，或请确保Y列包含包裹号数据）")
+            elif matched_count > 0:
+                # 检查是否有包裹号数据
+                has_package_data = any(order_data.get('package_sn') for order_data in order_data_map.values())
+                if not has_package_data:
+                    message_parts.append(f"（原因：找到包裹号列'{package_sn_col}'，但该列数据为空或无效）")
+                else:
+                    message_parts.append("（原因：匹配的订单已有相同包裹号，或包裹号数据格式不正确）")
+        
+        if len(unmatched_orders) > 0:
+            message_parts.append(f"，{len(unmatched_orders)}条未匹配")
+        
+        # 统计有包裹号数据的记录数
+        records_with_package = sum(1 for order_data in order_data_map.values() if order_data.get('package_sn'))
+        
+        return {
+            "success": True,
+            "message": "".join(message_parts),
+            "data": {
+                "total": len(order_data_map),
+                "matched": matched_count,
+                "updated": updated_count,
+                "unmatched": len(unmatched_orders),
+                "unmatched_orders": unmatched_orders[:100],  # 只返回前100个未匹配的订单号
+                "has_package_sn_col": package_sn_col is not None,
+                "package_sn_col_name": package_sn_col if package_sn_col else None,  # 返回识别到的包裹号列名
+                "records_with_package": records_with_package,  # 有包裹号数据的记录数
+                "has_address_cols": len(found_address_cols) > 0
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"处理文件失败: {str(e)}"
+        )
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+
 @router.post("/calculate")
 async def calculate_profit(
     collection_data: List[Dict[str, Any]],
@@ -513,6 +815,11 @@ async def calculate_profit(
     结算表使用PO单号（parent_order_sn）匹配，按父订单号合并计算
     """
     try:
+        # 在开始计算前，先提交所有未提交的更改，并清除会话缓存
+        # 这确保能获取到最新的订单数据（包括刚刚更新的包裹号）
+        db.commit()
+        db.expire_all()
+        
         if last_mile_shipping_data is None:
             last_mile_shipping_data = []
         
@@ -568,12 +875,21 @@ async def calculate_profit(
             }
         
         # 查询匹配的订单（使用parent_order_sn匹配）
+        # 注意：使用 refresh=True 确保获取最新的数据库数据，包括包裹号等字段
         matched_orders_by_parent = {}
         
         # 精确匹配parent_order_sn（优先使用）
+        # 在查询前先提交更改并清除会话缓存，确保获取最新数据
+        db.commit()  # 先提交所有未提交的更改（包括之前上传订单列表的更新）
+        db.expire_all()  # 清除所有对象缓存，强制重新加载
+        
         orders = db.query(Order).filter(
             Order.parent_order_sn.in_(all_parent_order_sns)
         ).all()
+        
+        # 刷新所有订单对象，确保获取最新的数据（包括包裹号）
+        for order in orders:
+            db.refresh(order)  # 刷新订单对象以获取最新数据
         
         # 按parent_order_sn分组订单
         for order in orders:
@@ -595,6 +911,9 @@ async def calculate_profit(
                     exact_match_orders = db.query(Order).filter(
                         Order.parent_order_sn == without_prefix
                     ).all()
+                    # 刷新所有订单对象，确保获取最新的数据（包括包裹号）
+                    for order in exact_match_orders:
+                        db.refresh(order)
                     if exact_match_orders:
                         matched_orders_by_parent[parent_sn] = exact_match_orders
                         continue
@@ -610,6 +929,10 @@ async def calculate_profit(
                             potential_orders = db.query(Order).filter(
                                 Order.parent_order_sn.like(f"%{number_part}")
                             ).all()
+                            
+                            # 刷新潜在匹配的订单对象
+                            for order in potential_orders:
+                                db.refresh(order)
                             
                             # 严格过滤：确保匹配的订单号完全符合预期
                             filtered_orders = []
@@ -644,6 +967,10 @@ async def calculate_profit(
                                         if order.parent_order_sn.endswith(number_part):
                                             filtered_orders.append(order)
                             
+                            # 刷新所有过滤后的订单对象，确保获取最新的数据（包括包裹号）
+                            for order in filtered_orders:
+                                db.refresh(order)
+                            
                             # 只接受唯一匹配，避免误匹配多个订单
                             if len(filtered_orders) == 1:
                                 matched_orders_by_parent[parent_sn] = filtered_orders
@@ -658,6 +985,10 @@ async def calculate_profit(
                                             o_parts = o_without_po.split('-', 1)
                                             if len(o_parts) == 2 and o_parts[0] == parts[0] and o_parts[1] == number_part:
                                                 exact_format_matches.append(o)
+                                
+                                # 刷新格式完全一致的匹配订单
+                                for order in exact_format_matches:
+                                    db.refresh(order)
                                 
                                 # 如果找到格式完全一致的匹配，使用它
                                 if len(exact_format_matches) == 1:
@@ -732,13 +1063,68 @@ async def calculate_profit(
             
             # 获取商品信息和包裹号（如果有匹配的订单）
             if matched_orders:
-                product_names = list(set([o.product_name for o in matched_orders if o.product_name]))
-                skus = list(set([o.product_sku for o in matched_orders if o.product_sku]))
-                matched_order_sns = [o.order_sn for o in matched_orders]
-                matched_parent_order_sns = [o.parent_order_sn for o in matched_orders if o.parent_order_sn]
-                # 提取包裹号（取第一个非空的包裹号）
-                package_sns = [o.package_sn for o in matched_orders if o.package_sn]
-                package_sn = package_sns[0] if package_sns else None
+                order_ids = [order.id for order in matched_orders]
+                
+                # 先提交所有更改，然后清除会话缓存，确保获取最新数据
+                db.commit()  # 确保所有未提交的更改都已提交
+                db.expire_all()  # 使所有对象过期，强制重新加载
+                
+                # 方法1: 使用原始SQL查询直接获取包裹号，绕过ORM缓存
+                package_sn = None
+                if order_ids:
+                    try:
+                        # 使用参数化查询（安全）
+                        # 构建占位符
+                        placeholders = ','.join([':id' + str(i) for i in range(len(order_ids))])
+                        params = {f'id{i}': order_id for i, order_id in enumerate(order_ids)}
+                        
+                        package_sn_query = text(f"""
+                            SELECT package_sn 
+                            FROM orders 
+                            WHERE id IN ({placeholders})
+                            AND package_sn IS NOT NULL 
+                            AND package_sn != '' 
+                            AND package_sn != 'nan'
+                            AND package_sn != 'None'
+                            AND package_sn != '--'
+                            AND TRIM(package_sn) != ''
+                            LIMIT 1
+                        """)
+                        result = db.execute(package_sn_query, params)
+                        package_sn_row = result.first()
+                        if package_sn_row and package_sn_row[0]:
+                            package_sn = str(package_sn_row[0]).strip()
+                            if not package_sn or package_sn in ['nan', 'None', '--', 'null', 'NULL']:
+                                package_sn = None
+                    except Exception:
+                        # 如果SQL查询失败，回退到ORM查询
+                        package_sn = None
+                
+                # 方法2: 如果SQL查询失败或没有结果，使用ORM查询（备用方案）
+                if not package_sn:
+                    # 重新查询订单，使用 with_for_update 确保获取最新数据
+                    fresh_orders = db.query(Order).filter(Order.id.in_(order_ids)).all()
+                    for order in fresh_orders:
+                        db.refresh(order)  # 强制刷新每个订单对象
+                        if order.package_sn:
+                            pkg_sn = order.package_sn.strip() if isinstance(order.package_sn, str) else str(order.package_sn).strip()
+                            if pkg_sn and pkg_sn not in ['nan', 'None', '--', '', 'null', 'NULL']:
+                                package_sn = pkg_sn
+                                break
+                
+                # 创建ID到订单的映射（用于获取其他信息）
+                fresh_orders_map = {}
+                if not fresh_orders:
+                    fresh_orders = db.query(Order).filter(Order.id.in_(order_ids)).all()
+                for order in fresh_orders:
+                    db.refresh(order)
+                    fresh_orders_map[order.id] = order
+                
+                # 使用最新查询的订单数据
+                product_names = list(set([fresh_orders_map[o.id].product_name for o in matched_orders if fresh_orders_map.get(o.id) and fresh_orders_map[o.id].product_name]))
+                skus = list(set([fresh_orders_map[o.id].product_sku for o in matched_orders if fresh_orders_map.get(o.id) and fresh_orders_map[o.id].product_sku]))
+                matched_order_sns = [fresh_orders_map[o.id].order_sn for o in matched_orders if fresh_orders_map.get(o.id)]
+                matched_parent_order_sns = [fresh_orders_map[o.id].parent_order_sn for o in matched_orders if fresh_orders_map.get(o.id) and fresh_orders_map[o.id].parent_order_sn]
             else:
                 product_names = []
                 skus = []
