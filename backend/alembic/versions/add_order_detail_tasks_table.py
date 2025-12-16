@@ -115,3 +115,4 @@ def downgrade():
     
     # 删除表
     op.drop_table('order_detail_tasks')
+

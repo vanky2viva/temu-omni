@@ -285,3 +285,4 @@ class MonitoringService:
                 "error": str(e),
                 "timestamp": datetime.now().isoformat()
             }
+

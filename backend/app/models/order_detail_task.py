@@ -71,3 +71,4 @@ class OrderDetailTask(Base):
         """增加重试次数"""
         self.retry_count += 1
         self.updated_at = datetime.utcnow()
+

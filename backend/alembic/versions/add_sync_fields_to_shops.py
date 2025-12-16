@@ -84,3 +84,4 @@ def downgrade():
         op.drop_column('shops', 'last_full_sync_at')
     except Exception:
         pass
+

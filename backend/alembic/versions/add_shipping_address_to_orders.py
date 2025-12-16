@@ -34,3 +34,4 @@ def downgrade():
         op.drop_column('orders', 'shipping_address')
     except Exception:
         pass
+

@@ -452,3 +452,4 @@ class OrderDetailEnrichmentService:
                 "failed": 0,
                 "queue_length": 0
             }
+

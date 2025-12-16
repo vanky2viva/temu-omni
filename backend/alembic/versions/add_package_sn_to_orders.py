@@ -42,3 +42,4 @@ def downgrade():
         op.drop_column('orders', 'package_sn')
     except Exception:
         pass
+
