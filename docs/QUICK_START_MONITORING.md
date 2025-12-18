@@ -164,3 +164,4 @@ curl -X POST "http://localhost:8000/api/sync/shops/1/orders/enrich-details?force
 3. **监控任务失败率**：失败率突然升高可能表示API或网络问题
 4. **及时处理告警**：特别是error级别的告警，需要立即处理
 
+

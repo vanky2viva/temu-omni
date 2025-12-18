@@ -175,3 +175,4 @@ def get_worker() -> Optional[OrderDetailWorker]:
     """获取工作线程实例"""
     return _worker
 
+

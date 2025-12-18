@@ -72,3 +72,4 @@ class OrderDetailTask(Base):
         self.retry_count += 1
         self.updated_at = datetime.utcnow()
 
+

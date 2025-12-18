@@ -1,0 +1,63 @@
+/* OrderList 页面样式 */
+
+.order-list-container {
+  padding: 24px;
+}
+
+.order-stats-container {
+  margin-bottom: 24px;
+}
+
+.order-filters-main {
+  margin-bottom: 16px;
+  padding: 20px;
+  background: transparent;
+}
+
+.order-filters-advanced {
+  margin-bottom: 16px;
+}
+
+.batch-actions-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-bg-container);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.order-table-card {
+  margin-top: 20px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--color-bg-container);
+}
+
+.order-table-header {
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.order-table-title {
+  color: var(--color-fg);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.order-table-pagination-info {
+  color: var(--color-fg);
+  font-size: 14px;
+  opacity: 0.8;
+}

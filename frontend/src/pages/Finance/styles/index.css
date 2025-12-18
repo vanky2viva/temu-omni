@@ -1,0 +1,26 @@
+.finance-date-picker .ant-picker {
+  background: rgba(30, 41, 59, 0.6) !important;
+  border: 1px solid rgba(99, 102, 241, 0.3) !important;
+  color: #cbd5e1 !important;
+}
+.finance-date-picker .ant-picker:hover {
+  border-color: rgba(99, 102, 241, 0.5) !important;
+}
+.finance-date-picker .ant-picker-input > input {
+  color: #cbd5e1 !important;
+}
+.finance-date-picker .ant-picker-input > input::placeholder {
+  color: #64748b !important;
+}
+.finance-date-picker.ant-picker-disabled {
+  background: rgba(30, 41, 59, 0.3) !important;
+  border-color: rgba(99, 102, 241, 0.2) !important;
+  opacity: 0.5;
+}
+.theme-dark .profit-statement-table .ant-table-cell-fix-left,
+.theme-dark .profit-statement-table .ant-table-cell-fix-right {
+  opacity: 1 !important;
+  z-index: 1000 !important;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.8) !important;
+}
+

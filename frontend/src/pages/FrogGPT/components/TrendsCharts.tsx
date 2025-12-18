@@ -3,7 +3,8 @@
  * 显示 GMV/订单/利润趋势、SKU Top 表格
  */
 import React, { useMemo } from 'react'
-import { Card, Table, Tag, Tooltip } from 'antd'
+import { Card, Tag, Tooltip } from 'antd'
+import UnifiedTable from '@/components/Table'
 import LazyECharts from '@/components/LazyECharts'
 import { LineChartOutlined, BarChartOutlined } from '@ant-design/icons'
 import type { TrendData, SkuRankingItem } from '../types'
@@ -291,12 +292,12 @@ const TrendsCharts: React.FC<TrendsChartsProps> = ({
         }}
       >
         {skuRanking && skuRanking.length > 0 ? (
-          <Table
+          <UnifiedTable
+            variant="compact"
             columns={skuColumns}
             dataSource={skuRanking}
             rowKey="sku"
             pagination={false}
-            size="small"
             style={{ 
               background: 'transparent', 
               width: '100%',
